@@ -3,7 +3,7 @@ export interface Tool {
   name:        string;
   description: string;
   url:         string;       // Full Vercel URL in production; relative path in dev
-  icon:        string;       // Emoji or icon name
+  icon:        string;       // Black-and-white icon name (never emoji)
   status:      "live" | "beta" | "coming-soon";
   category:    string;
 }
@@ -15,16 +15,16 @@ export const tools: Tool[] = [
     name:        "Starter Tool",
     description: "Template tool — replace this with your first real tool.",
     url:         "https://tool-starter.vercel.app",
-    icon:        "⚡",
+    icon:        "bolt",
     status:      "beta",
     category:    "General",
   },
   {
-    id:          "ai-video-tools",
-    name:        "AI Video Tools",
+    id:          "video-curator",
+    name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
     url:         "https://ai-video-tools-tan.vercel.app",
-    icon:        "🎬",
+    icon:        "film",
     status:      "live",
     category:    "Video",
   },
@@ -34,7 +34,7 @@ export const tools: Tool[] = [
   //   name:        "Auth Scanner",
   //   description: "AI-powered trading card authentication.",
   //   url:         "https://tool-auth.vercel.app",
-  //   icon:        "🔍",
+  //   icon:        "search",
   //   status:      "live",
   //   category:    "TruLux",
   // },

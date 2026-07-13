@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Design tokens — mirrored from AIVideoTools / Video Curator.
+ * Design tokens — mirrored from Video Curator (`apps/video-curator`).
  *
  * Rules:
  * - Light mode only
@@ -17,7 +17,7 @@ const config: Omit<Config, "content"> = {
       // ─── Color Palette ───────────────────────────────────────────────
       // Single source of truth. Every app uses these tokens.
       colors: {
-        // Brand = high-contrast black primary (AIVideoTools primary actions)
+        // Brand = high-contrast black primary (Video Curator primary actions)
         brand: {
           50:  "#f9fafb", // gray-50
           100: "#f3f4f6", // gray-100

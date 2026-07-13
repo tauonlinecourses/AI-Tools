@@ -9,6 +9,27 @@ const statusConfig = {
   "coming-soon": { label: "Coming Soon",  variant: "default"  as const },
 };
 
+const iconPaths: Record<string, string> = {
+  bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
+  film:   "M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z",
+  search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+};
+
+function ToolIcon({ name }: { name: string }) {
+  const d = iconPaths[name] ?? iconPaths.bolt;
+  return (
+    <svg
+      className="w-6 h-6 text-surface-900"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
 function ToolCard({ tool }: { tool: Tool }) {
   const status = statusConfig[tool.status];
   const isClickable = tool.status !== "coming-soon";
@@ -25,7 +46,7 @@ function ToolCard({ tool }: { tool: Tool }) {
       ].join(" ")}
     >
       <div className="flex items-start justify-between">
-        <span className="text-2xl">{tool.icon}</span>
+        <ToolIcon name={tool.icon} />
         <Badge variant={status.variant} size="sm">{status.label}</Badge>
       </div>
       <div>

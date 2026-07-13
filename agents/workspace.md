@@ -50,8 +50,8 @@ workspace/
 │   │       ├── main.tsx
 │   │       └── App.tsx
 │   │
-│   └── AIVideoTools/               ← Video Curator tool (hub id: ai-video-tools)
-│       └── video-curator/          ← Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
+│   └── video-curator/              ← Video Curator tool (hub id: video-curator)
+│                                       Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs
@@ -208,13 +208,13 @@ This package owns all design tokens and shared configs. Everything visual derive
 
 This is the design system. All colors, fonts, and spacing are defined here. Every app imports this config and extends it.
 
-**Source of truth:** mirrored from AIVideoTools / Video Curator design constraints (light mode, system sans, high-contrast black/gray, sharp corners, no heavy shadows).
+**Source of truth:** mirrored from Video Curator (`apps/video-curator`) design constraints (light mode, system sans, high-contrast black/gray, sharp corners, no heavy shadows).
 
 ```typescript
 import type { Config } from "tailwindcss";
 
 /**
- * Design tokens — mirrored from AIVideoTools / Video Curator.
+ * Design tokens — mirrored from Video Curator (`apps/video-curator`).
  *
  * Rules:
  * - Light mode only
@@ -945,7 +945,7 @@ export interface Tool {
   name:        string;
   description: string;
   url:         string;       // Full Vercel URL in production; relative path in dev
-  icon:        string;       // Emoji or icon name
+  icon:        string;       // Black-and-white icon name (never emoji)
   status:      "live" | "beta" | "coming-soon";
   category:    string;
 }
@@ -957,16 +957,16 @@ export const tools: Tool[] = [
     name:        "Starter Tool",
     description: "Template tool — replace this with your first real tool.",
     url:         "https://tool-starter.vercel.app",
-    icon:        "⚡",
+    icon:        "bolt",
     status:      "beta",
     category:    "General",
   },
   {
-    id:          "ai-video-tools",
-    name:        "AI Video Tools",
+    id:          "video-curator",
+    name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
     url:         "https://ai-video-tools-tan.vercel.app",
-    icon:        "🎬",
+    icon:        "film",
     status:      "live",
     category:    "Video",
   },
@@ -976,7 +976,7 @@ export const tools: Tool[] = [
   //   name:        "Auth Scanner",
   //   description: "AI-powered trading card authentication.",
   //   url:         "https://tool-auth.vercel.app",
-  //   icon:        "🔍",
+  //   icon:        "search",
   //   status:      "live",
   //   category:    "TruLux",
   // },
@@ -999,6 +999,27 @@ const statusConfig = {
   "coming-soon": { label: "Coming Soon",  variant: "default"  as const },
 };
 
+const iconPaths: Record<string, string> = {
+  bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
+  film:   "M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z",
+  search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+};
+
+function ToolIcon({ name }: { name: string }) {
+  const d = iconPaths[name] ?? iconPaths.bolt;
+  return (
+    <svg
+      className="w-6 h-6 text-surface-900"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
 function ToolCard({ tool }: { tool: Tool }) {
   const status = statusConfig[tool.status];
   const isClickable = tool.status !== "coming-soon";
@@ -1015,7 +1036,7 @@ function ToolCard({ tool }: { tool: Tool }) {
       ].join(" ")}
     >
       <div className="flex items-start justify-between">
-        <span className="text-2xl">{tool.icon}</span>
+        <ToolIcon name={tool.icon} />
         <Badge variant={status.variant} size="sm">{status.label}</Badge>
       </div>
       <div>
@@ -1344,11 +1365,11 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel URLs
 
 ## Design Rules (For All Tools)
 
-These rules are mirrored from AIVideoTools / Video Curator and must be respected in every app:
+These rules are mirrored from Video Curator (`apps/video-curator`) and must be respected in every app:
 
 **Mode:** Light mode only. Do not add dark-mode themes or `.dark` body styles.
 
-**Colors:** Always use tokens from `packages/config/tailwind.base.ts`. Primary actions match AIVideoTools exactly: `bg-black text-white hover:bg-gray-900` (also available as `brand-500` / `brand-600`). Use `surface-*` or Tailwind `gray-*` for chrome/text/borders. Semantic colors (`success`, `danger`, etc.) only for status. Use `accent.*` for categorical data (section spines, charts) — same palette as Video Curator `SECTION_COLORS`. Never use purple as a brand/primary color.
+**Colors:** Always use tokens from `packages/config/tailwind.base.ts`. Primary actions match Video Curator exactly: `bg-black text-white hover:bg-gray-900` (also available as `brand-500` / `brand-600`). Use `surface-*` or Tailwind `gray-*` for chrome/text/borders. Semantic colors (`success`, `danger`, etc.) only for status. Use `accent.*` for categorical data (section spines, charts) — same palette as Video Curator `SECTION_COLORS`. Never use purple as a brand/primary color.
 
 **Typography:** System sans-serif only (`font-body` / `font-display`). Use `text-sm` for body and UI labels, `text-xs` for hints and metadata, `font-semibold` for labels and primary buttons. Prefer `tracking-tight` on page titles. Avoid custom webfonts (no Inter / JetBrains Mono).
 
@@ -1362,6 +1383,8 @@ These rules are mirrored from AIVideoTools / Video Curator and must be respected
 Cards and panels are square with `border border-surface-200`. Active/uploaded states use `border-surface-900` or `border-black` with `bg-surface-50`. Disabled controls use `border-surface-200 bg-surface-50 text-surface-500`.
 
 **Shadows / effects:** No gradients. No heavy shadows (`shadow-*` tokens are `none`). Hover feedback is border/background contrast, not elevation.
+
+**Icons:** Never use emojis anywhere in the UI (labels, cards, buttons, empty states, status, docs screenshots of the product UI, etc.). Use black-and-white icons only — monochrome SVG (or equivalent) that inherit `currentColor` / black–white–gray tokens. No colored icons, no emoji-as-icon shortcuts.
 
 **The `PageLayout` component is mandatory.** Every tool must use it. It provides the top nav bar with the Hub link and ensures visual consistency across tools.
 

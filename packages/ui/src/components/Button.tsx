@@ -11,7 +11,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   rightIcon?: React.ReactNode;
 }
 
-// Primary matches AIVideoTools: `bg-black text-white hover:bg-gray-900`
+// Primary matches Video Curator: `bg-black text-white hover:bg-gray-900`
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
     "bg-black text-white hover:bg-gray-900 active:bg-black border border-black",
