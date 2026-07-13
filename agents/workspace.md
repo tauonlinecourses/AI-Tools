@@ -46,6 +46,8 @@ workspace/
 │   │   ├── vite.config.ts
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
+│   │   ├── api/
+│   │   │   └── chat.ts             ← Production OpenAI proxy (Vercel serverless)
 │   │   └── src/
 │   │       ├── main.tsx
 │   │       └── App.tsx
@@ -79,7 +81,7 @@ workspace/
 │       ├── tsconfig.json
 │       └── src/
 │           ├── index.ts
-│           └── client.ts           ← Anthropic API wrapper with error handling
+│           └── client.ts           ← OpenAI wrapper (dev: direct; prod: /api/chat)
 │
 ├── turbo.json
 ├── pnpm-workspace.yaml
@@ -144,8 +146,11 @@ Create `turbo.json`:
 Create `.env.example` at root:
 
 ```env
-# Copy this to .env.local in each app that needs it
-VITE_ANTHROPIC_API_KEY=your_key_here
+# Copy this to .env.local in each app that needs it (local dev only)
+VITE_OPENAI_API_KEY=your_openai_key_here
+
+# Production (Vercel): set OPENAI_API_KEY on the server — used by /api/chat
+# OPENAI_API_KEY=your_openai_key_here
 ```
 
 Create `.gitignore`:
@@ -724,73 +729,68 @@ export { PageLayout }  from "./components/PageLayout";
 ### `packages/ai-client/src/client.ts`
 
 ```typescript
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
 export interface CallOptions {
-  model?:       string;
-  maxTokens?:   number;
+  model?:        string;
+  maxTokens?:    number;
   systemPrompt?: string;
-  temperature?: number;
+  temperature?:  number;
 }
 
-export interface AIResponse {
-  text:  string;
-  error: null;
-}
-
-export interface AIError {
-  text:  null;
-  error: string;
-}
-
+export interface AIResponse { text: string; error: null; }
+export interface AIError    { text: null;   error: string; }
 export type AIResult = AIResponse | AIError;
-
-// ─── Core call ───────────────────────────────────────────────────────────────
 
 export async function callAI(
   messages: Message[],
   options: CallOptions = {}
 ): Promise<AIResult> {
   const {
-    model       = "claude-sonnet-4-6",
-    maxTokens   = 2048,
+    model        = "gpt-4o-mini",
+    maxTokens    = 2048,
     systemPrompt,
-    temperature = 0.7,
+    temperature  = 0.7,
   } = options;
 
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+  const allMessages: Message[] = [
+    ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+    ...messages,
+  ];
 
-  if (!apiKey) {
-    return { text: null, error: "VITE_ANTHROPIC_API_KEY is not set" };
-  }
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    temperature,
+    messages: allMessages,
+  };
 
   try {
-    const body: Record<string, unknown> = {
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      messages,
-    };
+    const isDev = import.meta.env.DEV;
+    let response: Response;
 
-    if (systemPrompt) {
-      body.system = systemPrompt;
+    if (isDev) {
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) return { text: null, error: "VITE_OPENAI_API_KEY is not set in .env.local" };
+
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method:  "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } else {
+      response = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
     }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type":            "application/json",
-        "x-api-key":               apiKey,
-        "anthropic-version":       "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify(body),
-    });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -802,15 +802,10 @@ export async function callAI(
     }
 
     const data = await response.json() as {
-      content: Array<{ type: string; text: string }>;
+      choices: Array<{ message: { content: string } }>;
     };
 
-    const text = data.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    return { text, error: null };
+    return { text: data.choices[0]?.message?.content ?? "", error: null };
   } catch (err) {
     return {
       text:  null,
@@ -818,8 +813,6 @@ export async function callAI(
     };
   }
 }
-
-// ─── Convenience helper — single prompt ──────────────────────────────────────
 
 export async function prompt(
   userMessage: string,
@@ -1152,6 +1145,7 @@ export default function App() {
     "react-dom":            "^18.2.0"
   },
   "devDependencies": {
+    "@vercel/node":         "^3.2.0",
     "@workspace/config":    "workspace:*",
     "@types/react":         "^18.2.0",
     "@types/react-dom":     "^18.2.0",
@@ -1161,6 +1155,48 @@ export default function App() {
     "tailwindcss":          "^3.4.0",
     "typescript":           "^5.0.0",
     "vite":                 "^5.0.0"
+  }
+}
+```
+
+### `apps/tool-starter/api/chat.ts`
+
+Production proxy — keeps `OPENAI_API_KEY` server-side. Local Vite uses `VITE_OPENAI_API_KEY` directly via `ai-client`.
+
+```typescript
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "API key not configured" });
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    return res.status(200).json(data);
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
   }
 }
 ```
@@ -1343,7 +1379,7 @@ Create one Vercel project per app. For each app:
 2. Set **Root Directory** to `apps/hub` (or `apps/tool-name`)
 3. Set **Build Command** to `cd ../.. && pnpm build --filter hub` (replace `hub` with the app name)
 4. Set **Output Directory** to `dist`
-5. Add environment variable: `VITE_ANTHROPIC_API_KEY`
+5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat`)
 6. Deploy
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.

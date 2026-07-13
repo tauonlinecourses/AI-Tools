@@ -14,7 +14,7 @@ AI-Tools/
 ├── packages/             ← Shared code
 │   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
 │   ├── ui/               ← Shared React component library
-│   └── ai-client/        ← Anthropic API wrapper
+│   └── ai-client/        ← OpenAI API wrapper
 │
 ├── agents/               ← Build instructions for the Cursor agent
 ├── turbo.json

@@ -1,70 +1,65 @@
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
 export interface CallOptions {
-  model?:       string;
-  maxTokens?:   number;
+  model?:        string;
+  maxTokens?:    number;
   systemPrompt?: string;
-  temperature?: number;
+  temperature?:  number;
 }
 
-export interface AIResponse {
-  text:  string;
-  error: null;
-}
-
-export interface AIError {
-  text:  null;
-  error: string;
-}
-
+export interface AIResponse { text: string; error: null; }
+export interface AIError    { text: null;   error: string; }
 export type AIResult = AIResponse | AIError;
-
-// ─── Core call ───────────────────────────────────────────────────────────────
 
 export async function callAI(
   messages: Message[],
   options: CallOptions = {}
 ): Promise<AIResult> {
   const {
-    model       = "claude-sonnet-4-6",
-    maxTokens   = 2048,
+    model        = "gpt-4o-mini",
+    maxTokens    = 2048,
     systemPrompt,
-    temperature = 0.7,
+    temperature  = 0.7,
   } = options;
 
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+  const allMessages: Message[] = [
+    ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+    ...messages,
+  ];
 
-  if (!apiKey) {
-    return { text: null, error: "VITE_ANTHROPIC_API_KEY is not set" };
-  }
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    temperature,
+    messages: allMessages,
+  };
 
   try {
-    const body: Record<string, unknown> = {
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      messages,
-    };
+    const isDev = import.meta.env.DEV;
+    let response: Response;
 
-    if (systemPrompt) {
-      body.system = systemPrompt;
+    if (isDev) {
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) return { text: null, error: "VITE_OPENAI_API_KEY is not set in .env.local" };
+
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method:  "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } else {
+      response = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
     }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type":            "application/json",
-        "x-api-key":               apiKey,
-        "anthropic-version":       "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify(body),
-    });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -76,15 +71,10 @@ export async function callAI(
     }
 
     const data = await response.json() as {
-      content: Array<{ type: string; text: string }>;
+      choices: Array<{ message: { content: string } }>;
     };
 
-    const text = data.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    return { text, error: null };
+    return { text: data.choices[0]?.message?.content ?? "", error: null };
   } catch (err) {
     return {
       text:  null,
@@ -92,8 +82,6 @@ export async function callAI(
     };
   }
 }
-
-// ─── Convenience helper — single prompt ──────────────────────────────────────
 
 export async function prompt(
   userMessage: string,
