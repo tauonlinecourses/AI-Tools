@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Badge } from "@workspace/ui";
 import { tools, categories } from "./tools.config";
 import type { Tool } from "./tools.config";
