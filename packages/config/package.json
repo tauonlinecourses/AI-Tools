@@ -1,0 +1,10 @@
+{
+  "name": "@workspace/config",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./tailwind.base.ts",
+  "exports": {
+    "./tailwind": "./tailwind.base.ts",
+    "./tsconfig": "./tsconfig.base.json"
+  }
+}

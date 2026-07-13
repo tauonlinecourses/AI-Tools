@@ -1,0 +1,7 @@
+{
+  "extends": "@workspace/config/tsconfig",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"]
+}

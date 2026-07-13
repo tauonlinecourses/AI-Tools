@@ -1,0 +1,10 @@
+{
+  "extends": "@workspace/config/tsconfig",
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": false
+  },
+  "include": ["vite.config.ts", "tailwind.config.ts"]
+}

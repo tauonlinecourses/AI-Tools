@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/ui",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles": "./src/styles/globals.css"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@workspace/config": "workspace:*",
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

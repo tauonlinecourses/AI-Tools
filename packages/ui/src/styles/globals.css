@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-white text-surface-900 font-body antialiased;
+  }
+
+  /* High-contrast black focus ring — matches Video Curator */
+  :focus-visible {
+    @apply outline-none ring-2 ring-black ring-offset-2 ring-offset-white;
+  }
+
+  /* Scrollbar — minimal, sharp */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-surface-100; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-300; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-surface-400; }
+}
