@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@workspace/ui";
-import { tools, categories } from "./tools.config";
+import { tools, categories, toolHref } from "./tools.config";
 import type { Tool } from "./tools.config";
-
-const statusConfig = {
-  live:          { label: "Live",         variant: "success"  as const },
-  beta:          { label: "Beta",         variant: "warning"  as const },
-  "coming-soon": { label: "Coming Soon",  variant: "default"  as const },
-};
 
 const iconPaths: Record<string, string> = {
   bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
@@ -31,8 +25,8 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 function ToolCard({ tool }: { tool: Tool }) {
-  const status = statusConfig[tool.status];
   const isClickable = tool.status !== "coming-soon";
+  const isComingSoon = tool.status === "coming-soon";
 
   const card = (
     <div
@@ -45,33 +39,27 @@ function ToolCard({ tool }: { tool: Tool }) {
           : "opacity-60 cursor-not-allowed",
       ].join(" ")}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-lg font-semibold text-surface-900 truncate">
+            {tool.name}
+          </h3>
+          {isComingSoon && (
+            <Badge variant="default" size="sm">Coming Soon</Badge>
+          )}
+        </div>
         <ToolIcon name={tool.icon} />
-        <Badge variant={status.variant} size="sm">{status.label}</Badge>
       </div>
-      <div>
-        <h3 className="text-sm font-semibold text-surface-900">
-          {tool.name}
-        </h3>
-        <p className="text-xs text-surface-500 mt-1 leading-relaxed">
-          {tool.description}
-        </p>
-      </div>
-      {isClickable && (
-        <span className="text-xs text-surface-900 font-semibold flex items-center gap-1 mt-auto">
-          Open tool
-          <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform duration-fast" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </span>
-      )}
+      <p className="text-sm text-surface-500 leading-relaxed">
+        {tool.description}
+      </p>
     </div>
   );
 
   if (!isClickable) return card;
 
   return (
-    <a href={tool.url} target="_blank" rel="noopener noreferrer" className="contents">
+    <a href={toolHref(tool)} className="contents">
       {card}
     </a>
   );

@@ -38,4 +38,15 @@ pnpm install
 pnpm dev
 ```
 
-To add a new tool: copy `apps/tool-starter`, then register it in `apps/hub/src/tools.config.ts`.
+## Add a new tool
+
+1. Copy `apps/tool-starter/` → `apps/tool-myname/`
+2. In the copy, set `"name": "tool-myname"` in `package.json`
+3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, next free…)
+4. Build the tool in `src/App.tsx` (keep `PageLayout`)
+5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
+6. Deploy on Vercel (one project per app):
+   - **Root Directory:** `apps/tool-myname`
+   - **Build Command:** `cd ../.. && pnpm build --filter tool-myname`
+   - **Output Directory:** `dist`
+7. Set the live `url` in `tools.config.ts`. If this is the first hub deploy, also set `HUB_PROD_URL` in `packages/ui/src/hub.ts`

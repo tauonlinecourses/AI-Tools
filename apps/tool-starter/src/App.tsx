@@ -32,8 +32,7 @@ export default function App() {
   return (
     <PageLayout
       toolName="Starter Tool"
-      toolDescription="Template — replace with your tool's description"
-      hubUrl="https://your-hub.vercel.app"
+      toolDescription="Use this template to create new tools"
     >
       <div className="flex flex-col gap-6 max-w-2xl">
         <Card>

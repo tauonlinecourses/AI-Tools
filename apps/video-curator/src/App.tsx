@@ -1,3 +1,4 @@
+import { PageLayout } from '@workspace/ui'
 import { RightPanel } from './components/RightPanel'
 import { useCallback, useRef } from 'react'
 import { Timeline } from './components/Timeline'
@@ -31,8 +32,13 @@ function App() {
   }, [sections])
 
   return (
-    <div className="h-screen overflow-hidden bg-white text-gray-900">
-      <div className="flex h-full">
+    <PageLayout
+      toolName="Video Curator"
+      toolDescription="Curate video transcripts into sections, then export clips, SRT, and PDF."
+      maxWidth="full"
+      padded={false}
+    >
+      <div className="flex h-[calc(100vh-3rem)] overflow-hidden bg-white text-gray-900">
         <main className="w-[65%] p-6">
           <div className="flex h-full flex-col gap-4">
             <VideoPlayer ref={videoPlayerRef} />
@@ -49,7 +55,7 @@ function App() {
           <RightPanel onSeek={handleSeek} />
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }
 

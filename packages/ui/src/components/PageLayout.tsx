@@ -1,11 +1,15 @@
 import React from "react";
+import { hubHref } from "../hub";
 
 interface PageLayoutProps {
   children: React.ReactNode;
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
   toolName?: string;
   toolDescription?: string;
+  /** Defaults to localhost in DEV and the Vercel hub URL in production. */
   hubUrl?: string;
+  /** When false, content fills the area under the nav with no outer padding (for full-bleed tools). */
+  padded?: boolean;
 }
 
 const maxWidthStyles = {
@@ -22,7 +26,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   maxWidth = "xl",
   toolName,
   toolDescription,
-  hubUrl = "/",
+  hubUrl = hubHref(),
+  padded = true,
 }) => {
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -45,14 +50,20 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         )}
         {toolDescription && (
           <span className="ml-3 text-xs text-surface-500 hidden sm:block">
-            — {toolDescription}
+            {toolDescription}
           </span>
         )}
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col">
-        <div className={["w-full mx-auto px-4 sm:px-6 py-6 flex-1 flex flex-col", maxWidthStyles[maxWidth]].join(" ")}>
+      <main className="flex-1 flex flex-col min-h-0">
+        <div
+          className={[
+            "w-full mx-auto flex-1 flex flex-col min-h-0",
+            padded ? "px-4 sm:px-6 py-6" : "",
+            maxWidthStyles[maxWidth],
+          ].join(" ")}
+        >
           {children}
         </div>
       </main>

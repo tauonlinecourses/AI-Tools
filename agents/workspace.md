@@ -54,6 +54,10 @@ workspace/
 │   │
 │   └── video-curator/              ← Video Curator tool (hub id: video-curator)
 │                                       Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
+│                                       Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
+│
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175
+│   Hub links: DEV → each tool’s `devUrl` (localhost); production/Vercel build → `url`
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs
@@ -628,17 +632,43 @@ export const Spinner: React.FC<SpinnerProps> = ({ size = "md", className = "" })
 );
 ```
 
+### `packages/ui/src/hub.ts`
+
+Shared hub back-link targets used by `PageLayout` (and available to tools):
+
+```typescript
+/** Local hub (apps/hub Vite port). */
+export const HUB_DEV_URL = "http://localhost:5173";
+
+/**
+ * Live hub on Vercel — update after the hub project is deployed.
+ * Override per app with `VITE_HUB_URL` if needed.
+ */
+export const HUB_PROD_URL = "https://your-hub.vercel.app";
+
+/** DEV → localhost hub; production/Vercel build → live hub URL. */
+export function hubHref(): string {
+  if (import.meta.env.DEV) return HUB_DEV_URL;
+  const fromEnv = import.meta.env.VITE_HUB_URL;
+  return typeof fromEnv === "string" && fromEnv.length > 0 ? fromEnv : HUB_PROD_URL;
+}
+```
+
 ### `packages/ui/src/components/PageLayout.tsx`
 
 ```tsx
 import React from "react";
+import { hubHref } from "../hub";
 
 interface PageLayoutProps {
   children: React.ReactNode;
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
   toolName?: string;
   toolDescription?: string;
+  /** Defaults to localhost in DEV and the Vercel hub URL in production. */
   hubUrl?: string;
+  /** When false, content fills the area under the nav with no outer padding (for full-bleed tools). */
+  padded?: boolean;
 }
 
 const maxWidthStyles = {
@@ -655,7 +685,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   maxWidth = "xl",
   toolName,
   toolDescription,
-  hubUrl = "/",
+  hubUrl = hubHref(),
+  padded = true,
 }) => {
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -678,14 +709,20 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         )}
         {toolDescription && (
           <span className="ml-3 text-xs text-surface-500 hidden sm:block">
-            — {toolDescription}
+            {toolDescription}
           </span>
         )}
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col">
-        <div className={["w-full mx-auto px-4 sm:px-6 py-6 flex-1 flex flex-col", maxWidthStyles[maxWidth]].join(" ")}>
+      <main className="flex-1 flex flex-col min-h-0">
+        <div
+          className={[
+            "w-full mx-auto flex-1 flex flex-col min-h-0",
+            padded ? "px-4 sm:px-6 py-6" : "",
+            maxWidthStyles[maxWidth],
+          ].join(" ")}
+        >
           {children}
         </div>
       </main>
@@ -693,6 +730,9 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   );
 };
 ```
+
+Video Curator uses `PageLayout` with `maxWidth="full"` and `padded={false}` so the split-pane editor stays full-bleed under the Hub nav. Tools should omit `hubUrl` so the Hub back link resolves via `hubHref()` (localhost in DEV, Vercel in production).
+
 
 ### `packages/ui/src/index.ts`
 
@@ -703,6 +743,7 @@ export { Input }       from "./components/Input";
 export { Badge }       from "./components/Badge";
 export { Spinner }     from "./components/Spinner";
 export { PageLayout }  from "./components/PageLayout";
+export { hubHref, HUB_DEV_URL, HUB_PROD_URL } from "./hub";
 ```
 
 ---
@@ -893,6 +934,10 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
 });
 ```
 
@@ -932,15 +977,23 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 This is the single file you edit to add or remove tools from the hub. Add a new entry here whenever you create a new tool.
 
+Each tool needs both a production `url` (Vercel) and a `devUrl` (local Vite). `toolHref()` picks localhost when the hub is running via `vite` DEV, and the Vercel URL when the hub is built/deployed (Vercel mode).
+
 ```typescript
 export interface Tool {
   id:          string;
   name:        string;
   description: string;
-  url:         string;       // Full Vercel URL in production; relative path in dev
+  url:         string;       // Full Vercel URL (production / Vercel deploy)
+  devUrl:      string;       // Local Vite URL when hub runs in `vite` DEV
   icon:        string;       // Black-and-white icon name (never emoji)
   status:      "live" | "beta" | "coming-soon";
   category:    string;
+}
+
+/** Hub DEV → localhost tool; production/Vercel build → live URL. */
+export function toolHref(tool: Tool): string {
+  return import.meta.env.DEV ? tool.devUrl : tool.url;
 }
 
 export const tools: Tool[] = [
@@ -948,8 +1001,9 @@ export const tools: Tool[] = [
   {
     id:          "tool-starter",
     name:        "Starter Tool",
-    description: "Template tool — replace this with your first real tool.",
+    description: "Use this template to create new tools",
     url:         "https://tool-starter.vercel.app",
+    devUrl:      "http://localhost:5175",
     icon:        "bolt",
     status:      "beta",
     category:    "General",
@@ -959,6 +1013,7 @@ export const tools: Tool[] = [
     name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
     url:         "https://ai-video-tools-tan.vercel.app",
+    devUrl:      "http://localhost:5174",
     icon:        "film",
     status:      "live",
     category:    "Video",
@@ -969,6 +1024,7 @@ export const tools: Tool[] = [
   //   name:        "Auth Scanner",
   //   description: "AI-powered trading card authentication.",
   //   url:         "https://tool-auth.vercel.app",
+  //   devUrl:      "http://localhost:5176",
   //   icon:        "search",
   //   status:      "live",
   //   category:    "TruLux",
@@ -983,14 +1039,8 @@ export const categories = [...new Set(tools.map((t) => t.category))];
 ```tsx
 import React, { useState } from "react";
 import { Badge } from "@workspace/ui";
-import { tools, categories } from "./tools.config";
+import { tools, categories, toolHref } from "./tools.config";
 import type { Tool } from "./tools.config";
-
-const statusConfig = {
-  live:          { label: "Live",         variant: "success"  as const },
-  beta:          { label: "Beta",         variant: "warning"  as const },
-  "coming-soon": { label: "Coming Soon",  variant: "default"  as const },
-};
 
 const iconPaths: Record<string, string> = {
   bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
@@ -1014,8 +1064,8 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 function ToolCard({ tool }: { tool: Tool }) {
-  const status = statusConfig[tool.status];
   const isClickable = tool.status !== "coming-soon";
+  const isComingSoon = tool.status === "coming-soon";
 
   const card = (
     <div
@@ -1028,33 +1078,27 @@ function ToolCard({ tool }: { tool: Tool }) {
           : "opacity-60 cursor-not-allowed",
       ].join(" ")}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-lg font-semibold text-surface-900 truncate">
+            {tool.name}
+          </h3>
+          {isComingSoon && (
+            <Badge variant="default" size="sm">Coming Soon</Badge>
+          )}
+        </div>
         <ToolIcon name={tool.icon} />
-        <Badge variant={status.variant} size="sm">{status.label}</Badge>
       </div>
-      <div>
-        <h3 className="text-sm font-semibold text-surface-900">
-          {tool.name}
-        </h3>
-        <p className="text-xs text-surface-500 mt-1 leading-relaxed">
-          {tool.description}
-        </p>
-      </div>
-      {isClickable && (
-        <span className="text-xs text-surface-900 font-semibold flex items-center gap-1 mt-auto">
-          Open tool
-          <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform duration-fast" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </span>
-      )}
+      <p className="text-sm text-surface-500 leading-relaxed">
+        {tool.description}
+      </p>
     </div>
   );
 
   if (!isClickable) return card;
 
   return (
-    <a href={tool.url} target="_blank" rel="noopener noreferrer" className="contents">
+    <a href={toolHref(tool)} className="contents">
       {card}
     </a>
   );
@@ -1227,6 +1271,10 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    port: 5175,
+    strictPort: true,
+  },
 });
 ```
 
@@ -1299,8 +1347,7 @@ export default function App() {
   return (
     <PageLayout
       toolName="Starter Tool"
-      toolDescription="Template — replace with your tool's description"
-      hubUrl="https://your-hub.vercel.app"
+      toolDescription="Use this template to create new tools"
     >
       <div className="flex flex-col gap-6 max-w-2xl">
         <Card>
@@ -1384,7 +1431,7 @@ Create one Vercel project per app. For each app:
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.
 
-After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel URLs.
+After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool URLs, and set `HUB_PROD_URL` in `packages/ui/src/hub.ts` (or `VITE_HUB_URL` per app) to the live hub URL.
 
 ---
 
@@ -1392,10 +1439,11 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel URLs
 
 1. Copy `apps/tool-starter/` to `apps/tool-myname/`
 2. In the copy, rename `"name": "tool-starter"` in `package.json` to `"name": "tool-myname"`
-3. Edit `apps/tool-myname/src/App.tsx` to build the tool
-4. Add an entry to `apps/hub/src/tools.config.ts`
-5. Create a new Vercel project pointing to `apps/tool-myname`
-6. Update the `url` field in `tools.config.ts` with the live Vercel URL
+3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175 — pick the next free one)
+4. Edit `apps/tool-myname/src/App.tsx` to build the tool
+5. Add an entry to `apps/hub/src/tools.config.ts` with both `url` (Vercel) and `devUrl` (`http://localhost:<port>`)
+6. Create a new Vercel project pointing to `apps/tool-myname`
+7. Update the `url` field in `tools.config.ts` with the live Vercel URL
 
 ---
 
@@ -1422,6 +1470,6 @@ Cards and panels are square with `border border-surface-200`. Active/uploaded st
 
 **Icons:** Never use emojis anywhere in the UI (labels, cards, buttons, empty states, status, docs screenshots of the product UI, etc.). Use black-and-white icons only — monochrome SVG (or equivalent) that inherit `currentColor` / black–white–gray tokens. No colored icons, no emoji-as-icon shortcuts.
 
-**The `PageLayout` component is mandatory.** Every tool must use it. It provides the top nav bar with the Hub link and ensures visual consistency across tools.
+**The `PageLayout` component is mandatory.** Every tool must use it. It provides the top nav bar with the Hub link and ensures visual consistency across tools. Full-bleed tools (e.g. Video Curator) should pass `maxWidth="full"` and `padded={false}`.
 
 **AI loading states:** Always show a `Spinner` while waiting for the AI. Always show errors in a red-tinted `Card`. Never leave the UI in a silent broken state.
