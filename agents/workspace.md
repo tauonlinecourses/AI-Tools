@@ -32,7 +32,7 @@ Every app deploys to Vercel independently. Every app shares the same design lang
 workspace/
 ├── apps/
 │   ├── hub/                        ← Launcher homepage
-│   │   ├── package.json            ← Live: https://ai-tools-tauonlinecourses-projects.vercel.app (port 5173)
+│   │   ├── package.json            ← Live: https://ai-tools-tauonline.vercel.app (port 5173)
 │   │   ├── vite.config.ts
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
@@ -648,10 +648,10 @@ Shared hub back-link targets used by `PageLayout` (and available to tools):
 export const HUB_DEV_URL = "http://localhost:5173";
 
 /**
- * Live hub on Vercel — update after the hub project is deployed.
+ * Live hub on Vercel: https://ai-tools-tauonline.vercel.app/
  * Override per app with `VITE_HUB_URL` if needed.
  */
-export const HUB_PROD_URL = "https://ai-tools-tauonlinecourses-projects.vercel.app";
+export const HUB_PROD_URL = "https://ai-tools-tauonline.vercel.app";
 
 /** DEV → localhost hub; production/Vercel build → live hub URL. */
 export function hubHref(): string {
@@ -1445,7 +1445,7 @@ Shared packages are referenced with `file:../../packages/...` (not `workspace:*`
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.
 
-After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool URLs. `HUB_PROD_URL` in `packages/ui/src/hub.ts` is already set to the live hub (`https://ai-tools-tauonlinecourses-projects.vercel.app`); override per app with `VITE_HUB_URL` if the public domain differs.
+After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool URLs. `HUB_PROD_URL` in `packages/ui/src/hub.ts` is already set to the live hub (`https://ai-tools-tauonline.vercel.app`); override per app with `VITE_HUB_URL` if the public domain differs.
 
 ---
 
