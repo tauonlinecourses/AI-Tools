@@ -172,6 +172,7 @@ dist/
 .env
 *.log
 *.tsbuildinfo
+package-lock.json
 ```
 
 ---
