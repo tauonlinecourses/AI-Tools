@@ -6,8 +6,8 @@ import { YoutubeTranscriptError, loadYoutubeTranscriptFromUrl } from './server/y
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  // Prefer server-only var name. Allow legacy VITE_OPENAI_KEY for local dev convenience.
-  const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_KEY
+  // Prefer server-only OPENAI_API_KEY. Fallbacks cover common misnamed local vars.
+  const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || env.VITE_OPENAI_KEY
 
   return {
     server: {
@@ -32,7 +32,8 @@ export default defineConfig(({ mode }) => {
               res.setHeader('Content-Type', 'application/json')
               res.end(
                 JSON.stringify({
-                  error: 'Missing OPENAI_API_KEY (preferred). For local dev only you may also set VITE_OPENAI_KEY in video-curator/.env.local',
+                  error:
+                    'Missing OPENAI_API_KEY (preferred). For local dev you may also set VITE_OPENAI_API_KEY in apps/video-curator/.env.local',
                 })
               )
               return

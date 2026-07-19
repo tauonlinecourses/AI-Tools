@@ -1436,8 +1436,8 @@ Create one Vercel project per app. For each app:
    - **Build Command:** `cd ../.. && pnpm build --filter <app-name>`
    - **Output Directory:** `dist`
 4. Ensure **Include source files outside of the Root Directory in the Build Step** is enabled (needed for `packages/*`)
-5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
-6. Deploy
+5. Prefer a **team Shared** `OPENAI_API_KEY` (exact name; server-side — not `VITE_*`). Create it once under Team Settings → Environment Variables, then **Link to Projects** for each app that calls OpenAI (`/api/chat`, video-curator `/api/segment-transcript`, etc.). Enable Production (and Preview if needed). After linking or changing env vars, **Redeploy** — existing deployments do not pick them up. Do not also add a project-level `OPENAI_API_KEY` unless you intend to override Shared (“Overridden by Project” means the project value wins).
+6. Deploy — confirm the new project is linked to the shared key (Team Settings → Shared env → linked projects)
 
 Each app’s `vercel.json` includes an `ignoreCommand` so builds still run when `packages/ui`, `packages/config`, or `packages/ai-client` change (Vercel Root Directory alone would otherwise skip those commits). After changing Hub nav URLs in `packages/ui/src/hub.ts`, redeploy every tool app (or push a commit that touches that app / shared packages).
 
@@ -1459,7 +1459,8 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool
 4. Edit `apps/tool-myname/src/App.tsx` to build the tool
 5. Add an entry to `apps/hub/src/tools.config.ts` with both `url` (Vercel) and `devUrl` (`http://localhost:<port>`)
 6. Create a new Vercel project pointing to `apps/tool-myname`
-7. Update the `url` field in `tools.config.ts` with the live Vercel URL
+7. Link the team shared `OPENAI_API_KEY` to the new project: Team Settings → Environment Variables → edit shared `OPENAI_API_KEY` → **Link to Projects** → add the new project → Redeploy. Do not recreate the key as a project-level var (that overrides Shared).
+8. Update the `url` field in `tools.config.ts` with the live Vercel URL
 
 ---
 

@@ -6,10 +6,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  // Prefer server-only var name. Allow legacy VITE_OPENAI_KEY as fallback.
-  const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_KEY
+  // Prefer server-only OPENAI_API_KEY. Fallbacks cover common misnamed Vercel/local vars.
+  const apiKey =
+    process.env.OPENAI_API_KEY ||
+    process.env.VITE_OPENAI_API_KEY ||
+    process.env.VITE_OPENAI_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' })
+    return res.status(500).json({
+      error:
+        'Missing OPENAI_API_KEY on server. Set OPENAI_API_KEY on the video-curator Vercel project (Production), then redeploy.',
+    })
   }
 
   let body: unknown = req.body

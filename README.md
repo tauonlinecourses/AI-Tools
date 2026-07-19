@@ -49,4 +49,10 @@ pnpm dev
    - **Root Directory:** `apps/tool-myname`
    - **Build Command / Install / Output:** already set in the copied `vercel.json` (update the `--filter` name)
    - Enable **Include source files outside of the Root Directory** (for `packages/*`)
-7. Set the live `url` in `tools.config.ts`. Hub back-links use `HUB_PROD_URL` in `packages/ui/src/hub.ts` (localhost in DEV).
+7. Link the team shared `OPENAI_API_KEY` to the new Vercel project (do not create a duplicate project-level key):
+   - Team Settings → **Environment Variables** (team / Shared — not the project Project tab)
+   - Open shared `OPENAI_API_KEY` → **Edit** → **Link to Projects** → add the new project
+   - Environments: Production (and Preview if needed)
+   - Redeploy the new project after linking
+   - Note: a project-level `OPENAI_API_KEY` overrides the shared one (“Overridden by Project”); remove the project copy if you intend to use Shared
+8. Set the live `url` in `tools.config.ts`. Hub back-links use `HUB_PROD_URL` in `packages/ui/src/hub.ts` (localhost in DEV).
