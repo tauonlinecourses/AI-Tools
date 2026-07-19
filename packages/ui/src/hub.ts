@@ -2,10 +2,10 @@
 export const HUB_DEV_URL = "http://localhost:5173";
 
 /**
- * Live hub on Vercel — update after the hub project is deployed.
+ * Live hub on Vercel (`ai-tools` project).
  * Override per app with `VITE_HUB_URL` if needed.
  */
-export const HUB_PROD_URL = "https://your-hub.vercel.app";
+export const HUB_PROD_URL = "https://ai-tools-tauonlinecourses-projects.vercel.app";
 
 /** DEV → localhost hub; production/Vercel build → live hub URL. */
 export function hubHref(): string {

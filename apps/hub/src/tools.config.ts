@@ -30,7 +30,7 @@ export const tools: Tool[] = [
     id:          "video-curator",
     name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
-    url:         "https://ai-video-tools-tan.vercel.app",
+    url:         "https://ai-tools-video-curator.vercel.app",
     devUrl:      "http://localhost:5174",
     icon:        "film",
     status:      "live",

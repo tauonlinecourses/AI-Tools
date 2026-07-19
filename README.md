@@ -49,4 +49,4 @@ pnpm dev
    - **Root Directory:** `apps/tool-myname`
    - **Build Command / Install / Output:** already set in the copied `vercel.json` (update the `--filter` name)
    - Enable **Include source files outside of the Root Directory** (for `packages/*`)
-7. Set the live `url` in `tools.config.ts`. If this is the first hub deploy, also set `HUB_PROD_URL` in `packages/ui/src/hub.ts`
+7. Set the live `url` in `tools.config.ts`. Hub back-links use `HUB_PROD_URL` in `packages/ui/src/hub.ts` (localhost in DEV).

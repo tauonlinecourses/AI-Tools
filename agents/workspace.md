@@ -32,7 +32,7 @@ Every app deploys to Vercel independently. Every app shares the same design lang
 workspace/
 ├── apps/
 │   ├── hub/                        ← Launcher homepage
-│   │   ├── package.json
+│   │   ├── package.json            ← Live: https://ai-tools-tauonlinecourses-projects.vercel.app (port 5173)
 │   │   ├── vite.config.ts
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
@@ -58,7 +58,7 @@ workspace/
 │       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
 │       ├── server/
 │       │   └── youtubeTranscriptCore.ts
-│       └── …                       Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
+│       └── …                       Live: https://ai-tools-video-curator.vercel.app (local Vite port 5174)
 │                                       Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
 │
 │   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175
@@ -651,7 +651,7 @@ export const HUB_DEV_URL = "http://localhost:5173";
  * Live hub on Vercel — update after the hub project is deployed.
  * Override per app with `VITE_HUB_URL` if needed.
  */
-export const HUB_PROD_URL = "https://your-hub.vercel.app";
+export const HUB_PROD_URL = "https://ai-tools-tauonlinecourses-projects.vercel.app";
 
 /** DEV → localhost hub; production/Vercel build → live hub URL. */
 export function hubHref(): string {
@@ -1019,7 +1019,7 @@ export const tools: Tool[] = [
     id:          "video-curator",
     name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
-    url:         "https://ai-video-tools-tan.vercel.app",
+    url:         "https://ai-tools-video-curator.vercel.app",
     devUrl:      "http://localhost:5174",
     icon:        "film",
     status:      "live",
@@ -1445,7 +1445,7 @@ Shared packages are referenced with `file:../../packages/...` (not `workspace:*`
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.
 
-After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool URLs, and set `HUB_PROD_URL` in `packages/ui/src/hub.ts` (or `VITE_HUB_URL` per app) to the live hub URL.
+After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool URLs. `HUB_PROD_URL` in `packages/ui/src/hub.ts` is already set to the live hub (`https://ai-tools-tauonlinecourses-projects.vercel.app`); override per app with `VITE_HUB_URL` if the public domain differs.
 
 ---
 
