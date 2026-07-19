@@ -1,5 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "ENABLE_EXPERIMENTAL_COREPACK",
+    "OPENAI_API_KEY",
+    "VITE_HUB_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -47,8 +47,10 @@ pnpm dev
 5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
 6. Deploy on Vercel (one project per app):
    - **Root Directory:** `apps/tool-myname`
-   - **Install Command:** `cd ../.. && pnpm install`
+   - **Install Command:** `corepack enable && corepack prepare pnpm@9.15.9 --activate && cd ../.. && pnpm install --frozen-lockfile`
    - **Build Command:** `cd ../.. && pnpm build --filter tool-myname`
    - **Output Directory:** `dist`
    - Enable **Include source files outside of the Root Directory** (for `packages/*`)
+   - Env: `ENABLE_EXPERIMENTAL_COREPACK=1` (required so Vercel uses pnpm, not npm — npm fails on `workspace:*`)
+   - Add `"packageManager": "pnpm@9.15.9"` to the app `package.json`
 7. Set the live `url` in `tools.config.ts`. If this is the first hub deploy, also set `HUB_PROD_URL` in `packages/ui/src/hub.ts`

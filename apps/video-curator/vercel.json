@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd ../.. && pnpm install",
+  "installCommand": "corepack enable && corepack prepare pnpm@9.15.9 --activate && cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm build --filter video-curator",
   "outputDirectory": "dist",
   "build": {
