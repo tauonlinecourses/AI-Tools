@@ -12,7 +12,7 @@
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
+    "@workspace/config": "file:../config",
     "@types/react": "^18.0.0",
     "typescript": "^5.0.0"
   }

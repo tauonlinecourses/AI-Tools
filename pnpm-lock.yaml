@@ -15,7 +15,7 @@ importers:
   apps/hub:
     dependencies:
       '@workspace/ui':
-        specifier: workspace:*
+        specifier: file:../../packages/ui
         version: link:../../packages/ui
       react:
         specifier: ^18.2.0
@@ -34,7 +34,7 @@ importers:
         specifier: ^4.0.0
         version: 4.7.0(vite@5.4.21(@types/node@24.13.3)(lightningcss@1.32.0))
       '@workspace/config':
-        specifier: workspace:*
+        specifier: file:../../packages/config
         version: link:../../packages/config
       autoprefixer:
         specifier: ^10.4.0
@@ -55,10 +55,10 @@ importers:
   apps/tool-starter:
     dependencies:
       '@workspace/ai-client':
-        specifier: workspace:*
+        specifier: file:../../packages/ai-client
         version: link:../../packages/ai-client
       '@workspace/ui':
-        specifier: workspace:*
+        specifier: file:../../packages/ui
         version: link:../../packages/ui
       react:
         specifier: ^18.2.0
@@ -80,7 +80,7 @@ importers:
         specifier: ^4.0.0
         version: 4.7.0(vite@5.4.21(@types/node@16.18.11)(lightningcss@1.32.0))
       '@workspace/config':
-        specifier: workspace:*
+        specifier: file:../../packages/config
         version: link:../../packages/config
       autoprefixer:
         specifier: ^10.4.0
@@ -107,8 +107,8 @@ importers:
         specifier: ^0.12.2
         version: 0.12.2
       '@workspace/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
+        specifier: file:../../packages/ui
+        version: file:packages/ui(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       html2canvas:
         specifier: ^1.4.1
         version: 1.4.1
@@ -150,7 +150,7 @@ importers:
         specifier: ^6.0.1
         version: 6.0.3(vite@8.1.4(@types/node@24.13.3)(jiti@1.21.7))
       '@workspace/config':
-        specifier: workspace:*
+        specifier: file:../../packages/config
         version: link:../../packages/config
       autoprefixer:
         specifier: ^10.5.0
@@ -186,7 +186,7 @@ importers:
   packages/ai-client:
     devDependencies:
       '@workspace/config':
-        specifier: workspace:*
+        specifier: file:../config
         version: link:../config
       typescript:
         specifier: ^5.0.0
@@ -207,7 +207,7 @@ importers:
         specifier: ^18.0.0
         version: 18.3.31
       '@workspace/config':
-        specifier: workspace:*
+        specifier: file:../config
         version: link:../config
       typescript:
         specifier: ^5.0.0
@@ -1013,6 +1013,12 @@ packages:
         optional: true
       babel-plugin-react-compiler:
         optional: true
+
+  '@workspace/ui@file:packages/ui':
+    resolution: {directory: packages/ui, type: directory}
+    peerDependencies:
+      react: ^18.0.0
+      react-dom: ^18.0.0
 
   abbrev@1.1.1:
     resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
@@ -3195,6 +3201,11 @@ snapshots:
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.1.4(@types/node@24.13.3)(jiti@1.21.7)
+
+  '@workspace/ui@file:packages/ui(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
 
   abbrev@1.1.1: {}
 

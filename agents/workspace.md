@@ -362,7 +362,7 @@ export default config;
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
+    "@workspace/config": "file:../config",
     "@types/react": "^18.0.0",
     "typescript": "^5.0.0"
   }
@@ -896,12 +896,12 @@ export type { Message, CallOptions, AIResult, AIResponse, AIError } from "./clie
     "preview":    "vite preview"
   },
   "dependencies": {
-    "@workspace/ui":     "workspace:*",
+    "@workspace/ui":     "file:../../packages/ui",
     "react":             "^18.2.0",
     "react-dom":         "^18.2.0"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
+    "@workspace/config": "file:../../packages/config",
     "@types/react":      "^18.2.0",
     "@types/react-dom":  "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
@@ -1189,14 +1189,14 @@ export default function App() {
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@workspace/ui":        "workspace:*",
-    "@workspace/ai-client": "workspace:*",
+    "@workspace/ui":        "file:../../packages/ui",
+    "@workspace/ai-client": "file:../../packages/ai-client",
     "react":                "^18.2.0",
     "react-dom":            "^18.2.0"
   },
   "devDependencies": {
     "@vercel/node":         "^3.2.0",
-    "@workspace/config":    "workspace:*",
+    "@workspace/config":    "file:../../packages/config",
     "@types/react":         "^18.2.0",
     "@types/react-dom":     "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
@@ -1430,17 +1430,15 @@ Create one Vercel project per app. For each app:
 
 1. Go to vercel.com → New Project → Import your Git repo
 2. Set **Root Directory** to `apps/hub` (or `apps/tool-name`)
-3. Prefer putting install/build/output in that app’s `vercel.json` (see `apps/video-curator/vercel.json`):
-   - **Install Command:** `corepack enable && corepack prepare pnpm@9.15.9 --activate && cd ../.. && pnpm install --frozen-lockfile`
+3. Prefer putting install/build/output in that app’s `vercel.json` (copy from `apps/tool-starter/vercel.json` and change the `--filter` name):
+   - **Install Command:** `cd ../.. && pnpm install`
    - **Build Command:** `cd ../.. && pnpm build --filter <app-name>`
    - **Output Directory:** `dist`
 4. Ensure **Include source files outside of the Root Directory in the Build Step** is enabled (needed for `packages/*`)
-5. In Vercel → Project → Settings → Environment Variables, set `ENABLE_EXPERIMENTAL_COREPACK=1` (Production + Preview). Without this, Vercel may fall back to `npm install` and fail on `workspace:*`.
-6. In Build & Development Settings, do **not** override Install Command to npm. Leave overrides empty so `vercel.json` is used, or set Install to the same pnpm command as above.
-7. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
-8. Deploy
+5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
+6. Deploy
 
-Each app’s `package.json` should include `"packageManager": "pnpm@9.15.9"` (same as the repo root) so Vercel never picks npm for serverless packaging.
+Shared packages are referenced with `file:../../packages/...` (not `workspace:*`) so Vercel’s occasional `npm install` for serverless functions still works — no Corepack env var needed per project.
 
 **Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency) and may need `/// <reference types="node" />`. Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
 

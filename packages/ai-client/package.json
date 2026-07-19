@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
+    "@workspace/config": "file:../config",
     "typescript": "^5.0.0"
   }
 }

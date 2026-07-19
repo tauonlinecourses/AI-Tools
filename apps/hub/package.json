@@ -3,7 +3,6 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev":        "vite",
     "build":      "tsc && vite build",
@@ -12,12 +11,12 @@
     "preview":    "vite preview"
   },
   "dependencies": {
-    "@workspace/ui":     "workspace:*",
+    "@workspace/ui":     "file:../../packages/ui",
     "react":             "^18.2.0",
     "react-dom":         "^18.2.0"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
+    "@workspace/config": "file:../../packages/config",
     "@types/react":      "^18.2.0",
     "@types/react-dom":  "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
