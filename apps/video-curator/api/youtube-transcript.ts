@@ -1,18 +1,11 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { YoutubeTranscriptTooManyRequestError } from 'youtube-transcript'
-import { YoutubeTranscriptError, loadYoutubeTranscriptFromUrl } from '../server/youtubeTranscriptCore'
+// Vercel typechecks api/* with NodeNext — use a .js extension for relative ESM imports.
+import { YoutubeTranscriptError, loadYoutubeTranscriptFromUrl } from '../server/youtubeTranscriptCore.js'
 
-type VercelishResponse = {
-  statusCode?: number
-  setHeader: (name: string, value: string) => void
-  end: (body: string) => void
-}
-
-export default async function handler(req: { method?: string; body?: unknown }, res: VercelishResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    res.statusCode = 405
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Method not allowed' }))
-    return
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   let body: unknown = req.body
@@ -35,29 +28,24 @@ export default async function handler(req: { method?: string; body?: unknown }, 
       : undefined
 
   if (!url || typeof url !== 'string') {
-    res.statusCode = 400
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Missing url' }))
-    return
+    return res.status(400).json({ error: 'Missing url' })
   }
 
   try {
     const langOpt = typeof lang === 'string' && lang.trim() ? lang.trim() : undefined
-    const { items, title, videoId } = await loadYoutubeTranscriptFromUrl(url, langOpt ? { lang: langOpt } : undefined)
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ items, title, videoId }))
+    const { items, title, videoId } = await loadYoutubeTranscriptFromUrl(
+      url,
+      langOpt ? { lang: langOpt } : undefined
+    )
+    return res.status(200).json({ items, title, videoId })
   } catch (err: unknown) {
     if (err instanceof YoutubeTranscriptError) {
       const tooMany = err instanceof YoutubeTranscriptTooManyRequestError
-      res.statusCode = tooMany ? 429 : 400
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: err.message }))
-      return
+      return res.status(tooMany ? 429 : 400).json({ error: err.message })
     }
-    res.statusCode = 500
-    res.setHeader('Content-Type', 'application/json')
-    const message = err instanceof Error ? err.message : String(err)
-    res.end(JSON.stringify({ error: 'Server error', details: message }))
+    return res.status(500).json({
+      error: 'Server error',
+      details: err instanceof Error ? err.message : String(err),
+    })
   }
 }

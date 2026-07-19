@@ -1,34 +1,32 @@
-export default async function handler(req: any, res: any) {
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    res.statusCode = 405
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Method not allowed' }))
-    return
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   // Prefer server-only var name. Allow legacy VITE_OPENAI_KEY as fallback.
   const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_KEY
   if (!apiKey) {
-    res.statusCode = 500
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Missing OPENAI_API_KEY on server' }))
-    return
+    return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' })
   }
 
-  let body: any = null
-  try {
-    // Vercel Node functions usually give parsed JSON, but handle raw body just in case.
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
-  } catch {
-    body = null
+  let body: unknown = req.body
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body)
+    } catch {
+      body = null
+    }
   }
 
-  const prompt = body?.prompt
+  const prompt =
+    body && typeof body === 'object' && body !== null && 'prompt' in body
+      ? (body as { prompt?: unknown }).prompt
+      : undefined
+
   if (!prompt || typeof prompt !== 'string') {
-    res.statusCode = 400
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Missing prompt' }))
-    return
+    return res.status(400).json({ error: 'Missing prompt' })
   }
 
   try {
@@ -57,29 +55,27 @@ export default async function handler(req: any, res: any) {
 
     const text = await upstream.text()
     if (!upstream.ok) {
-      res.statusCode = upstream.status
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: `OpenAI API error: ${upstream.status}`, details: text }))
-      return
+      return res.status(upstream.status).json({
+        error: `OpenAI API error: ${upstream.status}`,
+        details: text,
+      })
     }
 
-    const data = JSON.parse(text)
+    const data = JSON.parse(text) as {
+      choices?: Array<{ message?: { content?: unknown } }>
+    }
     const content = data?.choices?.[0]?.message?.content
 
     if (!content || typeof content !== 'string') {
-      res.statusCode = 502
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: 'OpenAI response missing content' }))
-      return
+      return res.status(502).json({ error: 'OpenAI response missing content' })
     }
 
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ content }))
-  } catch (err: any) {
-    res.statusCode = 500
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Server error', details: String(err?.message ?? err) }))
+    return res.status(200).json({ content })
+  } catch (err: unknown) {
+    return res.status(500).json({
+      error: 'Server error',
+      details: err instanceof Error ? err.message : String(err),
+    })
   }
 }
 

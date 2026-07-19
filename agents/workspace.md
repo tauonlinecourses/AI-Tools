@@ -53,7 +53,12 @@ workspace/
 │   │       └── App.tsx
 │   │
 │   └── video-curator/              ← Video Curator tool (hub id: video-curator)
-│                                       Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
+│       ├── api/
+│       │   ├── segment-transcript.ts  ← Vercel serverless (uses @vercel/node)
+│       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
+│       ├── server/
+│       │   └── youtubeTranscriptCore.ts
+│       └── …                       Live: https://ai-video-tools-tan.vercel.app (local Vite port 5174)
 │                                       Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
 │
 │   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175
@@ -166,6 +171,7 @@ dist/
 .env.local
 .env
 *.log
+*.tsbuildinfo
 ```
 
 ---
@@ -1426,8 +1432,10 @@ Create one Vercel project per app. For each app:
 2. Set **Root Directory** to `apps/hub` (or `apps/tool-name`)
 3. Set **Build Command** to `cd ../.. && pnpm build --filter hub` (replace `hub` with the app name)
 4. Set **Output Directory** to `dist`
-5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat`)
+5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
 6. Deploy
+
+**Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency). Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.
 
