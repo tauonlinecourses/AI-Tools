@@ -78,12 +78,21 @@ export default function App() {
       {/* Header */}
       <div className="bg-white border-b border-surface-200">
         <div className="max-w-screen-xl mx-auto px-6 py-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-            Tools Hub
-          </h1>
-          <p className="text-surface-600 mt-1 text-sm">
-            All your AI-powered tools in one place.
-          </p>
+          <div className="flex items-center gap-4">
+            <img
+              src="/logo-narrow.png"
+              alt="Feynman"
+              className="h-16 w-auto shrink-0"
+            />
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
+                AI Tools Hub
+              </h1>
+              <p className="text-surface-600 mt-1 text-sm">
+                Our homemade AI-powered tools for daily work
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

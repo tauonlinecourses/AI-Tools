@@ -666,6 +666,7 @@ export function hubHref(): string {
 ```tsx
 import React from "react";
 import { hubHref } from "../hub";
+import logoSrc from "../assets/Logo.png";
 
 interface PageLayoutProps {
   children: React.ReactNode;
@@ -719,6 +720,12 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
             {toolDescription}
           </span>
         )}
+        <img
+          src={logoSrc}
+          alt=""
+          aria-hidden
+          className="ml-auto h-8 w-auto shrink-0"
+        />
       </header>
 
       {/* Main content */}
@@ -739,6 +746,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
 ```
 
 Video Curator uses `PageLayout` with `maxWidth="full"` and `padded={false}` so the split-pane editor stays full-bleed under the Hub nav. Tools should omit `hubUrl` so the Hub back link resolves via `hubHref()` (localhost in DEV, Vercel in production).
+
+The nav bar shows the brand logo on the right. The asset lives at `packages/ui/src/assets/Logo.png` and is imported by `PageLayout`, so every tool bundles it (no dependency on the Hub being reachable). The Hub header uses `apps/hub/public/logo-narrow.png`.
 
 
 ### `packages/ui/src/index.ts`
@@ -1124,12 +1133,21 @@ export default function App() {
       {/* Header */}
       <div className="bg-white border-b border-surface-200">
         <div className="max-w-screen-xl mx-auto px-6 py-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-            Tools Hub
-          </h1>
-          <p className="text-surface-600 mt-1 text-sm">
-            All your AI-powered tools in one place.
-          </p>
+          <div className="flex items-center gap-4">
+            <img
+              src="/logo-narrow.png"
+              alt="Feynman"
+              className="h-16 w-auto shrink-0"
+            />
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
+                AI Tools Hub
+              </h1>
+              <p className="text-surface-600 mt-1 text-sm">
+                Our homemade AI-powered tools for daily works
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { hubHref } from "../hub";
+import logoSrc from "../assets/Logo.png";
 
 interface PageLayoutProps {
   children: React.ReactNode;
@@ -53,6 +54,12 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
             {toolDescription}
           </span>
         )}
+        <img
+          src={logoSrc}
+          alt=""
+          aria-hidden
+          className="ml-auto h-8 w-auto shrink-0"
+        />
       </header>
 
       {/* Main content */}
