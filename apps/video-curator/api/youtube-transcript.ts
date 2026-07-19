@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { YoutubeTranscriptTooManyRequestError } from 'youtube-transcript'
 // Vercel typechecks api/* with NodeNext — use a .js extension for relative ESM imports.

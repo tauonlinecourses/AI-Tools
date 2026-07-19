@@ -1430,12 +1430,15 @@ Create one Vercel project per app. For each app:
 
 1. Go to vercel.com → New Project → Import your Git repo
 2. Set **Root Directory** to `apps/hub` (or `apps/tool-name`)
-3. Set **Build Command** to `cd ../.. && pnpm build --filter hub` (replace `hub` with the app name)
-4. Set **Output Directory** to `dist`
+3. Prefer putting install/build/output in that app’s `vercel.json` (see `apps/video-curator/vercel.json`):
+   - **Install Command:** `cd ../.. && pnpm install`
+   - **Build Command:** `cd ../.. && pnpm build --filter <app-name>`
+   - **Output Directory:** `dist`
+4. Ensure **Include source files outside of the Root Directory in the Build Step** is enabled (needed for `packages/*`)
 5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
 6. Deploy
 
-**Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency). Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
+**Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency) and may need `/// <reference types="node" />`. Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
 
 Repeat for each tool. Each gets its own URL like `hub.vercel.app`, `tool-auth.vercel.app`, etc.
 

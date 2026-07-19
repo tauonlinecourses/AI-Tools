@@ -1,4 +1,7 @@
 {
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm build --filter video-curator",
+  "outputDirectory": "dist",
   "build": {
     "env": {
       "ENABLE_EXPERIMENTAL_COREPACK": "1"
