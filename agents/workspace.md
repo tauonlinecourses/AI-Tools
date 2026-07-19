@@ -1439,6 +1439,8 @@ Create one Vercel project per app. For each app:
 5. Add environment variable: `OPENAI_API_KEY` (server-side; used by `/api/chat` or tool-specific routes)
 6. Deploy
 
+Each app’s `vercel.json` includes an `ignoreCommand` so builds still run when `packages/ui`, `packages/config`, or `packages/ai-client` change (Vercel Root Directory alone would otherwise skip those commits). After changing Hub nav URLs in `packages/ui/src/hub.ts`, redeploy every tool app (or push a commit that touches that app / shared packages).
+
 Shared packages are referenced with `file:../../packages/...` (not `workspace:*`) so Vercel’s occasional `npm install` for serverless functions still works — no Corepack env var needed per project.
 
 **Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency) and may need `/// <reference types="node" />`. Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
