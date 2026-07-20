@@ -10,6 +10,12 @@ export default defineConfig(({ mode }) => {
   const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || env.VITE_OPENAI_KEY
 
   return {
+    // Force a single React copy. The app runs React 19 while the shared workspace
+    // packages (@workspace/ui, @workspace/ai-client) resolve React 18 from their own
+    // node_modules; bundling both triggers React error #525 at runtime.
+    resolve: {
+      dedupe: ['react', 'react-dom'],
+    },
     server: {
       port: 5174,
       strictPort: true,

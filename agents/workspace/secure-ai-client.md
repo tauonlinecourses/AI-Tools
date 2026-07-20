@@ -259,6 +259,12 @@ calls it as the default export. `@workspace/ai-client/vercel` bridges Vercel's N
 > built later is never visible to the app, so the function loads stale/raw source and crashes.
 > `workspace:*` symlinks to the live package dir, so the built `dist` is picked up, and turbo's
 > `^build` correctly builds `ai-client` before each app.
+>
+> **5. Dedupe React in every app's Vite config.** Once workspace packages are symlinked, each
+> shared package (`@workspace/ui`, `@workspace/ai-client`) resolves its own `react@18` from its
+> `node_modules`, while an app may run `react@19`. Bundling both throws React error #525
+> ("A React Element from an older version of React was rendered"). Set
+> `resolve: { dedupe: ['react', 'react-dom'] }` so the app's single React copy is always used.
 
 Each app's `vercel.json` `buildCommand` builds the client package first, e.g.:
 
