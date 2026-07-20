@@ -255,7 +255,7 @@ export type { Message, CallOptions, AIResult, AIResponse, AIError } from "./clie
 
 ### Consuming apps
 
-Any app whose `api/chat.ts` re-exports `@workspace/ai-client/server` (and any component
+Any app whose `api/chat.ts` re-exports `@workspace/ai-client/vercel` (and any component
 importing `@workspace/ai-client/client`) must declare the dependency:
 
 ```json

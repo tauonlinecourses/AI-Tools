@@ -1,1 +1,1 @@
-export { handler as default } from "@workspace/ai-client/server";
+export { default } from '@workspace/ai-client/vercel';

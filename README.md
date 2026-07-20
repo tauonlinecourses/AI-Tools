@@ -64,7 +64,7 @@ flowchart LR
 **Key points:**
 - `client.ts` is browser-safe — no SDK, no key. Components import `useAI()` or `aiChat()` from `@workspace/ai-client/client`.
 - `server.ts` is the **only** file that imports the OpenAI SDK or reads `OPENAI_API_KEY`. It runs as a Vercel serverless function (Node.js runtime — Edge cannot bundle monorepo workspace imports).
-- Each app's `api/chat.ts` is a one-line re-export: `export { handler as default } from "@workspace/ai-client/server"`.
+- Each app's `api/chat.ts` is a one-line re-export: `export { default } from "@workspace/ai-client/vercel"` (bridges Vercel `req`/`res` → Web `handler`).
 - Supports `model`, `systemPrompt`, `temperature`, and `responseFormat` (JSON mode) — e.g. video-curator uses `gpt-4o-mini` with `temperature: 0` and `responseFormat: { type: 'json_object' }` for transcript segmentation.
 - Local dev: `vite dev` serves `/api/chat` via a middleware in `vite.config.ts` that delegates to the same shared handler.
 

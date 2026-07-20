@@ -232,15 +232,19 @@ For **every app** in `apps/` (hub, video-curator, tool-starter, and any others):
 Create the file `apps/<app-name>/api/chat.ts` with exactly this content:
 
 ```ts
-export { handler as default } from '@repo/ai-client/server';
+export { default } from '@workspace/ai-client/vercel';
 ```
 
 That is the entire file. Vercel picks up any file in `api/` as a serverless function and
-calls it as the default export. The handler from `server.ts` is already a valid Vercel handler.
+calls it as the default export. `@workspace/ai-client/vercel` bridges Vercel's Node.js
+`req`/`res` API to the shared Web `handler()` in `server.ts`.
 
 > **Do not set `runtime: 'edge'`.** Vercel Edge Functions cannot bundle monorepo workspace
 > imports (`@workspace/ai-client/server`) and will fail with "referencing unsupported modules".
-> The default Node.js runtime supports the Web `Request`/`Response` API used by `handler()`.
+>
+> **Do not re-export `handler` directly from `./server`.** On the Node.js runtime, Vercel
+> invokes `(req, res)` handlers — not Web `Request` objects. Exporting `handler` causes
+> `request.json is not a function` and `FUNCTION_INVOCATION_FAILED` at runtime.
 
 ---
 

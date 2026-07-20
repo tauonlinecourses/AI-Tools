@@ -54,7 +54,7 @@ needed. See [06-packages-ai-client.md](./06-packages-ai-client.md) and
 [secure-ai-client.md](./secure-ai-client.md).
 
 ```typescript
-export { handler as default } from "@workspace/ai-client/server";
+export { default } from "@workspace/ai-client/vercel";
 ```
 
 ### `apps/tool-starter/tailwind.config.ts`

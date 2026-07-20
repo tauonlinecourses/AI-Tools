@@ -60,14 +60,14 @@ workspace/
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
 │   │   ├── api/
-│   │   │   └── chat.ts             ← AI route: re-exports @workspace/ai-client/server (Vercel serverless)
+│   │   │   └── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (Vercel serverless)
 │   │   └── src/
 │   │       ├── main.tsx
 │   │       └── App.tsx
 │   │
 │   └── video-curator/              ← Video Curator tool (hub id: video-curator)
 │       ├── api/
-│       │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/server (used by transcript segmentation)
+│       │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (used by transcript segmentation)
 │       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
 │       ├── server/
 │       │   └── youtubeTranscriptCore.ts
