@@ -67,7 +67,7 @@ workspace/
 │   │
 │   └── video-curator/              ← Video Curator tool (hub id: video-curator)
 │       ├── api/
-│       │   ├── segment-transcript.ts  ← Vercel serverless (uses @vercel/node)
+│       │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/server (used by transcript segmentation)
 │       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
 │       ├── server/
 │       │   └── youtubeTranscriptCore.ts

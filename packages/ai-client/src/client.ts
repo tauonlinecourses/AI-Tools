@@ -20,6 +20,8 @@ export type AskOptions = {
   messages: Message[];
   model?: string;
   systemPrompt?: string;
+  temperature?: number;
+  responseFormat?: { type: 'text' | 'json_object' };
 };
 
 /**

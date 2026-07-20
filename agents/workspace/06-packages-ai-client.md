@@ -77,6 +77,8 @@ export type ChatRequest = {
   messages: Message[];
   model?: string;
   systemPrompt?: string;
+  temperature?: number;
+  responseFormat?: { type: 'text' | 'json_object' };
 };
 
 export async function handler(request: Request): Promise<Response> {
@@ -91,10 +93,17 @@ export async function handler(request: Request): Promise<Response> {
     return new Response('Invalid JSON body', { status: 400 });
   }
 
-  const { messages, model = 'gpt-4o', systemPrompt } = body;
+  const { messages, model = 'gpt-4o', systemPrompt, temperature, responseFormat } = body;
 
   if (!messages || !Array.isArray(messages)) {
     return new Response('messages must be an array', { status: 400 });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return Response.json(
+      { error: 'Missing OPENAI_API_KEY on server.' },
+      { status: 500 }
+    );
   }
 
   const fullMessages: Message[] = systemPrompt
@@ -105,16 +114,35 @@ export async function handler(request: Request): Promise<Response> {
     apiKey: process.env.OPENAI_API_KEY, // server env only — never VITE_*
   });
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: fullMessages,
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model,
+      messages: fullMessages,
+      ...(temperature !== undefined ? { temperature } : {}),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    });
 
-  const content = completion.choices[0]?.message?.content ?? '';
+    const content = completion.choices[0]?.message?.content ?? '';
 
-  return Response.json({ content });
+    return Response.json({ content });
+  } catch (err) {
+    const status =
+      typeof (err as { status?: unknown })?.status === 'number'
+        ? (err as { status: number }).status
+        : 500;
+    const details = err instanceof Error ? err.message : String(err);
+    return Response.json(
+      { error: `OpenAI API error: ${status}`, details },
+      { status }
+    );
+  }
 }
 ```
+
+The optional `temperature` and `responseFormat` (JSON mode) let callers such as
+video-curator's transcript segmentation get deterministic, valid-JSON output while all
+OpenAI logic stays here. On failure the handler returns a structured `{ error, details }`
+body so callers can surface meaningful messages.
 
 ### `packages/ai-client/src/client.ts`
 
@@ -145,6 +173,8 @@ export type AskOptions = {
   messages: Message[];
   model?: string;
   systemPrompt?: string;
+  temperature?: number;
+  responseFormat?: { type: 'text' | 'json_object' };
 };
 
 // Low-level fetch call to /api/chat. Use useAI() in components instead.

@@ -17,9 +17,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       {
-        name: 'local-openai-segmentation-api',
+        name: 'local-api',
         configureServer(server) {
-          server.middlewares.use('/api/segment-transcript', async (req, res) => {
+          server.middlewares.use('/api/chat', async (req, res) => {
             if (req.method !== 'POST') {
               res.statusCode = 405
               res.setHeader('Content-Type', 'application/json')
@@ -27,78 +27,28 @@ export default defineConfig(({ mode }) => {
               return
             }
 
-            if (!apiKey) {
-              res.statusCode = 500
-              res.setHeader('Content-Type', 'application/json')
-              res.end(
-                JSON.stringify({
-                  error:
-                    'Missing OPENAI_API_KEY (preferred). For local dev you may also set VITE_OPENAI_API_KEY in apps/video-curator/.env.local',
-                })
-              )
-              return
-            }
+            // Bridge local .env.local key names into process.env for the shared handler.
+            if (apiKey) process.env.OPENAI_API_KEY ||= apiKey
 
             let raw = ''
             req.on('data', (chunk) => (raw += chunk))
             req.on('end', async () => {
-              let body: unknown = null
               try {
-                body = JSON.parse(raw || '{}')
-              } catch {
-                body = null
-              }
-
-              const prompt =
-                body && typeof body === 'object' && 'prompt' in body ? (body as { prompt?: unknown }).prompt : undefined
-              if (!prompt || typeof prompt !== 'string') {
-                res.statusCode = 400
-                res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ error: 'Missing prompt' }))
-                return
-              }
-
-              try {
-                const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+                // Load the shared handler through Vite's SSR pipeline so its TypeScript
+                // source is transformed on the fly (a top-level import would make Node
+                // try to strip types from a file under node_modules and fail).
+                const { handler } = (await server.ssrLoadModule('@workspace/ai-client/server')) as {
+                  handler: (request: Request) => Promise<Response>
+                }
+                const request = new Request('http://localhost/api/chat', {
                   method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${apiKey}`,
-                  },
-                  body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    temperature: 0,
-                    response_format: { type: 'json_object' },
-                    messages: [
-                      {
-                        role: 'system',
-                        content: 'You are a transcript segmentation engine. You only output valid JSON.',
-                      },
-                      { role: 'user', content: prompt },
-                    ],
-                  }),
+                  headers: { 'Content-Type': 'application/json' },
+                  body: raw || '{}',
                 })
-
-                const text = await upstream.text()
-                if (!upstream.ok) {
-                  res.statusCode = upstream.status
-                  res.setHeader('Content-Type', 'application/json')
-                  res.end(JSON.stringify({ error: `OpenAI API error: ${upstream.status}`, details: text }))
-                  return
-                }
-
-                const data = JSON.parse(text)
-                const content = data?.choices?.[0]?.message?.content
-                if (!content || typeof content !== 'string') {
-                  res.statusCode = 502
-                  res.setHeader('Content-Type', 'application/json')
-                  res.end(JSON.stringify({ error: 'OpenAI response missing content' }))
-                  return
-                }
-
-                res.statusCode = 200
-                res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ content }))
+                const response = await handler(request)
+                res.statusCode = response.status
+                response.headers.forEach((value, key) => res.setHeader(key, value))
+                res.end(await response.text())
               } catch (err: unknown) {
                 res.statusCode = 500
                 res.setHeader('Content-Type', 'application/json')

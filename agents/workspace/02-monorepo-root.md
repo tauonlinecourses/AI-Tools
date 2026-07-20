@@ -77,12 +77,13 @@ OPENAI_API_KEY=your_openai_key_here
 ```
 
 > Local dev: `vercel dev` runs `api/chat.ts` alongside Vite and reads `OPENAI_API_KEY`
-> from each app's `.env.local`. video-curator's separate `/api/segment-transcript` route
-> still accepts legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY` fallbacks in code, but
-> `OPENAI_API_KEY` is the only supported name going forward. Restart the dev server after
-> editing `.env.local`.
+> from each app's `.env.local`. video-curator also serves `/api/chat` under plain `vite dev`
+> via a local middleware in its `vite.config.ts` that delegates to the shared handler; that
+> middleware bridges legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY` into `OPENAI_API_KEY`
+> for convenience, but `OPENAI_API_KEY` is the only supported name going forward. Restart
+> the dev server after editing `.env.local`.
 
-**Video Curator segmentation errors:** `segmentTranscript` returns `errorMessage` when the OpenAI proxy fails or when model output cannot be validated (equal-chunk fallback). Repaired partial AI ranges are not treated as a connection failure. The yellow banner in the right panel shows that message so API-key / network issues are distinguishable from validation fallback.
+**Video Curator segmentation errors:** transcript segmentation ([`segmentTranscript`](../../apps/video-curator/src/lib/segmentTranscript.ts)) now calls the shared `/api/chat` route via `aiChat` (`@workspace/ai-client/client`). It returns `errorMessage` when the AI request fails or when model output cannot be validated (equal-chunk fallback). Repaired partial AI ranges are not treated as a connection failure. The yellow banner in the right panel shows that message so API-key / network issues are distinguishable from validation fallback.
 
 Create `.gitignore`:
 

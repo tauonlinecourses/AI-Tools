@@ -1,3 +1,4 @@
+import { aiChat } from '@workspace/ai-client/client'
 import type { SrtItem } from './parseSrt'
 import type { Section } from './store'
 import { assignColors } from './store'
@@ -265,7 +266,13 @@ function detectTitleLanguage(items: SrtItem[]): TitleLanguage {
   return 'en'
 }
 
-function formatSegmentationApiError(status: number, bodyText: string): string {
+function formatSegmentationApiError(message: string): string {
+  // aiChat throws `AI request failed (NNN): <response body>`. Extract the status
+  // and the raw body so the structured { error, details } payload can be parsed.
+  const statusMatch = message.match(/\((\d{3})\)/)
+  const status = statusMatch ? Number(statusMatch[1]) : 0
+  const bodyText = message.replace(/^AI request failed \(\d{3}\):\s*/, '')
+
   let parsed: { error?: unknown; details?: unknown } | null = null
   try {
     parsed = JSON.parse(bodyText) as { error?: unknown; details?: unknown }
@@ -276,7 +283,9 @@ function formatSegmentationApiError(status: number, bodyText: string): string {
   const top =
     parsed && typeof parsed.error === 'string' && parsed.error.trim()
       ? parsed.error.trim()
-      : `Segmentation API error: ${status}`
+      : status
+        ? `Segmentation API error: ${status}`
+        : message
 
   let detail = ''
   if (parsed && typeof parsed.details === 'string' && parsed.details.trim()) {
@@ -289,7 +298,7 @@ function formatSegmentationApiError(status: number, bodyText: string): string {
     } catch {
       detail = parsed.details.trim().slice(0, 280)
     }
-  } else if (!parsed && bodyText.trim()) {
+  } else if (!parsed && bodyText.trim() && bodyText.trim() !== message.trim()) {
     detail = bodyText.trim().slice(0, 280)
   }
 
@@ -319,26 +328,19 @@ export async function segmentTranscript(
   const tryOnce = async (
     prompt: string
   ): Promise<{ sections: Section[]; usedFallback: boolean; errorMessage: string | null } | null> => {
-    const response = await fetch('/api/segment-transcript', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt }),
-    })
-
-    if (!response.ok) {
-      let details = ''
-      try {
-        details = await response.text()
-      } catch {
-        // ignore
-      }
-      throw new Error(formatSegmentationApiError(response.status, details))
+    let rawJson: string
+    try {
+      rawJson = await aiChat({
+        messages: [{ role: 'user', content: prompt }],
+        systemPrompt: 'You are a transcript segmentation engine. You only output valid JSON.',
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        responseFormat: { type: 'json_object' },
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(formatSegmentationApiError(message))
     }
-
-    const data = await response.json()
-    const rawJson: string = data.content
 
     const parsed: GptResponse = JSON.parse(rawJson)
     const { repaired, wasRepaired } = repairPartialResponse(parsed, items.length, titleLanguage)
