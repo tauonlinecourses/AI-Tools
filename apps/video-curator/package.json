@@ -12,6 +12,7 @@
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@workspace/ai-client": "file:../../packages/ai-client",
     "@workspace/ui": "file:../../packages/ui",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

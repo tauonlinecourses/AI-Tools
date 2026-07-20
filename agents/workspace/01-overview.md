@@ -60,7 +60,7 @@ workspace/
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
 │   │   ├── api/
-│   │   │   └── chat.ts             ← Production OpenAI proxy (Vercel serverless)
+│   │   │   └── chat.ts             ← AI route: re-exports @workspace/ai-client/server (Vercel serverless)
 │   │   └── src/
 │   │       ├── main.tsx
 │   │       └── App.tsx
@@ -102,8 +102,9 @@ workspace/
 │       ├── package.json
 │       ├── tsconfig.json
 │       └── src/
-│           ├── index.ts
-│           └── client.ts           ← OpenAI wrapper (dev: direct; prod: /api/chat)
+│           ├── index.ts            ← Re-exports legacy callAI/prompt
+│           ├── client.ts           ← Browser-safe: useAI/aiChat → /api/chat (no key/SDK)
+│           └── server.ts           ← Serverless handler: only place with OpenAI SDK + OPENAI_API_KEY
 │
 ├── turbo.json
 ├── pnpm-workspace.yaml

@@ -61,18 +61,26 @@ Create `turbo.json`:
 }
 ```
 
-Create `.env.example` at root:
+Create `.env.example` at root. The key must **never** be prefixed with `VITE_` — that
+would expose it in the browser bundle. All AI calls go through serverless `api/chat.ts`
+(see [06-packages-ai-client.md](./06-packages-ai-client.md) and
+[secure-ai-client.md](./secure-ai-client.md)):
 
 ```env
-# Copy this to .env.local in each app that needs it (local dev only)
-VITE_OPENAI_API_KEY=your_openai_key_here
+# Used by Vercel serverless functions (api/chat.ts) and local vercel dev.
+# This key must NEVER be prefixed with VITE_ — that would expose it in the browser bundle.
+OPENAI_API_KEY=your_openai_key_here
 
-# Preferred for video-curator local Vite proxy (/api/segment-transcript) and Vercel
-# OPENAI_API_KEY=your_openai_key_here
-#
-# video-curator reads (in order): OPENAI_API_KEY → VITE_OPENAI_API_KEY → VITE_OPENAI_KEY
-# Restart `pnpm run dev` after changing .env.local — Vite loads keys at server start.
+# Production (Vercel): use one team Shared OPENAI_API_KEY.
+# Team Settings → Environment Variables → link shared var to each app project.
+# See README.md for the full linking procedure.
 ```
+
+> Local dev: `vercel dev` runs `api/chat.ts` alongside Vite and reads `OPENAI_API_KEY`
+> from each app's `.env.local`. video-curator's separate `/api/segment-transcript` route
+> still accepts legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY` fallbacks in code, but
+> `OPENAI_API_KEY` is the only supported name going forward. Restart the dev server after
+> editing `.env.local`.
 
 **Video Curator segmentation errors:** `segmentTranscript` returns `errorMessage` when the OpenAI proxy fails or when model output cannot be validated (equal-chunk fallback). Repaired partial AI ranges are not treated as a connection failure. The yellow banner in the right panel shows that message so API-key / network issues are distinguishable from validation fallback.
 

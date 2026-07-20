@@ -11,6 +11,7 @@
     "preview":    "vite preview"
   },
   "dependencies": {
+    "@workspace/ai-client": "file:../../packages/ai-client",
     "@workspace/ui":     "file:../../packages/ui",
     "react":             "^18.2.0",
     "react-dom":         "^18.2.0"

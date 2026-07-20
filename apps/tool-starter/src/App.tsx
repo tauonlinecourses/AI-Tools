@@ -1,32 +1,26 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { PageLayout, Card, Button, Input, Spinner } from "@workspace/ui";
-import { prompt } from "@workspace/ai-client";
+import { useAI } from "@workspace/ai-client/client";
 
 // ─── Replace everything below this line with your tool's actual UI ────────────
 
 export default function App() {
   const [userInput, setUserInput] = useState("");
   const [result, setResult]       = useState<string | null>(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const { ask, loading, error }   = useAI();
 
   async function handleSubmit() {
     if (!userInput.trim()) return;
-    setLoading(true);
-    setError(null);
     setResult(null);
 
-    const response = await prompt(userInput, {
+    const response = await ask({
+      messages: [{ role: "user", content: userInput }],
       systemPrompt: "You are a helpful assistant.",
     });
 
-    if (response.error) {
-      setError(response.error);
-    } else {
-      setResult(response.text);
+    if (response) {
+      setResult(response);
     }
-
-    setLoading(false);
   }
 
   return (

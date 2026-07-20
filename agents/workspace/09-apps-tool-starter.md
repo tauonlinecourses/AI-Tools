@@ -1,5 +1,5 @@
 ﻿<!-- AGENT DOC: Step 6 — apps/tool-starter template -->
-<!-- Topic: tool template, api/chat proxy, starter App -->
+<!-- Topic: tool template, api/chat re-export, starter App with useAI -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 
 > **Agents:** Read [README.md](./README.md) first for the full map. This file is **part 9 of 10**.
@@ -47,44 +47,14 @@
 
 ### `apps/tool-starter/api/chat.ts`
 
-Production proxy — keeps `OPENAI_API_KEY` server-side. Local Vite uses `VITE_OPENAI_API_KEY` directly via `ai-client`.
+Serverless AI route. It is a **pass-through only** — a 1-line re-export of the shared
+handler in `packages/ai-client/src/server.ts`, which is the sole place that touches the
+OpenAI SDK and `OPENAI_API_KEY`. Copy this file as-is into every new tool; no changes
+needed. See [06-packages-ai-client.md](./06-packages-ai-client.md) and
+[secure-ai-client.md](./secure-ai-client.md).
 
 ```typescript
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: "API key not configured" });
-  }
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method:  "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(req.body),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json(data);
-    }
-
-    return res.status(200).json(data);
-  } catch (err) {
-    return res.status(500).json({
-      error: err instanceof Error ? err.message : "Unknown error",
-    });
-  }
-}
+export { handler as default } from "@workspace/ai-client/server";
 ```
 
 ### `apps/tool-starter/tailwind.config.ts`
@@ -155,35 +125,29 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 ### `apps/tool-starter/src/App.tsx`
 
 ```tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import { PageLayout, Card, Button, Input, Spinner } from "@workspace/ui";
-import { prompt } from "@workspace/ai-client";
+import { useAI } from "@workspace/ai-client/client";
 
 // ─── Replace everything below this line with your tool's actual UI ────────────
 
 export default function App() {
   const [userInput, setUserInput] = useState("");
   const [result, setResult]       = useState<string | null>(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const { ask, loading, error }   = useAI();
 
   async function handleSubmit() {
     if (!userInput.trim()) return;
-    setLoading(true);
-    setError(null);
     setResult(null);
 
-    const response = await prompt(userInput, {
+    const response = await ask({
+      messages: [{ role: "user", content: userInput }],
       systemPrompt: "You are a helpful assistant.",
     });
 
-    if (response.error) {
-      setError(response.error);
-    } else {
-      setResult(response.text);
+    if (response) {
+      setResult(response);
     }
-
-    setLoading(false);
   }
 
   return (
