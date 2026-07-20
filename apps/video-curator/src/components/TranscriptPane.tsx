@@ -682,11 +682,11 @@ export const TranscriptPane = forwardRef<TranscriptPaneHandle, TranscriptPanePro
                       {isRTL ? (
                         <>
                           <div
-                            className="min-w-0 h-full px-3 py-3"
+                            className="min-w-0 h-full px-3 py-1"
                           >
                             <div
                               className={cx(
-                                'text-sm text-gray-900',
+                                'text-xs text-gray-900',
                                 isHebrew ? 'text-right' : 'text-left',
                                 isHidden ? 'line-through' : ''
                               )}
@@ -695,39 +695,39 @@ export const TranscriptPane = forwardRef<TranscriptPaneHandle, TranscriptPanePro
                               {item.text}
                             </div>
                           </div>
-                          <div className="flex items-start justify-end gap-2 py-3 text-xs text-gray-500">
+                          <div className="flex items-start justify-end gap-2 py-1 text-[11px] text-gray-500">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={(e) => setSelectedIndex(item.index, e.target.checked)}
                               onClick={(e) => e.stopPropagation()}
-                              className="mt-[3px] h-4 w-4 border border-gray-400 bg-white"
+                              className="mt-[2px] h-3.5 w-3.5 border border-gray-400 bg-white"
                               aria-label="Select sentence"
                               title="Select sentence"
                             />
-                            <span className="pt-[5px]">{timestamp}</span>
+                            <span className="pt-[3px]">{timestamp}</span>
                           </div>
                         </>
                       ) : (
                         <>
-                          <div className="flex items-start justify-start gap-2 py-3 text-xs text-gray-500">
+                          <div className="flex items-start justify-start gap-2 py-1 text-[11px] text-gray-500">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={(e) => setSelectedIndex(item.index, e.target.checked)}
                               onClick={(e) => e.stopPropagation()}
-                              className="mt-[3px] h-4 w-4 border border-gray-400 bg-white"
+                              className="mt-[2px] h-3.5 w-3.5 border border-gray-400 bg-white"
                               aria-label="Select sentence"
                               title="Select sentence"
                             />
-                            <span className="pt-[5px]">{timestamp}</span>
+                            <span className="pt-[3px]">{timestamp}</span>
                           </div>
                           <div
-                            className="min-w-0 h-full px-3 py-3"
+                            className="min-w-0 h-full px-3 py-1"
                           >
                             <div
                               className={cx(
-                                'text-sm text-gray-900',
+                                'text-xs text-gray-900',
                                 isHebrew ? 'text-right' : 'text-left',
                                 isHidden ? 'line-through' : ''
                               )}

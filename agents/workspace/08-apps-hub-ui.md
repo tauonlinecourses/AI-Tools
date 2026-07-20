@@ -1,4 +1,22 @@
-import { useState } from "react";
+﻿<!-- AGENT DOC: Step 5b — apps/hub App.tsx -->
+<!-- Topic: hub launcher UI, tool cards, categories -->
+<!-- Part of: agents/workspace/ — start at README.md -->
+
+> **Agents:** Read [README.md](./README.md) first for the full map. This file is **part 8 of 10**.
+>
+> ← Previous: [07-apps-hub-config.md](./07-apps-hub-config.md)
+> → Next: [09-apps-tool-starter.md](./09-apps-tool-starter.md)
+
+---
+
+## Step 5b — `apps/hub` launcher UI
+
+Continues Step 5 from [07-apps-hub-config.md](./07-apps-hub-config.md). This is the hub homepage (`App.tsx`).
+
+### `apps/hub/src/App.tsx`
+
+```tsx
+import React, { useState } from "react";
 import { Badge } from "@workspace/ui";
 import { tools, categories, toolHref } from "./tools.config";
 import type { Tool } from "./tools.config";
@@ -86,10 +104,10 @@ export default function App() {
             />
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-                AI Tools
+                AI Tools Hub
               </h1>
               <p className="text-surface-600 mt-1 text-sm">
-                Our homemade AI-powered tools for daily work
+                Our homemade AI-powered tools for daily works
               </p>
             </div>
           </div>
@@ -133,3 +151,5 @@ export default function App() {
     </div>
   );
 }
+```
+

@@ -495,7 +495,7 @@ export const useStore = create<AppState>((set) => ({
     tick = window.setInterval(step, 120)
 
     try {
-      const { sections, usedFallback } = await segmentTranscript(srtItems)
+      const { sections, errorMessage } = await segmentTranscript(srtItems)
       // Stop the "waiting" progress ticks and smoothly finish to 100%.
       if (tick !== null) window.clearInterval(tick)
       tick = null
@@ -519,8 +519,8 @@ export const useStore = create<AppState>((set) => ({
       setGenerateProgress(100)
       await new Promise<void>((r) => window.setTimeout(() => r(), 500))
       setSections(sections)
-      if (usedFallback) {
-        setGenerateError('AI segmentation failed — transcript was split into equal parts. You can adjust sections manually.')
+      if (errorMessage) {
+        setGenerateError(errorMessage)
       }
     } catch {
       setGenerateError('Something went wrong. Please try again.')

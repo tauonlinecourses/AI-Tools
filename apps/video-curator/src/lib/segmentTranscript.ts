@@ -265,9 +265,47 @@ function detectTitleLanguage(items: SrtItem[]): TitleLanguage {
   return 'en'
 }
 
+function formatSegmentationApiError(status: number, bodyText: string): string {
+  let parsed: { error?: unknown; details?: unknown } | null = null
+  try {
+    parsed = JSON.parse(bodyText) as { error?: unknown; details?: unknown }
+  } catch {
+    parsed = null
+  }
+
+  const top =
+    parsed && typeof parsed.error === 'string' && parsed.error.trim()
+      ? parsed.error.trim()
+      : `Segmentation API error: ${status}`
+
+  let detail = ''
+  if (parsed && typeof parsed.details === 'string' && parsed.details.trim()) {
+    try {
+      const upstream = JSON.parse(parsed.details) as {
+        error?: { message?: unknown; code?: unknown; type?: unknown }
+      }
+      const msg = upstream?.error?.message
+      if (typeof msg === 'string' && msg.trim()) detail = msg.trim()
+    } catch {
+      detail = parsed.details.trim().slice(0, 280)
+    }
+  } else if (!parsed && bodyText.trim()) {
+    detail = bodyText.trim().slice(0, 280)
+  }
+
+  if (status === 401 || /incorrect api key|invalid api key|authentication/i.test(`${top} ${detail}`)) {
+    return 'OpenAI rejected the API key. Check OPENAI_API_KEY in apps/video-curator/.env.local (local) or the Vercel project env (production), then restart/redeploy.'
+  }
+  if (/missing openai_api_key/i.test(`${top} ${detail}`)) {
+    return 'OpenAI API key is not configured on the server. Set OPENAI_API_KEY and restart the dev server (or redeploy on Vercel).'
+  }
+
+  return detail ? `${top} — ${detail}` : top
+}
+
 export async function segmentTranscript(
   items: SrtItem[]
-): Promise<{ sections: Section[]; usedFallback: boolean }> {
+): Promise<{ sections: Section[]; usedFallback: boolean; errorMessage: string | null }> {
   // Truncate if transcript is very long
   const transcriptText = buildTranscriptText(
     items.length > MAX_CHARS
@@ -280,7 +318,7 @@ export async function segmentTranscript(
 
   const tryOnce = async (
     prompt: string
-  ): Promise<{ sections: Section[]; usedFallback: boolean } | null> => {
+  ): Promise<{ sections: Section[]; usedFallback: boolean; errorMessage: string | null } | null> => {
     const response = await fetch('/api/segment-transcript', {
       method: 'POST',
       headers: {
@@ -296,7 +334,7 @@ export async function segmentTranscript(
       } catch {
         // ignore
       }
-      throw new Error(`Segmentation API error: ${response.status}${details ? ` — ${details}` : ''}`)
+      throw new Error(formatSegmentationApiError(response.status, details))
     }
 
     const data = await response.json()
@@ -328,7 +366,8 @@ export async function segmentTranscript(
     if (wasRepaired) {
       console.warn('Validation repaired: model returned partial indices — filled gaps with Unassigned sections')
     }
-    return { sections, usedFallback: wasRepaired }
+    // Repaired AI output still used the model — do not treat as equal-chunk fallback.
+    return { sections, usedFallback: false, errorMessage: null }
   }
 
   try {
@@ -339,9 +378,19 @@ export async function segmentTranscript(
     if (second) return second
 
     console.warn('Validation failed after retry — using fallback')
-    return { sections: buildEqualChunkFallback(items, titleLanguage), usedFallback: true }
+    return {
+      sections: buildEqualChunkFallback(items, titleLanguage),
+      usedFallback: true,
+      errorMessage:
+        'AI returned sections that could not be validated — transcript was split into equal parts. You can adjust sections manually.',
+    }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.warn('Segmentation failed:', err, '— using fallback')
-    return { sections: buildEqualChunkFallback(items, titleLanguage), usedFallback: true }
+    return {
+      sections: buildEqualChunkFallback(items, titleLanguage),
+      usedFallback: true,
+      errorMessage: `Could not reach the AI model — ${message}. Transcript was split into equal parts so you can keep editing.`,
+    }
   }
 }

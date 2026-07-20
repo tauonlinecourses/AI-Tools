@@ -17,6 +17,7 @@ AI-Tools/
 │   └── ai-client/        ← OpenAI API wrapper
 │
 ├── agents/               ← Build instructions for the Cursor agent
+│   └── workspace/        ← Split monorepo docs (start at workspace/README.md)
 ├── turbo.json
 └── pnpm-workspace.yaml
 ```
