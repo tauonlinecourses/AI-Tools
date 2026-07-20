@@ -18,8 +18,11 @@
     },
     "./vercel": {
       "types": "./src/vercel.ts",
-      "default": "./src/vercel.ts"
+      "default": "./dist/vercel.js"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
   },
   "peerDependencies": {
     "react": ">=18"
@@ -28,7 +31,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@vercel/node": "^3.2.0",
-    "@workspace/config": "file:../config",
+    "@workspace/config": "workspace:*",
     "react": "^18.2.0",
     "typescript": "^5.0.0"
   },

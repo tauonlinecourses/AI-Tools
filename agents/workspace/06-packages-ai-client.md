@@ -20,9 +20,21 @@ See [secure-ai-client.md](./secure-ai-client.md) for the full refactor guide and
 
 ### `packages/ai-client/package.json`
 
-`exports` expose three entry points: the root (`index.ts`), `./client` (browser-safe),
-and `./server` (serverless only). `openai` is a runtime dependency; `react` is a peer
-dependency because `client.ts` ships the `useAI` hook.
+`exports` expose four entry points: the root (`index.ts`), `./client` (browser-safe),
+`./server` (the Web `handler`), and `./vercel` (the Node `(req,res)` serverless entry).
+`openai` is a runtime dependency; `react` is a peer dependency because `client.ts` ships
+the `useAI` hook.
+
+**Build step:** `tsc -p tsconfig.build.json` compiles `src/*` → `dist/*.js` (+ `.d.ts`).
+The `./vercel` export's `default` points at `./dist/vercel.js` because the Vercel Node
+serverless runtime cannot import raw `.ts` from `node_modules` (it only compiles app-local
+files). Its `types` stays on `./src/vercel.ts` so apps can type-check without a prior build.
+`.`/`./client`/`./server` stay on source because they're only consumed by Vite (which
+compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled).
+
+> Workspace consumers use the **`workspace:*`** protocol (never `file:`). `file:` makes pnpm
+> copy a source-only snapshot into its store at install time, so a later-built `dist` is
+> invisible to the app and the serverless function crashes.
 
 ```json
 {
@@ -30,26 +42,23 @@ dependency because `client.ts` ships the `useAI` hook.
   "version": "0.0.1",
   "private": true,
   "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
   "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    },
-    "./client": {
-      "types": "./src/client.ts",
-      "default": "./src/client.ts"
-    },
-    "./server": {
-      "types": "./src/server.ts",
-      "default": "./src/server.ts"
-    }
+    ".":        { "types": "./src/index.ts",  "default": "./src/index.ts" },
+    "./client": { "types": "./src/client.ts", "default": "./src/client.ts" },
+    "./server": { "types": "./src/server.ts", "default": "./src/server.ts" },
+    "./vercel": { "types": "./src/vercel.ts", "default": "./dist/vercel.js" }
   },
   "peerDependencies": {
     "react": ">=18"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
-    "@workspace/config": "file:../config",
+    "@vercel/node": "^3.2.0",
+    "@workspace/config": "workspace:*",
     "react": "^18.2.0",
     "typescript": "^5.0.0"
   },

@@ -91,12 +91,11 @@ Merge in the following `exports` block:
 This file is the only place in the entire monorepo that imports OpenAI or reads the API key.
 It runs exclusively as a Vercel serverless function — never in the browser.
 
-> **Env access:** Because each app exports the raw `.ts` source (`./server`), the consuming
-> app / Vercel serverless function compiles `server.ts` under its own tsconfig, which does not have
-> `@types/node` in scope. Referencing the ambient `process` global there fails with
-> `TS2591: Cannot find name 'process'`. To stay self-contained, read env through
-> `globalThis.process` instead of the ambient `process` global — this needs no Node type
-> definitions in the consumer and works across Node and Edge runtimes.
+> **Env access:** Consuming apps type-check `server.ts` via the `types` → `./src/server.ts`
+> export condition, under their own tsconfig which may not have `@types/node` in scope.
+> Referencing the ambient `process` global there fails with `TS2591: Cannot find name 'process'`.
+> To stay self-contained, read env through `globalThis.process` (see `getServerEnv()`) instead
+> of the ambient `process` global — this needs no Node type definitions in the consumer.
 
 ```ts
 import OpenAI from 'openai';
@@ -239,12 +238,33 @@ That is the entire file. Vercel picks up any file in `api/` as a serverless func
 calls it as the default export. `@workspace/ai-client/vercel` bridges Vercel's Node.js
 `req`/`res` API to the shared Web `handler()` in `server.ts`.
 
-> **Do not set `runtime: 'edge'`.** Vercel Edge Functions cannot bundle monorepo workspace
-> imports (`@workspace/ai-client/server`) and will fail with "referencing unsupported modules".
+### Critical constraints (each one caused a real production failure)
+
+> **1. Do not set `runtime: 'edge'`.** Vercel Edge Functions cannot bundle monorepo workspace
+> imports and fail with "referencing unsupported modules". Use the default Node.js runtime.
 >
-> **Do not re-export `handler` directly from `./server`.** On the Node.js runtime, Vercel
-> invokes `(req, res)` handlers — not Web `Request` objects. Exporting `handler` causes
-> `request.json is not a function` and `FUNCTION_INVOCATION_FAILED` at runtime.
+> **2. Do not re-export `handler` directly from `./server`.** On the Node.js runtime, Vercel
+> invokes `(req, res)` handlers — not Web `Request` objects. Re-exporting the Web `handler`
+> causes `request.json is not a function` → `FUNCTION_INVOCATION_FAILED`. Always go through
+> `./vercel`, which adapts `req`/`res` ↔ `Request`/`Response`.
+>
+> **3. The Node serverless runtime cannot import raw `.ts` from `node_modules`.** Vercel only
+> compiles app-local files; it treats `node_modules` as pre-compiled JS. So `@workspace/ai-client`
+> must ship **compiled JS** for anything the serverless function imports. The `./vercel` export
+> therefore resolves to `./dist/vercel.js` (built by `pnpm --filter @workspace/ai-client build`),
+> while `types` still points at `./src/vercel.ts` for editor/type-check convenience.
+>
+> **4. Workspace deps must use the `workspace:*` protocol, not `file:`.** With `file:`, pnpm
+> copies a snapshot of the package into its store at install time (source only) — the `dist`
+> built later is never visible to the app, so the function loads stale/raw source and crashes.
+> `workspace:*` symlinks to the live package dir, so the built `dist` is picked up, and turbo's
+> `^build` correctly builds `ai-client` before each app.
+
+Each app's `vercel.json` `buildCommand` builds the client package first, e.g.:
+
+```json
+"buildCommand": "cd ../.. && pnpm --filter @workspace/ai-client build && pnpm build --filter video-curator"
+```
 
 ---
 

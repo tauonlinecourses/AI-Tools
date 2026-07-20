@@ -9,14 +9,14 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@workspace/ui":        "file:../../packages/ui",
-    "@workspace/ai-client": "file:../../packages/ai-client",
+    "@workspace/ui":        "workspace:*",
+    "@workspace/ai-client": "workspace:*",
     "react":                "^18.2.0",
     "react-dom":            "^18.2.0"
   },
   "devDependencies": {
     "@vercel/node":         "^3.2.0",
-    "@workspace/config":    "file:../../packages/config",
+    "@workspace/config":    "workspace:*",
     "@types/react":         "^18.2.0",
     "@types/react-dom":     "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",

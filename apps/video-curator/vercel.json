@@ -1,6 +1,6 @@
 {
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm build --filter video-curator",
+  "buildCommand": "cd ../.. && pnpm --filter @workspace/ai-client build && pnpm build --filter video-curator",
   "outputDirectory": "dist",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../packages/ui ../../packages/config ../../packages/ai-client"
 }
