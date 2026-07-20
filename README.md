@@ -14,7 +14,7 @@ AI-Tools/
 ├── packages/             ← Shared code
 │   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
 │   ├── ui/               ← Shared React component library
-│   └── ai-client/        ← OpenAI API wrapper
+│   └── ai-client/        ← Shared AI client (useAI hook) + server handler (OpenAI SDK)
 │
 ├── agents/               ← Build instructions for the Cursor agent
 │   └── workspace/        ← Split monorepo docs (start at workspace/README.md)
@@ -27,6 +27,48 @@ AI-Tools/
 | `apps/hub` | Main launcher; tool list comes from `tools.config.ts` |
 | `apps/tool-*` / other tools | One independent app per tool |
 | `packages/*` | Shared design, UI, and AI client used by every app |
+
+## AI API call flow
+
+The OpenAI API key **never** reaches the browser. All AI calls go through a shared serverless handler.
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    C1[React Component]
+  end
+
+  subgraph SharedPackage["packages/ai-client"]
+    Client["client.ts<br/>useAI() / aiChat()"]
+    Server["server.ts<br/>handler()"]
+  end
+
+  subgraph Vercel["Vercel Edge Function"]
+    Route["apps/*/api/chat.ts<br/>re-exports handler"]
+  end
+
+  subgraph OpenAI
+    API["OpenAI API"]
+  end
+
+  C1 -->|"fetch /api/chat"| Client
+  Client -->|"POST /api/chat"| Route
+  Route -->|"delegates"| Server
+  Server -->|"OPENAI_API_KEY<br/>(server env only)"| API
+  API -->|"{ content }"| Server
+  Server -->|"Response.json"| Route
+  Route -->|"JSON"| Client
+  Client -->|"string"| C1
+```
+
+**Key points:**
+- `client.ts` is browser-safe — no SDK, no key. Components import `useAI()` or `aiChat()` from `@workspace/ai-client/client`.
+- `server.ts` is the **only** file that imports the OpenAI SDK or reads `OPENAI_API_KEY`. It runs as a Vercel Edge Function.
+- Each app's `api/chat.ts` is a one-line re-export: `export { handler as default } from "@workspace/ai-client/server"`.
+- Supports `model`, `systemPrompt`, `temperature`, and `responseFormat` (JSON mode) — e.g. video-curator uses `gpt-4o-mini` with `temperature: 0` and `responseFormat: { type: 'json_object' }` for transcript segmentation.
+- Local dev: `vite dev` serves `/api/chat` via a middleware in `vite.config.ts` that delegates to the same shared handler.
+
+See [`agents/workspace/secure-ai-client.md`](agents/workspace/secure-ai-client.md) for the full architecture guide and rules.
 
 ## Tech stack
 

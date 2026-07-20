@@ -13,6 +13,12 @@ export type ChatRequest = {
   responseFormat?: { type: 'text' | 'json_object' };
 };
 
+// Read server env without depending on @types/node being resolvable in the
+// consuming app's build (avoids TS2591 "Cannot find name 'process'").
+const serverEnv: Record<string, string | undefined> =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env ?? {};
+
 export async function handler(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -31,7 +37,7 @@ export async function handler(request: Request): Promise<Response> {
     return new Response('messages must be an array', { status: 400 });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!serverEnv.OPENAI_API_KEY) {
     return Response.json(
       { error: 'Missing OPENAI_API_KEY on server.' },
       { status: 500 }
@@ -43,7 +49,7 @@ export async function handler(request: Request): Promise<Response> {
     : messages;
 
   const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, // server env only — never VITE_*
+    apiKey: serverEnv.OPENAI_API_KEY, // server env only — never VITE_*
   });
 
   try {

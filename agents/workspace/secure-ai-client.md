@@ -30,7 +30,7 @@ AI-Tools/
 │       └── src/
 │           ├── index.ts          ← UNCHANGED (preserve any existing exports)
 │           ├── client.ts         ← NEW: browser-safe fetch wrapper + useAI hook
-│           └── server.ts         ← NEW: OpenAI handler, reads process.env only
+│           └── server.ts         ← NEW: OpenAI handler, reads env via globalThis.process
 │
 ├── apps/
 │   ├── hub/
@@ -91,6 +91,13 @@ Merge in the following `exports` block:
 This file is the only place in the entire monorepo that imports OpenAI or reads the API key.
 It runs exclusively as a Vercel serverless function — never in the browser.
 
+> **Env access:** Because each app exports the raw `.ts` source (`./server`), the consuming
+> app / Vercel Edge Function compiles `server.ts` under its own tsconfig, which does not have
+> `@types/node` in scope. Referencing the ambient `process` global there fails with
+> `TS2591: Cannot find name 'process'`. To stay self-contained, read env through
+> `globalThis.process` instead of the ambient `process` global — this needs no Node type
+> definitions in the consumer and works across Node and Edge runtimes.
+
 ```ts
 import OpenAI from 'openai';
 
@@ -104,6 +111,12 @@ export type ChatRequest = {
   model?: string;
   systemPrompt?: string;
 };
+
+// Read server env without depending on @types/node being resolvable in the
+// consuming app's build (avoids TS2591 "Cannot find name 'process'").
+const serverEnv: Record<string, string | undefined> =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env ?? {};
 
 export async function handler(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
@@ -128,7 +141,7 @@ export async function handler(request: Request): Promise<Response> {
     : messages;
 
   const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, // server env only — never VITE_*
+    apiKey: serverEnv.OPENAI_API_KEY, // server env only — never VITE_*
   });
 
   const completion = await client.chat.completions.create({
