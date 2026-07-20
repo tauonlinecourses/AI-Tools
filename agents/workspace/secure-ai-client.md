@@ -92,7 +92,7 @@ This file is the only place in the entire monorepo that imports OpenAI or reads 
 It runs exclusively as a Vercel serverless function — never in the browser.
 
 > **Env access:** Because each app exports the raw `.ts` source (`./server`), the consuming
-> app / Vercel Edge Function compiles `server.ts` under its own tsconfig, which does not have
+> app / Vercel serverless function compiles `server.ts` under its own tsconfig, which does not have
 > `@types/node` in scope. Referencing the ambient `process` global there fails with
 > `TS2591: Cannot find name 'process'`. To stay self-contained, read env through
 > `globalThis.process` instead of the ambient `process` global — this needs no Node type
@@ -237,6 +237,10 @@ export { handler as default } from '@repo/ai-client/server';
 
 That is the entire file. Vercel picks up any file in `api/` as a serverless function and
 calls it as the default export. The handler from `server.ts` is already a valid Vercel handler.
+
+> **Do not set `runtime: 'edge'`.** Vercel Edge Functions cannot bundle monorepo workspace
+> imports (`@workspace/ai-client/server`) and will fail with "referencing unsupported modules".
+> The default Node.js runtime supports the Web `Request`/`Response` API used by `handler()`.
 
 ---
 
