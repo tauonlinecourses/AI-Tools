@@ -32,6 +32,7 @@ Each section file has Previous / Next links at the top.
 | [08-apps-hub-ui.md](./08-apps-hub-ui.md) | Hub launcher UI | `apps/hub/src/App.tsx` |
 | [09-apps-tool-starter.md](./09-apps-tool-starter.md) | New tool from template | `apps/tool-starter`, `/api/chat` (re-exports `ai-client/vercel`) |
 | [10-run-deploy-conventions.md](./10-run-deploy-conventions.md) | Run, ship, or style a tool | `pnpm` scripts, Vercel, add-a-tool checklist, design rules |
+| [ai-api-flow.md](./ai-api-flow.md) | Understand or harden the AI request flow | End-to-end `/api/chat` flow diagram, why it's secure, production roadmap (auth, rate limiting, cost caps) |
 
 ---
 
