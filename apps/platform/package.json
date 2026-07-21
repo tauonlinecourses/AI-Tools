@@ -10,7 +10,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.16",
+    "@ai-sdk/react": "^4.0.35",
     "@workspace/ui": "workspace:*",
+    "ai": "^7.0.32",
     "next": "^15.3.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

@@ -13,6 +13,13 @@ interface PageLayoutProps {
   padded?: boolean;
 }
 
+// Vite imports images as URL strings; Next (transpilePackages) imports them
+// as StaticImageData objects. Support both.
+const logoUrl =
+  typeof logoSrc === "string"
+    ? logoSrc
+    : (logoSrc as unknown as { src: string }).src;
+
 const maxWidthStyles = {
   sm:   "max-w-screen-sm",
   md:   "max-w-screen-md",
@@ -55,7 +62,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
           </span>
         )}
         <img
-          src={logoSrc}
+          src={logoUrl}
           alt=""
           aria-hidden
           className="ml-auto h-8 w-auto shrink-0"
