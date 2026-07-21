@@ -61,29 +61,18 @@ Create `turbo.json`:
 }
 ```
 
-Create `.env.example` at root. The key must **never** be prefixed with `VITE_` — that
-would expose it in the browser bundle. All AI calls go through serverless `api/chat.ts`
-(see [06-packages-ai-client.md](./06-packages-ai-client.md) and
-[secure-ai-client.md](./secure-ai-client.md)):
+Create `.env.example` at root:
 
 ```env
-# Used by Vercel serverless functions (api/chat.ts) and local vercel dev.
-# This key must NEVER be prefixed with VITE_ — that would expose it in the browser bundle.
+# Server-side only — never expose to the client, never prefix with NEXT_PUBLIC_
+# Local dev: copy to apps/platform/.env.local
+# Production: linked from the Vercel team-shared OPENAI_API_KEY
 OPENAI_API_KEY=your_openai_key_here
-
-# Production (Vercel): use one team Shared OPENAI_API_KEY.
-# Team Settings → Environment Variables → link shared var to each app project.
-# See README.md for the full linking procedure.
 ```
 
-> Local dev: `vercel dev` runs `api/chat.ts` alongside Vite and reads `OPENAI_API_KEY`
-> from each app's `.env.local`. video-curator also serves `/api/chat` under plain `vite dev`
-> via a local middleware in its `vite.config.ts` that delegates to the shared handler; that
-> middleware bridges legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY` into `OPENAI_API_KEY`
-> for convenience, but `OPENAI_API_KEY` is the only supported name going forward. Restart
-> the dev server after editing `.env.local`.
+> Local dev: `pnpm --filter platform dev` reads `OPENAI_API_KEY` from `apps/platform/.env.local`. Restart the dev server after editing.
 
-**Video Curator segmentation errors:** transcript segmentation ([`segmentTranscript`](../../apps/video-curator/src/lib/segmentTranscript.ts)) now calls the shared `/api/chat` route via `aiChat` (`@workspace/ai-client/client`). It returns `errorMessage` when the AI request fails or when model output cannot be validated (equal-chunk fallback). Repaired partial AI ranges are not treated as a connection failure. The yellow banner in the right panel shows that message so API-key / network issues are distinguishable from validation fallback.
+**Video Curator segmentation:** [`segmentTranscript`](../../apps/platform/app/tools/video-curator/lib/segmentTranscript.ts) calls `completeViaGateway` from `@workspace/ai-client` (POST `/api/ai`). It returns `errorMessage` when the AI request fails or model output cannot be validated (equal-chunk fallback). The yellow banner in the right panel shows that message.
 
 Create `.gitignore`:
 

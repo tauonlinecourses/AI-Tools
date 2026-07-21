@@ -1,4 +1,6 @@
-﻿<!-- AGENT DOC: Step 5a — apps/hub config & tools list -->
+﻿> **⚠️ Legacy doc.** The Vite hub app (`apps/hub`) was removed in the platform migration. Hub UI lives at `apps/platform/app/page.tsx`; tool list at `apps/platform/lib/tools.config.ts`. See [`../Migration.md`](../Migration.md).
+
+<!-- AGENT DOC: Step 5a — apps/hub config & tools list -->
 <!-- Topic: hub package, Vite, tools.config.ts -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 

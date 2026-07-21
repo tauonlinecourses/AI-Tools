@@ -1,4 +1,6 @@
-﻿<!-- AGENT DOC: Step 5b — apps/hub App.tsx -->
+﻿> **⚠️ Legacy doc.** Superseded by `apps/platform/app/page.tsx`. See [`../Migration.md`](../Migration.md).
+
+<!-- AGENT DOC: Step 5b — apps/hub App.tsx -->
 <!-- Topic: hub launcher UI, tool cards, categories -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 

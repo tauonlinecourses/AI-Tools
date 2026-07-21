@@ -1,26 +1,24 @@
 ﻿<!-- AGENT DOC: Overview — What You Are Building -->
-<!-- Topic: overview, tech stack, directory structure -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 
-> **Agents:** Read [README.md](./README.md) first for the full map. This file is **part 1 of 10**.
+> **Agents:** Read [README.md](./README.md) first. This file is **part 1 of 10**.
 >
-> ← Previous: *(start)*
 > → Next: [02-monorepo-root.md](./02-monorepo-root.md)
 
 ---
 
 # Tools Workspace — Overview
 
-Part of the agent build instructions. Full map: [README.md](./README.md).
-
 ## What You Are Building
 
-A Turborepo monorepo containing:
-- A **hub app** (`apps/hub`) — a central launcher page that links to all tools
-- Multiple **tool apps** (`apps/tool-*`) — independent React apps, one per tool
-- Shared **packages** — design system, UI components, and AI client used by every app
+A Turborepo monorepo with a **single Next.js platform** (`apps/platform`):
 
-Every app deploys to Vercel independently. Every app shares the same design language via shared packages.
+- **Hub** — root page (`app/page.tsx`) listing tools from `lib/tools.config.ts`
+- **Tools** — self-contained folders under `app/tools/<name>/`
+- **AI gateway** — one route (`app/api/ai/route.ts`) using the Vercel AI SDK
+- **Shared packages** — design system, UI components, and AI client hooks
+
+One Vercel project deploys the whole platform.
 
 ---
 
@@ -30,85 +28,48 @@ Every app deploys to Vercel independently. Every app shares the same design lang
 |---|---|
 | Monorepo | Turborepo |
 | Package manager | pnpm |
-| Framework | React + Vite + TypeScript |
+| Framework | Next.js 15 (App Router) + React + TypeScript |
 | Styling | Tailwind CSS v3 |
+| AI | Vercel AI SDK (`ai`, `@ai-sdk/openai`) |
 | Shared config | `packages/config` |
 | Shared components | `packages/ui` |
-| AI API wrapper | `packages/ai-client` |
-| Deployment | Vercel (one project per app) |
+| AI client hooks | `packages/ai-client` |
+| Deployment | Vercel (root directory: `apps/platform`) |
 
 ---
 
-## Final Directory Structure
+## Directory Structure
 
 ```
-workspace/
+AI-Tools/
 ├── apps/
-│   ├── hub/                        ← Launcher homepage
-│   │   ├── package.json            ← Live: https://ai-tools-tauonline.vercel.app (port 5173)
-│   │   ├── vite.config.ts
-│   │   ├── index.html
-│   │   ├── tailwind.config.ts
-│   │   └── src/
-│   │       ├── main.tsx
-│   │       ├── App.tsx
-│   │       └── tools.config.ts     ← List of all tools (name, url, description, icon)
-│   │
-│   ├── tool-starter/               ← Starter template (copy this to create any new tool)
-│   │   ├── package.json
-│   │   ├── vite.config.ts
-│   │   ├── index.html
-│   │   ├── tailwind.config.ts
-│   │   ├── api/
-│   │   │   └── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (Vercel serverless)
-│   │   └── src/
-│   │       ├── main.tsx
-│   │       └── App.tsx
-│   │
-│   └── video-curator/              ← Video Curator tool (hub id: video-curator)
-│       ├── api/
-│       │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (used by transcript segmentation)
-│       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
-│       ├── server/
-│       │   └── youtubeTranscriptCore.ts
-│       └── …                       Live: https://ai-tools-video-curator.vercel.app (local Vite port 5174)
-│                                       Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
-│
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175
-│   Hub links: DEV → each tool’s `devUrl` (localhost); production/Vercel build → `url`
-│
+│   └── platform/
+│       ├── app/
+│       │   ├── layout.tsx
+│       │   ├── page.tsx              ← Hub
+│       │   ├── api/ai/route.ts       ← AI gateway
+│       │   └── tools/
+│       │       ├── _starter/         ← Template (not routed)
+│       │       └── video-curator/
+│       ├── agents/
+│       │   ├── registry.ts
+│       │   └── types.ts
+│       ├── lib/tools.config.ts
+│       └── package.json
 ├── packages/
-│   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs
-│   │   ├── package.json
-│   │   ├── tailwind.base.ts        ← Design tokens (colors, fonts, spacing, radii)
-│   │   └── tsconfig.base.json
-│   │
-│   ├── ui/                         ← Shared React component library
-│   │   ├── package.json
-│   │   ├── tsconfig.json
-│   │   └── src/
-│   │       ├── index.ts            ← Exports all components
-│   │       ├── components/
-│   │       │   ├── Button.tsx
-│   │       │   ├── Card.tsx
-│   │       │   ├── Input.tsx
-│   │       │   ├── Badge.tsx
-│   │       │   ├── Spinner.tsx
-│   │       │   └── PageLayout.tsx
-│   │       └── styles/
-│   │           └── globals.css     ← Base CSS resets and font imports
-│   │
-│   └── ai-client/                  ← Shared AI API wrapper
-│       ├── package.json
-│       ├── tsconfig.json
-│       └── src/
-│           ├── index.ts            ← Re-exports legacy callAI/prompt
-│           ├── client.ts           ← Browser-safe: useAI/aiChat → /api/chat (no key/SDK)
-│           └── server.ts           ← Serverless handler: only place with OpenAI SDK + OPENAI_API_KEY
-│
-├── turbo.json
-├── pnpm-workspace.yaml
-├── package.json
-└── .env.example
+│   ├── config/
+│   ├── ui/
+│   └── ai-client/
+├── agents/
+└── turbo.json
 ```
 
+---
+
+## Adding a Tool
+
+1. Copy `app/tools/_starter/` → `app/tools/<tool-name>/`
+2. Edit `ai.config.ts` and `page.tsx`
+3. Add entry to `lib/tools.config.ts` and import in `agents/registry.ts`
+
+See root [`README.md`](../../README.md) for details.

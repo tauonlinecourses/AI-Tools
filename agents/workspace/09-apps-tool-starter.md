@@ -1,4 +1,6 @@
-﻿<!-- AGENT DOC: Step 6 — apps/tool-starter template -->
+﻿> **⚠️ Legacy doc.** Superseded by `apps/platform/app/tools/_starter/`. See [`../Migration.md`](../Migration.md).
+
+<!-- AGENT DOC: Step 6 — apps/tool-starter template -->
 <!-- Topic: tool template, api/chat re-export, starter App with useAI -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 

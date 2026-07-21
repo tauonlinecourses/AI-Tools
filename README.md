@@ -1,101 +1,98 @@
 # AI-Tools
 
-A Turborepo + pnpm monorepo of AI tools. Each tool is an independent React app; all share the same design language and UI packages. Every app deploys to Vercel separately.
+A Turborepo + pnpm monorepo of AI tools. One Next.js platform (`apps/platform`) deploys as a single Vercel project. Each tool is a route under `/tools/<name>`. Shared design language and UI live in `packages/`.
 
 ## Project structure
 
 ```
 AI-Tools/
-├── apps/                 ← Applications
-│   ├── hub/              ← Homepage launcher — links to every tool
-│   ├── tool-starter/     ← Template for creating a new tool
-│   └── video-curator/    ← Tool for curating video transcripts and exporting clips
+├── apps/
+│   └── platform/                  ← The app (Next.js App Router)
+│       ├── app/
+│       │   ├── page.tsx           ← Hub — tool launcher grid
+│       │   ├── api/ai/route.ts    ← Single AI gateway (only file touching the key)
+│       │   └── tools/
+│       │       ├── _starter/      ← Template for new tools (not routed)
+│       │       └── video-curator/ ← Migrated tool
+│       ├── agents/
+│       │   ├── registry.ts        ← toolId → ai.config
+│       │   └── types.ts
+│       └── lib/
+│           └── tools.config.ts    ← Hub registry (id, name, path, icon)
 │
-├── packages/             ← Shared code
-│   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
-│   ├── ui/               ← Shared React component library
-│   └── ai-client/        ← Shared AI client (useAI hook) + server handler (OpenAI SDK)
+├── packages/
+│   ├── config/                    ← Shared Tailwind / TS configs
+│   ├── ui/                        ← Shared React components (PageLayout, etc.)
+│   └── ai-client/                 ← Thin client hooks for /api/ai (no OpenAI code)
 │
-├── agents/               ← Build instructions for the Cursor agent
-│   └── workspace/        ← Split monorepo docs (start at workspace/README.md)
+├── agents/                        ← Cursor agent instructions
+│   └── workspace/
 ├── turbo.json
 └── pnpm-workspace.yaml
 ```
 
 | Part | Role |
 |---|---|
-| `apps/hub` | Main launcher; tool list comes from `tools.config.ts` |
-| `apps/tool-*` / other tools | One independent app per tool |
-| `packages/*` | Shared design, UI, and AI client used by every app |
+| `apps/platform` | Single Next.js app — hub, tools, and AI gateway |
+| `app/tools/<name>/` | One self-contained folder per tool |
+| `packages/*` | Shared design, UI, and AI client hooks |
 
 ## AI API call flow
 
-The OpenAI API key **never** reaches the browser. All AI calls go through a shared serverless handler.
+The OpenAI API key **never** reaches the browser. All AI calls go through one gateway route.
 
 ```mermaid
 flowchart LR
   subgraph Browser
-    C1[React Component]
+    C1[Tool page / component]
+    Hook["@workspace/ai-client<br/>useToolChat() / completeViaGateway()"]
   end
 
-  subgraph SharedPackage["packages/ai-client"]
-    Client["client.ts<br/>useAI() / aiChat()"]
-    Server["server.ts<br/>handler()"]
-  end
-
-  subgraph Vercel["Vercel Serverless Function"]
-    Route["apps/*/api/chat.ts<br/>re-exports handler"]
+  subgraph Platform["apps/platform"]
+    Route["app/api/ai/route.ts<br/>streamText + @ai-sdk/openai"]
+    Registry["agents/registry.ts<br/>toolId → ai.config"]
   end
 
   subgraph OpenAI
     API["OpenAI API"]
   end
 
-  C1 -->|"fetch /api/chat"| Client
-  Client -->|"POST /api/chat"| Route
-  Route -->|"delegates"| Server
-  Server -->|"OPENAI_API_KEY<br/>(server env only)"| API
-  API -->|"{ content }"| Server
-  Server -->|"Response.json"| Route
-  Route -->|"JSON"| Client
-  Client -->|"string"| C1
+  C1 --> Hook
+  Hook -->|"POST /api/ai { toolId, messages }"| Route
+  Route --> Registry
+  Route -->|"OPENAI_API_KEY (server env only)"| API
+  API -->|"SSE stream"| Route
+  Route --> Hook
+  Hook --> C1
 ```
 
 **Key points:**
-- `client.ts` is browser-safe — no SDK, no key. Components import `useAI()` or `aiChat()` from `@workspace/ai-client/client`.
-- `server.ts` is the **only** file that imports the OpenAI SDK or reads `OPENAI_API_KEY`. It runs as a Vercel serverless function (Node.js runtime — Edge cannot bundle monorepo workspace imports).
-- Each app's `api/chat.ts` is a one-line re-export: `export { default } from "@workspace/ai-client/vercel"` (bridges Vercel `req`/`res` → Web `handler`).
-- Supports `model`, `systemPrompt`, `temperature`, and `responseFormat` (JSON mode) — e.g. video-curator uses `gpt-4o-mini` with `temperature: 0` and `responseFormat: { type: 'json_object' }` for transcript segmentation.
-- Local dev: `vite dev` serves `/api/chat` via a middleware in `vite.config.ts` that delegates to the same shared handler.
+- `packages/ai-client` is browser-safe — no SDK, no key. Tools import `useToolChat(toolId)` or `completeViaGateway({ toolId, prompt })`.
+- `app/api/ai/route.ts` is the **only** file that imports `@ai-sdk/openai` or reads `OPENAI_API_KEY`.
+- Each tool declares model, system prompt, and temperature in its local `ai.config.ts`. The gateway reads it from `agents/registry.ts`.
+- Local dev: copy `.env.example` to `apps/platform/.env.local` and run `pnpm --filter platform dev`.
 
-See [`agents/workspace/secure-ai-client.md`](agents/workspace/secure-ai-client.md) for the full architecture guide and rules.
+See [`agents/workspace/ai-api-flow.md`](agents/workspace/ai-api-flow.md) for the full architecture guide.
 
 ## Tech stack
 
-React + Vite + TypeScript · Tailwind CSS · Turborepo · pnpm · Vercel
+Next.js 15 (App Router) + React + TypeScript · Tailwind CSS · Vercel AI SDK · Turborepo · pnpm · Vercel
 
 ## Quick start
 
 ```bash
 pnpm install
-pnpm dev
+cp .env.example apps/platform/.env.local   # add your OpenAI key
+pnpm --filter platform dev
 ```
+
+Open http://localhost:3000 — the hub lists all registered tools.
 
 ## Add a new tool
 
-1. Copy `apps/tool-starter/` → `apps/tool-myname/`
-2. In the copy, set `"name": "tool-myname"` in `package.json`
-3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, next free…)
-4. Build the tool in `src/App.tsx` (keep `PageLayout`)
-5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
-6. Deploy on Vercel (one project per app):
-   - **Root Directory:** `apps/tool-myname`
-   - **Build Command / Install / Output:** already set in the copied `vercel.json` (update the `--filter` name)
-   - Enable **Include source files outside of the Root Directory** (for `packages/*`)
-7. Link the team shared `OPENAI_API_KEY` to the new Vercel project (do not create a duplicate project-level key):
-   - Team Settings → **Environment Variables** (team / Shared — not the project Project tab)
-   - Open shared `OPENAI_API_KEY` → **Edit** → **Link to Projects** → add the new project
-   - Environments: Production (and Preview if needed)
-   - Redeploy the new project after linking
-   - Note: a project-level `OPENAI_API_KEY` overrides the shared one (“Overridden by Project”); remove the project copy if you intend to use Shared
-8. Set the live `url` in `tools.config.ts`. Hub back-links use `HUB_PROD_URL` in `packages/ui/src/hub.ts` (localhost in DEV).
+1. Copy `apps/platform/app/tools/_starter/` → `apps/platform/app/tools/<tool-name>/`
+2. Edit `ai.config.ts` (toolId, model, system prompt) and build the UI in `page.tsx`
+3. Add one entry to `apps/platform/lib/tools.config.ts` and one import line to `apps/platform/agents/registry.ts`
+4. Done — it deploys with the platform on the next push
+
+No Vercel project, port allocation, or per-app env linking required.
