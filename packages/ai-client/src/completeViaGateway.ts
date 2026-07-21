@@ -1,12 +1,9 @@
 /**
- * Minimal one-shot client for the platform AI gateway (/api/ai).
+ * One-shot (non-streaming) client for the platform AI gateway (/api/ai).
  *
- * The gateway always streams (AI SDK UI message stream, SSE). This helper
- * sends a single user prompt, consumes the stream to completion, and returns
- * the full text — for tools like the segmenter that need a complete JSON
- * response rather than a chat UI.
- *
- * NOTE: Step 4 of the migration moves this into @workspace/ai-client.
+ * Sends a single user prompt, consumes the SSE stream to completion, and
+ * returns the full text. Use this for tools that need a complete response
+ * (e.g. JSON) rather than a chat UI.
  */
 export async function completeViaGateway(args: {
   toolId: string;

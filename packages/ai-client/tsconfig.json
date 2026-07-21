@@ -1,8 +1,7 @@
 {
   "extends": "@workspace/config/tsconfig",
   "compilerOptions": {
-    "noEmit": true,
-    "types": ["node"]
+    "noEmit": true
   },
   "include": ["src"]
 }

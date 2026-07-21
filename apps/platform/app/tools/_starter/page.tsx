@@ -1,19 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { useToolChat } from "@workspace/ai-client";
 import { Button, Input, PageLayout } from "@workspace/ui";
 import { config } from "./ai.config";
 
 export default function StarterToolPage() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/ai",
-      body: { toolId: config.toolId },
-    }),
-  });
+  const { messages, sendMessage, status } = useToolChat(config.toolId);
 
   const isBusy = status === "submitted" || status === "streaming";
 

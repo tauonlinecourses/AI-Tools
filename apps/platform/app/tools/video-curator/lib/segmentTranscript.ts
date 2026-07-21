@@ -1,5 +1,5 @@
 import { config as aiConfig } from '../ai.config'
-import { completeViaGateway } from './aiGatewayClient'
+import { completeViaGateway } from '@workspace/ai-client'
 import type { SrtItem } from './parseSrt'
 import type { Section } from './store'
 import { assignColors } from './store'

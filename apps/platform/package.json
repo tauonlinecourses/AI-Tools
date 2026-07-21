@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.16",
-    "@ai-sdk/react": "^4.0.35",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@workspace/ai-client": "workspace:*",
     "@workspace/ui": "workspace:*",
     "ai": "^7.0.32",
     "html2canvas": "^1.4.1",
