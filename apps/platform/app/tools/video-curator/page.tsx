@@ -1,0 +1,63 @@
+"use client";
+
+import { PageLayout } from '@workspace/ui'
+import { RightPanel } from './components/RightPanel'
+import { useCallback, useRef } from 'react'
+import { Timeline } from './components/Timeline'
+import { TranscriptPane, type TranscriptPaneHandle } from './components/TranscriptPane'
+import { useStore } from './lib/store'
+import { VideoPlayer, type VideoPlayerHandle } from './components/VideoPlayer'
+
+export default function VideoCuratorPage() {
+  const sections = useStore(s => s.sections)
+  const videoUrl = useStore(s => s.videoUrl)
+  const setCurrentTime = useStore(s => s.setCurrentTime)
+
+  const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
+  const transcriptRef = useRef<TranscriptPaneHandle | null>(null)
+
+  const handleSeek = useCallback((t: number) => {
+    if (videoUrl) {
+      videoPlayerRef.current?.seekTo(t)
+      return
+    }
+    // Transcript-only mode: still drive playhead + active sentence highlighting.
+    setCurrentTime(t)
+  }, [setCurrentTime, videoUrl])
+
+  const handleSectionClick = useCallback((sectionId: number) => {
+    const section = sections.find(s => s.id === sectionId)
+    if (!section || section.items.length === 0) return
+    const firstItem = section.items[0]
+    transcriptRef.current?.scrollToSentence(firstItem.index)
+    videoPlayerRef.current?.seekTo(firstItem.startTime)
+  }, [sections])
+
+  return (
+    <PageLayout
+      toolName="Video Curator"
+      toolDescription="Curate video transcripts into sections, then export clips, SRT, and PDF."
+      hubUrl="/"
+      maxWidth="full"
+      padded={false}
+    >
+      <div className="flex h-[calc(100vh-3rem)] overflow-hidden bg-white text-gray-900">
+        <main className="w-[65%] p-6">
+          <div className="flex h-full flex-col gap-4">
+            <VideoPlayer ref={videoPlayerRef} />
+
+            <Timeline onSeek={handleSeek} onSectionClick={handleSectionClick} />
+
+            <div className="min-h-0 flex-1">
+              <TranscriptPane ref={transcriptRef} onSeek={handleSeek} className="h-full" />
+            </div>
+          </div>
+        </main>
+
+        <div className="w-[35%]">
+          <RightPanel onSeek={handleSeek} />
+        </div>
+      </div>
+    </PageLayout>
+  )
+}

@@ -13,4 +13,13 @@ export interface Tool {
  * Adding a tool = one entry here + one import in `agents/registry.ts`.
  * The `_starter` template is intentionally NOT listed (and not routed).
  */
-export const tools: Tool[] = [];
+export const tools: Tool[] = [
+  {
+    id: "video-curator",
+    name: "Video Curator",
+    description:
+      "Curate video transcripts into sections, then export clips, SRT, and PDF.",
+    path: "/tools/video-curator",
+    icon: "film",
+  },
+];
