@@ -28,6 +28,13 @@ This package owns all design tokens and shared configs. Everything visual derive
 }
 ```
 
+Apps and packages should **extend the base file by relative path** (not `@workspace/config/tsconfig`) so the IDE TypeScript language service can resolve it:
+
+- Apps: `"extends": "../../packages/config/tsconfig.base.json"`
+- Packages under `packages/`: `"extends": "../config/tsconfig.base.json"`
+
+The `./tsconfig` export remains for tooling that supports package-name extends; Cursor/VS Code often fails to resolve it and then reports cascading “Cannot use JSX unless the '--jsx' flag is provided” errors.
+
 ### `packages/config/tsconfig.base.json`
 
 ```json

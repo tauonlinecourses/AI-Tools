@@ -58,14 +58,17 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool
 
 ## How to Add a New Tool
 
-1. Copy `apps/tool-starter/` to `apps/tool-myname/`
+1. Copy `apps/tool-starter/` to `apps/tool-myname/` (includes `agents/` — keep it; put tool-specific agent docs there)
 2. In the copy, rename `"name": "tool-starter"` in `package.json` to `"name": "tool-myname"`
-3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175 — pick the next free one)
+3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175, course-builder 5176 — pick the next free one)
 4. Edit `apps/tool-myname/src/App.tsx` to build the tool
-5. Add an entry to `apps/hub/src/tools.config.ts` with both `url` (Vercel) and `devUrl` (`http://localhost:<port>`)
-6. Create a new Vercel project pointing to `apps/tool-myname`
-7. Link the team shared `OPENAI_API_KEY` to the new project: Team Settings → Environment Variables → edit shared `OPENAI_API_KEY` → **Link to Projects** → add the new project → Redeploy. Do not recreate the key as a project-level var (that overrides Shared).
-8. Update the `url` field in `tools.config.ts` with the live Vercel URL
+5. Update `apps/tool-myname/agents/README.md` (and add specs as needed) for this tool
+6. Add an entry to `apps/hub/src/tools.config.ts` with both `url` (Vercel) and `devUrl` (`http://localhost:<port>`). Do **not** list `tool-starter` on the hub — it is a copy template only.
+7. Create a new Vercel project pointing to `apps/tool-myname`
+8. Link the team shared `OPENAI_API_KEY` to the new project: Team Settings → Environment Variables → edit shared `OPENAI_API_KEY` → **Link to Projects** → add the new project → Redeploy. Do not recreate the key as a project-level var (that overrides Shared).
+9. Update the `url` field in `tools.config.ts` with the live Vercel URL
+
+Every tool app must keep an `apps/<tool>/agents/` folder for Cursor agent docs (specs, phase flows). Monorepo-wide docs stay in repo-root `agents/workspace/`.
 
 ---
 

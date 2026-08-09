@@ -17,16 +17,6 @@ export function toolHref(tool: Tool): string {
 export const tools: Tool[] = [
   // ── Add your tools here ─────────────────────────────────────────────
   {
-    id:          "tool-starter",
-    name:        "Starter Tool",
-    description: "Use this template to create new tools",
-    url:         "https://tool-starter.vercel.app",
-    devUrl:      "http://localhost:5175",
-    icon:        "bolt",
-    status:      "beta",
-    category:    "General",
-  },
-  {
     id:          "video-curator",
     name:        "Video Curator",
     description: "Curate video transcripts into sections, then export clips, SRT, and PDF.",
@@ -36,13 +26,23 @@ export const tools: Tool[] = [
     status:      "live",
     category:    "Video",
   },
+  {
+    id:          "course-builder",
+    name:        "Course Builder",
+    description: "Generate structured course outlines from a topic and audience.",
+    url:         "https://ai-tools-course-builder.vercel.app",
+    devUrl:      "http://localhost:5176",
+    icon:        "book",
+    status:      "beta",
+    category:    "Education",
+  },
   // ── Example entries (fill in real URLs after deploying) ─────────────
   // {
   //   id:          "tool-auth",
   //   name:        "Auth Scanner",
   //   description: "AI-powered trading card authentication.",
   //   url:         "https://tool-auth.vercel.app",
-  //   devUrl:      "http://localhost:5176",
+  //   devUrl:      "http://localhost:5177",
   //   icon:        "search",
   //   status:      "live",
   //   category:    "TruLux",

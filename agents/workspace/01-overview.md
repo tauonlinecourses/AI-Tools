@@ -54,28 +54,36 @@ workspace/
 │   │       ├── App.tsx
 │   │       └── tools.config.ts     ← List of all tools (name, url, description, icon)
 │   │
-│   ├── tool-starter/               ← Starter template (copy this to create any new tool)
+│   ├── tool-starter/               ← Copy template only (not listed on the hub)
 │   │   ├── package.json
 │   │   ├── vite.config.ts
 │   │   ├── index.html
 │   │   ├── tailwind.config.ts
+│   │   ├── agents/                 ← Required on every tool; copy with the template
+│   │   │   └── README.md
 │   │   ├── api/
 │   │   │   └── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (Vercel serverless)
 │   │   └── src/
 │   │       ├── main.tsx
 │   │       └── App.tsx
 │   │
-│   └── video-curator/              ← Video Curator tool (hub id: video-curator)
-│       ├── api/
-│       │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (used by transcript segmentation)
-│       │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
-│       ├── server/
-│       │   └── youtubeTranscriptCore.ts
-│       └── …                       Live: https://ai-tools-video-curator.vercel.app (local Vite port 5174)
-│                                       Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
+│   ├── video-curator/              ← Video Curator tool (hub id: video-curator)
+│   │   ├── agents/                 ← Per-tool agent docs
+│   │   ├── api/
+│   │   │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (used by transcript segmentation)
+│   │   │   └── youtube-transcript.ts  ← Vercel serverless; relative imports need `.js` (NodeNext)
+│   │   ├── server/
+│   │   │   └── youtubeTranscriptCore.ts
+│   │   └── …                       Live: https://ai-tools-video-curator.vercel.app (local Vite port 5174)
+│   │                                   Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
+│   │
+│   └── course-builder/             ← Course Builder tool (hub id: course-builder)
+│       ├── agents/                 ← Per-tool agent docs (e.g. course-builder-mvp-spec.md)
+│       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
+│       └── …                       Local Vite port 5176; generates course outlines via useAI
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175
-│   Hub links: DEV → each tool’s `devUrl` (localhost); production/Vercel build → `url`
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176
+│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs

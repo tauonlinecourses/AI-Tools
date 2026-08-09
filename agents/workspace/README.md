@@ -48,7 +48,7 @@ Each section file has Previous / Next links at the top.
 | Change AI client / API key behavior | `06` + env notes in `02` / Vercel in `10` |
 | Add or rename a tool on the hub | `07` (+ checklist in `10`) |
 | Change hub homepage UI | `08` |
-| Create a new tool app | `09` then `10` |
+| Create a new tool app | `09` then `10` (copy includes `agents/`; do not list starter on hub) |
 | Deploy to Vercel / ports / conventions | `10` |
 
 ---
@@ -60,6 +60,7 @@ Each section file has Previous / Next links at the top.
 | hub | 5173 |
 | video-curator | 5174 |
 | tool-starter | 5175 |
+| course-builder | 5176 |
 
 Assign the next free port when adding a tool.
 
@@ -67,6 +68,6 @@ Assign the next free port when adding a tool.
 
 ## Related paths in the repo
 
-- Live apps: `apps/hub`, `apps/video-curator`, `apps/tool-starter`
+- Live apps: `apps/hub`, `apps/video-curator`, `apps/tool-starter`, `apps/course-builder`
 - Shared: `packages/config`, `packages/ui`, `packages/ai-client`
 - Root project overview: [`../../README.md`](../../README.md)
