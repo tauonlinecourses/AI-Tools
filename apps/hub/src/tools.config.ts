@@ -29,7 +29,7 @@ export const tools: Tool[] = [
   {
     id:          "course-builder",
     name:        "Course Builder",
-    description: "Generate structured course outlines from a topic and audience.",
+    description: "Author course structure and page content; review view for Moodle/edX implementers.",
     url:         "https://ai-tools-course-builder.vercel.app",
     devUrl:      "http://localhost:5176",
     icon:        "book",

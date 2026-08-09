@@ -53,7 +53,7 @@ export const Input: React.FC<InputProps> = ({
             "w-full h-9 px-3 text-sm",
             "bg-white border border-surface-200",
             "text-surface-900 placeholder:text-surface-400",
-            "outline-none focus:border-surface-900",
+            "outline-none",
             "disabled:bg-surface-50 disabled:text-surface-400 disabled:cursor-not-allowed",
             "transition-colors duration-fast",
             error ? "border-danger" : "",

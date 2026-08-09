@@ -57,9 +57,16 @@ Shared component library. Continues in [05-packages-ui-layout.md](./05-packages-
     @apply bg-white text-surface-900 font-body antialiased;
   }
 
-  /* High-contrast black focus ring — matches Video Curator */
+  /* High-contrast black focus ring — matches Video Curator.
+     Form fields opt out (they keep a static border only). */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-black ring-offset-2 ring-offset-white;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply ring-0 ring-offset-0;
   }
 
   /* Scrollbar — minimal, sharp */

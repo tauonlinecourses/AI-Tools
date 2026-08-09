@@ -2,5 +2,8 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/ai-client build && pnpm build --filter course-builder",
   "outputDirectory": "dist",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../packages/ui ../../packages/config ../../packages/ai-client"
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../packages/ui ../../packages/config ../../packages/ai-client",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
