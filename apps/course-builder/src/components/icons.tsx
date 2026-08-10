@@ -56,6 +56,24 @@ export const CheckIcon: React.FC<IconProps> = ({ className = "" }) => (
   </svg>
 );
 
+export const CopyIcon: React.FC<IconProps> = ({ className = "" }) => (
+  <svg className={`${base} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+/** Horizontal swap arrows — signals a clickable status cycle. */
+export const SwapIcon: React.FC<IconProps> = ({ className = "" }) => (
+  <svg className={`${base} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+    />
+  </svg>
+);
+
 /** Circular play control — dark disc with light triangle (video placeholder). */
 export const PlayCircleIcon: React.FC<IconProps> = ({ className = "" }) => (
   <svg className={`${base} ${className}`} viewBox="0 0 64 64" aria-hidden>

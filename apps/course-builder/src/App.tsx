@@ -15,8 +15,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<CoursesPage />} />
           <Route path="/courses/:courseId" element={<CourseRedirect />} />
-          <Route path="/courses/:courseId/edit" element={<CourseShell editable />} />
-          <Route path="/courses/:courseId/review" element={<CourseShell editable={false} />} />
+          <Route path="/courses/:courseId/edit" element={<CourseShell mode="edit" />} />
+          <Route
+            path="/courses/:courseId/implement"
+            element={<CourseShell mode="implement" />}
+          />
+          <Route path="/courses/:courseId/review" element={<CourseShell mode="review" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </SaveStatusProvider>

@@ -15,13 +15,24 @@ export interface Section {
 
 export interface Page {
   id: string;
-  section_id: string;
+  /** Set for lesson pages; null for the course home page ("עמוד ראשי"). */
+  section_id: string | null;
+  /** Set for the course home page; null for lesson pages. */
+  course_id: string | null;
   title: string;
   position: number;
   notes: string | null;
 }
 
+/** Course-level default page that sits above the first lesson in the sidebar. */
+export function isHomePage(page: Page): boolean {
+  return page.section_id === null;
+}
+
 export type ComponentType = "banner" | "video" | "text" | "question";
+
+/** URL-driven course shell mode: authoring, implementer, or polished preview. */
+export type CourseViewMode = "edit" | "implement" | "review";
 
 export interface BannerProps {
   title?: string;

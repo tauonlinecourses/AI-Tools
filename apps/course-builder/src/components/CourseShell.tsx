@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageLayout, Card, Spinner } from "@workspace/ui";
-import type { Page, Section, CourseTree, StatusRollup } from "../lib/types";
+import type { CourseViewMode, Page, Section, CourseTree, StatusRollup } from "../lib/types";
+import { isHomePage } from "../lib/types";
 import * as api from "../lib/api";
 import { PageContent } from "./PageContent";
 import { SortableList, type DragHandleProps } from "./SortableList";
@@ -9,7 +10,7 @@ import { ChevronDownIcon, GripIcon, PencilIcon, PlusIcon, TrashIcon } from "./ic
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
 
 interface CourseShellProps {
-  editable: boolean;
+  mode: CourseViewMode;
 }
 
 type Renaming = { kind: "section" | "page"; id: string } | null;
@@ -22,10 +23,12 @@ function formatDate(iso: string): string {
   });
 }
 
-export function CourseShell({ editable }: CourseShellProps) {
+export function CourseShell({ mode }: CourseShellProps) {
   const { courseId } = useParams<{ courseId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { trackSave } = useSaveStatus();
+  const editable = mode === "edit";
+  const showRollups = mode === "implement";
 
   const [tree, setTree] = useState<CourseTree | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +48,7 @@ export function CourseShell({ editable }: CourseShellProps) {
   }, [courseId]);
 
   const refreshRollups = useCallback(() => {
-    if (editable || !tree) return;
+    if (!showRollups || !tree) return;
     api
       .getStatusRollups(
         tree.sections.map((s) => s.id),
@@ -53,7 +56,7 @@ export function CourseShell({ editable }: CourseShellProps) {
       )
       .then(setRollups)
       .catch(() => undefined);
-  }, [editable, tree]);
+  }, [showRollups, tree]);
 
   useEffect(() => {
     refreshRollups();
@@ -66,10 +69,15 @@ export function CourseShell({ editable }: CourseShellProps) {
     if (!tree) return map;
     for (const section of tree.sections) map.set(section.id, []);
     for (const page of tree.pages) {
-      map.get(page.section_id)?.push(page);
+      if (page.section_id) map.get(page.section_id)?.push(page);
     }
     return map;
   }, [tree]);
+
+  const homePage = useMemo(
+    () => tree?.pages.find(isHomePage) ?? null,
+    [tree]
+  );
 
   const selectedPage = useMemo(() => {
     if (!tree) return null;
@@ -78,16 +86,18 @@ export function CourseShell({ editable }: CourseShellProps) {
       const found = tree.pages.find((p) => p.id === requested);
       if (found) return found;
     }
+    if (homePage) return homePage;
     for (const section of tree.sections) {
       const pages = pagesBySection.get(section.id) ?? [];
       if (pages.length > 0) return pages[0];
     }
     return null;
-  }, [tree, pagesBySection, searchParams]);
+  }, [tree, pagesBySection, searchParams, homePage]);
 
   const numbering = useMemo(() => {
     const map = new Map<string, string>();
     if (!tree) return map;
+    // Home page has no lesson numbering — shown by title only.
     tree.sections.forEach((section, sIdx) => {
       map.set(section.id, `${sIdx + 1}`);
       (pagesBySection.get(section.id) ?? []).forEach((page, pIdx) => {
@@ -179,6 +189,7 @@ export function CourseShell({ editable }: CourseShellProps) {
   }
 
   async function handleDeletePage(page: Page) {
+    if (isHomePage(page)) return;
     if (!window.confirm(`למחוק את העמוד "${page.title}"?`)) return;
     try {
       await trackSave(api.deletePage(page.id));
@@ -254,12 +265,21 @@ export function CourseShell({ editable }: CourseShellProps) {
   function renderPageRow(page: Page, handle?: DragHandleProps) {
     const isSelected = selectedPage?.id === page.id;
     const isRenaming = renaming?.kind === "page" && renaming.id === page.id;
+    const isHome = isHomePage(page);
+    const pageNumber = numbering.get(page.id);
+    const pageRollup = showRollups ? rollups?.perPage.get(page.id) : undefined;
+    const isComplete =
+      !!pageRollup &&
+      pageRollup.total_count > 0 &&
+      pageRollup.implemented_count === pageRollup.total_count;
     return (
       <div
-        className={`group flex items-center gap-1.5 mx-2 ps-5 pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
+        className={`group flex items-center gap-1.5 mx-2 ${isHome ? "ps-2" : "ps-5"} pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
           isSelected
             ? "bg-[#0F6CBF] text-white font-medium"
-            : "text-surface-600 hover:bg-white hover:text-surface-900"
+            : isComplete
+              ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-60"
+              : "text-surface-600 hover:bg-white hover:text-surface-900"
         }`}
         onClick={() => selectPage(page.id)}
       >
@@ -276,19 +296,31 @@ export function CourseShell({ editable }: CourseShellProps) {
             <GripIcon className="w-3 h-3" />
           </button>
         )}
-        <span className="shrink-0">{numbering.get(page.id)}</span>
-        <span
-          className={`shrink-0 ${isSelected ? "text-white/70" : "text-surface-400"}`}
-          aria-hidden
-        >
-          |
-        </span>
+        {pageNumber && (
+          <>
+            <span className="shrink-0">{pageNumber}</span>
+            <span
+              className={`shrink-0 ${
+                isSelected
+                  ? "text-white/70"
+                  : isComplete
+                    ? "text-emerald-700/50"
+                    : "text-surface-400"
+              }`}
+              aria-hidden
+            >
+              |
+            </span>
+          </>
+        )}
         {isRenaming ? (
           renderRenameInput("page", page.id, page.title)
         ) : (
-          <span className="truncate flex-1">{page.title}</span>
+          <span className={`truncate flex-1 ${isHome ? "font-semibold" : ""}`}>
+            {page.title}
+          </span>
         )}
-        {!editable && rollupLabel(rollups?.perPage.get(page.id), isSelected)}
+        {showRollups && rollupLabel(pageRollup, isSelected)}
         {editable && !isRenaming && (
           <span className="ms-auto hidden group-hover:flex items-center shrink-0">
             <button
@@ -305,20 +337,22 @@ export function CourseShell({ editable }: CourseShellProps) {
             >
               <PencilIcon className="w-3 h-3" />
             </button>
-            <button
-              className={`p-1 ${
-                isSelected
-                  ? "text-white/70 hover:text-white"
-                  : "text-surface-400 hover:text-danger"
-              }`}
-              title="מחק עמוד"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeletePage(page);
-              }}
-            >
-              <TrashIcon className="w-3 h-3" />
-            </button>
+            {!isHome && (
+              <button
+                className={`p-1 ${
+                  isSelected
+                    ? "text-white/70 hover:text-white"
+                    : "text-surface-400 hover:text-danger"
+                }`}
+                title="מחק עמוד"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeletePage(page);
+                }}
+              >
+                <TrashIcon className="w-3 h-3" />
+              </button>
+            )}
           </span>
         )}
       </div>
@@ -360,7 +394,7 @@ export function CourseShell({ editable }: CourseShellProps) {
           ) : (
             <span className="truncate flex-1">{section.title}</span>
           )}
-          {!editable && rollupLabel(rollups?.perSection.get(section.id))}
+          {showRollups && rollupLabel(rollups?.perSection.get(section.id))}
           {editable && !isRenaming && (
             <span className="ms-auto hidden group-hover:flex items-center shrink-0">
               <button
@@ -430,22 +464,29 @@ export function CourseShell({ editable }: CourseShellProps) {
                 )}
               </div>
               <div className="flex border border-surface-200 rounded-control overflow-hidden shrink-0 text-xs font-semibold">
-                <Link
-                  to={`/courses/${courseId}/edit${selectedPage ? `?page=${selectedPage.id}` : ""}`}
-                  className={`px-2.5 py-1 transition-colors duration-fast ${
-                    editable ? "bg-black text-white" : "text-surface-600 hover:bg-white"
-                  }`}
-                >
-                  עריכה
-                </Link>
-                <Link
-                  to={`/courses/${courseId}/review${selectedPage ? `?page=${selectedPage.id}` : ""}`}
-                  className={`px-2.5 py-1 transition-colors duration-fast border-s border-surface-200 ${
-                    !editable ? "bg-black text-white" : "text-surface-600 hover:bg-white"
-                  }`}
-                >
-                  הטמעה
-                </Link>
+                {(
+                  [
+                    { path: "edit", label: "עריכה", value: "edit" as const },
+                    { path: "implement", label: "הטמעה", value: "implement" as const },
+                    { path: "review", label: "תצוגה", value: "review" as const },
+                  ] as const
+                ).map((seg, i) => (
+                  <Link
+                    key={seg.value}
+                    to={`/courses/${courseId}/${seg.path}${
+                      selectedPage ? `?page=${selectedPage.id}` : ""
+                    }`}
+                    className={`px-2.5 py-1 transition-colors duration-fast ${
+                      i > 0 ? "border-s border-surface-200" : ""
+                    } ${
+                      mode === seg.value
+                        ? "bg-black text-white"
+                        : "text-surface-600 hover:bg-white"
+                    }`}
+                  >
+                    {seg.label}
+                  </Link>
+                ))}
               </div>
             </div>
             <Link
@@ -463,9 +504,12 @@ export function CourseShell({ editable }: CourseShellProps) {
                 טוען...
               </div>
             )}
+            {tree !== null && homePage && (
+              <div className="mb-1">{renderPageRow(homePage)}</div>
+            )}
             {tree !== null && tree.sections.length === 0 && (
               <p className="px-4 py-2 text-base text-surface-400">
-                {editable ? "אין עדיין שיעורים בקורס." : "הקורס ריק."}
+                {editable ? "אין עדיין שיעורים בקורס." : "אין שיעורים בקורס."}
               </p>
             )}
             {tree !== null &&
@@ -510,7 +554,7 @@ export function CourseShell({ editable }: CourseShellProps) {
             <div className="max-w-3xl mx-auto px-6 py-10 text-center">
               <p className="text-sm text-surface-500">
                 {editable
-                  ? "צרו שיעור ועמוד ראשון כדי להתחיל לבנות את הקורס."
+                  ? "צרו שיעור כדי להתחיל לבנות את הקורס."
                   : "אין עמודים בקורס הזה."}
               </p>
             </div>
@@ -520,8 +564,8 @@ export function CourseShell({ editable }: CourseShellProps) {
               key={selectedPage.id}
               page={selectedPage}
               numbering={numbering.get(selectedPage.id) ?? ""}
-              editable={editable}
-              rollup={rollups?.perPage.get(selectedPage.id)}
+              mode={mode}
+              rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
               onPageChange={handlePageFieldChange}
               onStatusChange={refreshRollups}
             />

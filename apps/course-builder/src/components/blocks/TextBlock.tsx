@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
-import type { TextProps } from "../../lib/types";
+import type { CourseViewMode, TextProps } from "../../lib/types";
 
 interface Props {
   props: TextProps;
-  editable: boolean;
+  mode: CourseViewMode;
   onChange: (props: TextProps) => void;
 }
 
-/** Shared typography so edit textarea and preview paragraph measure the same. */
+/** Shared typography so edit textarea and read-only paragraph measure the same. */
 const textClass =
   "w-full p-0 m-0 text-base text-surface-900 whitespace-pre-wrap leading-relaxed";
 
@@ -41,8 +41,8 @@ function AutoGrowTextarea({
   );
 }
 
-export function TextBlock({ props, editable, onChange }: Props) {
-  if (!editable) {
+export function TextBlock({ props, mode, onChange }: Props) {
+  if (mode !== "edit") {
     return props.markdown?.trim() ? (
       <p className={textClass}>{props.markdown}</p>
     ) : (

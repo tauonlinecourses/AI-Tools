@@ -131,7 +131,7 @@ export function CoursesPage() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
-                      title="תצוגת סקירה"
+                      title="תצוגה"
                       onClick={(e) => {
                         e.stopPropagation();
                         navigate(`/courses/${course.id}/review`);

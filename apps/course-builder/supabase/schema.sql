@@ -28,11 +28,18 @@ create table sections (
 
 create table pages (
   id uuid primary key default gen_random_uuid(),
+  -- Lesson page: section_id set, course_id null.
+  -- Course home page ("עמוד ראשי"): course_id set, section_id null.
   section_id uuid references sections(id) on delete cascade,
+  course_id uuid references courses(id) on delete cascade,
   title text not null,
   position int not null,
   notes text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  constraint pages_section_or_course check (
+    (section_id is not null and course_id is null)
+    or (section_id is null and course_id is not null)
+  )
 );
 
 create table components (
@@ -52,6 +59,8 @@ create table components (
 
 create index idx_sections_course_id on sections(course_id);
 create index idx_pages_section_id on pages(section_id);
+create index idx_pages_course_id on pages(course_id);
+create unique index pages_one_home_per_course on pages(course_id) where section_id is null;
 create index idx_components_page_id on components(page_id);
 
 -- ============================================================
@@ -73,6 +82,26 @@ for each row execute function set_updated_at();
 create trigger components_updated_at
 before update on components
 for each row execute function set_updated_at();
+
+-- Mark implemented using DB now() so it matches the updated_at trigger
+-- (client ISO timestamps can lag and land as needs_update).
+create or replace function mark_component_implemented(component_id uuid)
+returns components
+language plpgsql
+as $$
+declare
+  row components;
+begin
+  update components
+  set implemented_at = now()
+  where id = component_id
+  returning * into row;
+  if row.id is null then
+    raise exception 'component not found: %', component_id;
+  end if;
+  return row;
+end;
+$$;
 
 -- ============================================================
 -- IMPLEMENTATION STATUS VIEWS
@@ -103,10 +132,10 @@ group by p.id;
 create view section_status as
 select
   s.id as section_id,
-  sum(ps.implemented_count) as implemented_count,
-  sum(ps.needs_update_count) as needs_update_count,
-  sum(ps.not_implemented_count) as not_implemented_count,
-  sum(ps.total_count) as total_count
+  coalesce(sum(ps.implemented_count), 0) as implemented_count,
+  coalesce(sum(ps.needs_update_count), 0) as needs_update_count,
+  coalesce(sum(ps.not_implemented_count), 0) as not_implemented_count,
+  coalesce(sum(ps.total_count), 0) as total_count
 from sections s
 left join pages p on p.section_id = s.id
 left join page_status ps on ps.page_id = p.id

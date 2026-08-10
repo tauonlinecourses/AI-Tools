@@ -1,10 +1,11 @@
-import type { VideoProps } from "../../lib/types";
+import type { CourseViewMode, VideoProps } from "../../lib/types";
+import { resolveVideoEmbedSrc } from "../../lib/videoEmbed";
 import { ChevronDownIcon, PlayCircleIcon } from "../icons";
 import { Field, SelectField, TextField } from "./fields";
 
 interface Props {
   props: VideoProps;
-  editable: boolean;
+  mode: CourseViewMode;
   onChange: (props: VideoProps) => void;
   /** Edit mode: whether the settings panel above the placeholder is open. */
   settingsOpen?: boolean;
@@ -36,7 +37,7 @@ function VideoPlaceholder({
   const body = (
     <>
       <p className="text-white text-xl sm:text-2xl font-medium text-center max-w-2xl">{label}</p>
-      <PlayCircleIcon className="w-20 h-20" />
+      <PlayCircleIcon className="w-24 h-24" />
       {!href && (
         <p className="text-sm sm:text-base text-white/70 font-medium">ללא קובץ</p>
       )}
@@ -88,6 +89,21 @@ function VideoPlaceholder({
   );
 }
 
+function VideoEmbed({ src, title }: { src: string; title: string }) {
+  return (
+    <div className="relative aspect-video w-full overflow-hidden bg-black">
+      <iframe
+        src={src}
+        title={title}
+        className="absolute inset-0 w-full h-full border-0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
+    </div>
+  );
+}
+
 function SettingsFields({
   props,
   onChange,
@@ -132,7 +148,7 @@ function SettingsFields({
 
 export function VideoBlock({
   props,
-  editable,
+  mode,
   onChange,
   settingsOpen = false,
   onToggleSettings,
@@ -141,6 +157,15 @@ export function VideoBlock({
 }: Props) {
   const defaultLabel = defaultVideoLabel(pageTitle, videoNumber);
   const label = props.title?.trim() || defaultLabel;
+  const editable = mode === "edit";
+
+  if (mode === "review") {
+    const embedSrc = resolveVideoEmbedSrc(props.url, props.provider);
+    if (embedSrc) {
+      return <VideoEmbed src={embedSrc} title={label} />;
+    }
+    return <VideoPlaceholder label={label} url={props.url} />;
+  }
 
   if (!editable) {
     return <VideoPlaceholder label={label} url={props.url} />;

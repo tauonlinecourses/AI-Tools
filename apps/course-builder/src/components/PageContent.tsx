@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, Spinner } from "@workspace/ui";
-import type { BlockProps, ComponentType, Page, PageComponent, StatusRollup } from "../lib/types";
+import type {
+  BlockProps,
+  ComponentType,
+  CourseViewMode,
+  Page,
+  PageComponent,
+  StatusRollup,
+} from "../lib/types";
 import { componentStatus } from "../lib/types";
 import * as api from "../lib/api";
 import { useSaveStatus } from "../lib/saveStatus";
 import { SortableList } from "./SortableList";
 import { BlockRenderer } from "./blocks/BlockRenderer";
-import { StatusBadge } from "./StatusBadge";
+import { StatusBadge, nextStatus, statusHeaderClass } from "./StatusBadge";
 import {
   BannerIcon,
-  CheckIcon,
   ChevronDownIcon,
+  CopyIcon,
   GripIcon,
   PlusIcon,
   QuestionIcon,
@@ -18,6 +25,20 @@ import {
   TrashIcon,
   VideoIcon,
 } from "./icons";
+
+/** Clipboard payload for the implement-mode header copy button (by block type). */
+function headerCopyText(component: PageComponent): string {
+  switch (component.type) {
+    case "text":
+      return component.props.markdown ?? "";
+    case "banner":
+      return component.props.imageUrl ?? "";
+    case "video":
+      return component.props.url ?? "";
+    case "question":
+      return component.props.prompt ?? "";
+  }
+}
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -51,23 +72,27 @@ function defaultProps(type: ComponentType): BlockProps {
 interface PageContentProps {
   page: Page;
   numbering: string;
-  editable: boolean;
+  mode: CourseViewMode;
   rollup?: StatusRollup;
   /** Notify the shell that page title/notes changed (to refresh the sidebar). */
   onPageChange: (fields: Partial<Pick<Page, "title" | "notes">>) => void;
-  /** Notify the shell that implementation status may have changed (review rollups). */
+  /** Notify the shell that implementation status may have changed (implement rollups). */
   onStatusChange: () => void;
 }
 
 export function PageContent({
   page,
   numbering,
-  editable,
+  mode,
   rollup,
   onPageChange,
   onStatusChange,
 }: PageContentProps) {
   const { trackSave, beginSave, endSave } = useSaveStatus();
+  const editable = mode === "edit";
+  const isImplement = mode === "implement";
+  const isReview = mode === "review";
+
   const [components, setComponents] = useState<PageComponent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Video (and similar) blocks: which component cards have their settings panel open. */
@@ -199,9 +224,10 @@ export function PageContent({
       .catch((e: Error) => setError(e.message));
   }
 
-  async function handleMarkImplemented(id: string) {
+  async function handleCopyAndMark(id: string, text: string) {
     setError(null);
     try {
+      await navigator.clipboard.writeText(text);
       const updated = await trackSave(api.markImplemented(id));
       setComponents((prev) =>
         prev ? prev.map((c) => (c.id === id ? updated : c)) : prev
@@ -210,6 +236,52 @@ export function PageContent({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function handleCycleStatus(component: PageComponent) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.setComponentStatus(component.id, nextStatus(componentStatus(component)))
+      );
+      setComponents((prev) =>
+        prev ? prev.map((c) => (c.id === component.id ? updated : c)) : prev
+      );
+      onStatusChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function renderBlock(component: PageComponent) {
+    const settingsOpen = openSettings.has(component.id);
+    return (
+      <BlockRenderer
+        type={component.type}
+        props={component.props}
+        mode={mode}
+        onChange={(props) => handlePropsChange(component.id, props)}
+        settingsOpen={settingsOpen}
+        onToggleSettings={() => toggleSettings(component.id)}
+        pageTitle={page.title}
+        pageNumbering={numbering}
+        videoNumber={videoNumberById.get(component.id)}
+        onCopyOption={
+          isImplement && component.type === "question"
+            ? (text) => handleCopyAndMark(component.id, text)
+            : undefined
+        }
+      />
+    );
+  }
+
+  /** Polished preview: no card chrome — just stacked blocks. */
+  function renderPreviewBlock(component: PageComponent) {
+    return (
+      <div key={component.id} className="mb-6">
+        {renderBlock(component)}
+      </div>
+    );
   }
 
   function renderComponentCard(
@@ -227,9 +299,11 @@ export function PageContent({
     return (
       <Card padding="none" className="mb-3">
         <div
-          className={`flex items-center gap-2 px-3 h-10 border-b border-surface-200 bg-[#F8F9FA] ${
-            headerTogglesSettings ? "cursor-pointer select-none" : ""
-          }`}
+          className={`flex items-center gap-2 px-3 h-10 border-b transition-colors duration-fast ${
+            editable
+              ? "border-surface-200 bg-[#F8F9FA]"
+              : statusHeaderClass(status)
+          } ${headerTogglesSettings ? "cursor-pointer select-none" : ""}`}
           onClick={headerTogglesSettings ? () => toggleSettings(component.id) : undefined}
           role={headerTogglesSettings ? "button" : undefined}
           aria-expanded={headerTogglesSettings ? settingsOpen : undefined}
@@ -251,7 +325,11 @@ export function PageContent({
               <GripIcon />
             </button>
           )}
-          <span className="flex items-center gap-1.5 text-sm font-semibold text-surface-700">
+          <span
+            className={`flex items-center gap-1.5 text-sm font-semibold ${
+              editable ? "text-surface-700" : "text-inherit"
+            }`}
+          >
             {meta.icon}
             {meta.label}
           </span>
@@ -263,16 +341,24 @@ export function PageContent({
             />
           )}
           <span className="ms-auto flex items-center gap-2">
-            {!editable && <StatusBadge status={status} />}
-            {!editable && status !== "implemented" && (
-              <Button
-                size="sm"
-                variant="secondary"
-                leftIcon={<CheckIcon className="w-3.5 h-3.5" />}
-                onClick={() => handleMarkImplemented(component.id)}
+            {isImplement && (
+              <StatusBadge
+                status={status}
+                onClick={() => handleCycleStatus(component)}
+              />
+            )}
+            {isImplement && (
+              <button
+                type="button"
+                className="p-1.5 text-current opacity-60 hover:opacity-100 transition-opacity duration-fast"
+                title="העתק"
+                aria-label="העתק"
+                onClick={() =>
+                  handleCopyAndMark(component.id, headerCopyText(component))
+                }
               >
-                סמן כהוטמע
-              </Button>
+                <CopyIcon className="w-4 h-4" />
+              </button>
             )}
             {editable && (
               <button
@@ -288,32 +374,24 @@ export function PageContent({
             )}
           </span>
         </div>
-        <div className={flushBody ? undefined : "p-4"}>
-          <BlockRenderer
-            type={component.type}
-            props={component.props}
-            editable={editable}
-            onChange={(props) => handlePropsChange(component.id, props)}
-            settingsOpen={settingsOpen}
-            onToggleSettings={() => toggleSettings(component.id)}
-            pageTitle={page.title}
-            pageNumbering={numbering}
-            videoNumber={videoNumberById.get(component.id)}
-          />
-        </div>
+        <div className={flushBody ? undefined : "p-4"}>{renderBlock(component)}</div>
       </Card>
     );
   }
 
   return (
     <div className="flex flex-col max-w-3xl w-full mx-auto px-6 py-6">
-      {/* Page header — same `1.1 | title` pattern as the sidebar */}
+      {/* Page header — same `1.1 | title` pattern as the sidebar (home page: title only) */}
       <div className="flex flex-col gap-1 mb-4">
         <div className="flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-surface-900">
-          <span className="shrink-0">{numbering}</span>
-          <span className="shrink-0 text-surface-400" aria-hidden>
-            |
-          </span>
+          {numbering ? (
+            <>
+              <span className="shrink-0">{numbering}</span>
+              <span className="shrink-0" aria-hidden>
+                |
+              </span>
+            </>
+          ) : null}
           {editable ? (
             <input
               value={page.title}
@@ -325,7 +403,7 @@ export function PageContent({
             <h1 className="min-w-0 truncate">{page.title}</h1>
           )}
         </div>
-        {!editable && rollup && rollup.total_count > 0 && (
+        {isImplement && rollup && rollup.total_count > 0 && (
           <span className="text-sm text-surface-500">
             {rollup.implemented_count}/{rollup.total_count} רכיבים הוטמעו
             {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} דורשים עדכון`}
@@ -333,8 +411,8 @@ export function PageContent({
         )}
       </div>
 
-      {/* Notes for implementers */}
-      {editable ? (
+      {/* Notes for implementers — edit + implement only */}
+      {editable && (
         <div className="flex flex-col gap-1.5 mb-6">
           <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
           <textarea
@@ -345,13 +423,12 @@ export function PageContent({
             className="w-full px-3 py-2 text-base leading-6 bg-surface-50 border border-surface-200 text-surface-900 placeholder:text-surface-400 outline-none transition-colors duration-fast resize-y"
           />
         </div>
-      ) : (
-        page.notes?.trim() && (
-          <div className="flex flex-col gap-1.5 mb-6">
-            <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
-            <p className="text-base text-danger whitespace-pre-wrap">{page.notes}</p>
-          </div>
-        )
+      )}
+      {isImplement && page.notes?.trim() && (
+        <div className="flex flex-col gap-1.5 mb-6">
+          <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
+          <p className="text-base text-danger whitespace-pre-wrap">{page.notes}</p>
+        </div>
       )}
 
       {error && (
@@ -372,7 +449,9 @@ export function PageContent({
         <>
           {components.length === 0 && (
             <p className="text-base text-surface-400 mb-4">
-              {editable ? "אין עדיין רכיבים בעמוד. הוסיפו רכיב ראשון למטה." : "אין רכיבים בעמוד."}
+              {editable
+                ? "אין עדיין רכיבים בעמוד. הוסיפו רכיב ראשון למטה."
+                : "אין רכיבים בעמוד."}
             </p>
           )}
 
@@ -382,6 +461,8 @@ export function PageContent({
               onReorder={handleReorder}
               renderItem={(component, handle) => renderComponentCard(component, handle)}
             />
+          ) : isReview ? (
+            components.map((component) => renderPreviewBlock(component))
           ) : (
             components.map((component) => (
               <div key={component.id}>{renderComponentCard(component)}</div>

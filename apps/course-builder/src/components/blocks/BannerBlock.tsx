@@ -1,10 +1,11 @@
-import type { BannerProps } from "../../lib/types";
+import { useEffect, useState } from "react";
+import type { BannerProps, CourseViewMode } from "../../lib/types";
 import { ChevronDownIcon } from "../icons";
 import { Field, TextField } from "./fields";
 
 interface Props {
   props: BannerProps;
-  editable: boolean;
+  mode: CourseViewMode;
   onChange: (props: BannerProps) => void;
   /** Edit mode: whether the settings panel above the placeholder is open. */
   settingsOpen?: boolean;
@@ -26,29 +27,45 @@ function BannerPlaceholder({
   imageUrl,
   settingsOpen = false,
   onChevronClick,
+  /** Preview: hide title overlay only when the image is actually visible. */
+  hideTitleWhenImage = false,
 }: {
   label: string;
   imageUrl?: string;
   settingsOpen?: boolean;
   onChevronClick?: () => void;
+  hideTitleWhenImage?: boolean;
 }) {
   const src = imageUrl?.trim() || undefined;
-  const showStrip = Boolean(onChevronClick);
+  const [imageStatus, setImageStatus] = useState<"none" | "loading" | "loaded" | "error">(
+    src ? "loading" : "none"
+  );
 
-  const labelEl = (
+  useEffect(() => {
+    setImageStatus(src ? "loading" : "none");
+  }, [src]);
+
+  const showStrip = Boolean(onChevronClick);
+  const imageShowing = imageStatus === "loaded";
+  // Keep the name when there is no URL, the image failed / hasn't painted, or
+  // this mode always shows the title (edit / implement).
+  const showTitle = !hideTitleWhenImage || !imageShowing;
+  const showNoFile = imageStatus === "none" || imageStatus === "error";
+
+  const labelEl = showTitle ? (
     <div className="flex flex-col items-center gap-2 max-w-2xl">
       <p
         className={`text-xl sm:text-2xl font-semibold text-center ${
-          src ? "text-white drop-shadow" : "text-surface-700"
+          imageShowing ? "text-white drop-shadow" : "text-surface-700"
         }`}
       >
         {label}
       </p>
-      {!src && (
+      {showNoFile && (
         <p className="text-sm sm:text-base font-medium text-surface-500">ללא קובץ</p>
       )}
     </div>
-  );
+  ) : null;
 
   const bodyClass = `absolute inset-0 flex items-center justify-center px-6 ${
     showStrip ? "pt-7" : ""
@@ -57,7 +74,23 @@ function BannerPlaceholder({
   return (
     <div className="relative aspect-[4/1] w-full overflow-hidden select-none bg-[#E8EAED]">
       {src && (
-        <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img
+          key={src}
+          src={src}
+          alt=""
+          className={`absolute inset-0 w-full h-full object-cover ${
+            imageShowing ? "" : "invisible"
+          }`}
+          onLoad={() => setImageStatus("loaded")}
+          onError={() => setImageStatus("error")}
+          ref={(img) => {
+            // Cached images may complete before onLoad is attached.
+            if (img?.complete) {
+              if (img.naturalWidth > 0) setImageStatus("loaded");
+              else setImageStatus("error");
+            }
+          }}
+        />
       )}
 
       {showStrip && (
@@ -131,7 +164,7 @@ function SettingsFields({
 
 export function BannerBlock({
   props,
-  editable,
+  mode,
   onChange,
   settingsOpen = false,
   onToggleSettings,
@@ -140,9 +173,16 @@ export function BannerBlock({
 }: Props) {
   const defaultLabel = defaultBannerLabel(pageTitle, pageNumbering);
   const label = props.title?.trim() || defaultLabel;
+  const editable = mode === "edit";
 
   if (!editable) {
-    return <BannerPlaceholder label={label} imageUrl={props.imageUrl} />;
+    return (
+      <BannerPlaceholder
+        label={label}
+        imageUrl={props.imageUrl}
+        hideTitleWhenImage={mode === "review"}
+      />
+    );
   }
 
   return (

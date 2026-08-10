@@ -1,21 +1,24 @@
 import { useId } from "react";
-import type { QuestionOption, QuestionProps } from "../../lib/types";
-import { CheckIcon, PlusIcon, XIcon } from "../icons";
+import type { CourseViewMode, QuestionOption, QuestionProps } from "../../lib/types";
+import { CheckIcon, CopyIcon, PlusIcon, XIcon } from "../icons";
 import { Field, TextField } from "./fields";
 
 interface Props {
   props: QuestionProps;
-  editable: boolean;
+  mode: CourseViewMode;
   onChange: (props: QuestionProps) => void;
+  /** Implement mode: copy option text (and mark the component implemented upstream). */
+  onCopyOption?: (text: string) => void;
 }
 
 function newOption(): QuestionOption {
   return { id: crypto.randomUUID(), text: "" };
 }
 
-export function QuestionBlock({ props, editable, onChange }: Props) {
+export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
   const radioGroup = useId();
   const options = props.options ?? [];
+  const editable = mode === "edit";
 
   if (!editable) {
     return (
@@ -36,7 +39,20 @@ export function QuestionBlock({ props, editable, onChange }: Props) {
                 }`}
               >
                 {correct && <CheckIcon className="w-3.5 h-3.5" />}
-                <span>{opt.text || <span className="text-surface-400">אפשרות ריקה</span>}</span>
+                <span className="flex-1 min-w-0">
+                  {opt.text || <span className="text-surface-400">אפשרות ריקה</span>}
+                </span>
+                {onCopyOption && (
+                  <button
+                    type="button"
+                    className="p-1 text-surface-400 hover:text-surface-900 transition-colors duration-fast shrink-0"
+                    title="העתק אפשרות"
+                    aria-label="העתק אפשרות"
+                    onClick={() => onCopyOption(opt.text ?? "")}
+                  >
+                    <CopyIcon className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}

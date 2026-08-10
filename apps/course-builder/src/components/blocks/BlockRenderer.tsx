@@ -1,4 +1,4 @@
-import type { BlockProps, ComponentType } from "../../lib/types";
+import type { BlockProps, ComponentType, CourseViewMode } from "../../lib/types";
 import { BannerBlock } from "./BannerBlock";
 import { VideoBlock } from "./VideoBlock";
 import { TextBlock } from "./TextBlock";
@@ -7,7 +7,7 @@ import { QuestionBlock } from "./QuestionBlock";
 interface Props {
   type: ComponentType;
   props: BlockProps;
-  editable: boolean;
+  mode: CourseViewMode;
   onChange: (props: BlockProps) => void;
   /** Video / banner: whether the settings panel above the placeholder is open. */
   settingsOpen?: boolean;
@@ -18,26 +18,29 @@ interface Props {
   pageNumbering?: string;
   /** Video block: 1-based index among videos on this page. */
   videoNumber?: number;
+  /** Implement mode: copy an answer option and mark the component implemented. */
+  onCopyOption?: (text: string) => void;
 }
 
-/** Single renderer per block type, shared by the editor (editable) and review (read-only) views. */
+/** Single renderer per block type, shared by edit / implement / review views. */
 export function BlockRenderer({
   type,
   props,
-  editable,
+  mode,
   onChange,
   settingsOpen,
   onToggleSettings,
   pageTitle,
   pageNumbering,
   videoNumber,
+  onCopyOption,
 }: Props) {
   switch (type) {
     case "banner":
       return (
         <BannerBlock
           props={props}
-          editable={editable}
+          mode={mode}
           onChange={onChange}
           settingsOpen={settingsOpen}
           onToggleSettings={onToggleSettings}
@@ -49,7 +52,7 @@ export function BlockRenderer({
       return (
         <VideoBlock
           props={props}
-          editable={editable}
+          mode={mode}
           onChange={onChange}
           settingsOpen={settingsOpen}
           onToggleSettings={onToggleSettings}
@@ -58,8 +61,15 @@ export function BlockRenderer({
         />
       );
     case "text":
-      return <TextBlock props={props} editable={editable} onChange={onChange} />;
+      return <TextBlock props={props} mode={mode} onChange={onChange} />;
     case "question":
-      return <QuestionBlock props={props} editable={editable} onChange={onChange} />;
+      return (
+        <QuestionBlock
+          props={props}
+          mode={mode}
+          onChange={onChange}
+          onCopyOption={onCopyOption}
+        />
+      );
   }
 }

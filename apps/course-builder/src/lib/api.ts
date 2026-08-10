@@ -5,6 +5,7 @@ import type {
   Course,
   CourseListItem,
   CourseTree,
+  ImplementationStatus,
   Page,
   PageComponent,
   Section,
@@ -31,7 +32,7 @@ export async function listCourses(): Promise<CourseListItem[]> {
 
   const { data: pages, error: pErr } = await supabase
     .from("pages")
-    .select("id, section_id");
+    .select("id, section_id, course_id");
   if (pErr) fail("Loading pages", pErr);
 
   const sectionToCourse = new Map<string, string>();
@@ -42,7 +43,8 @@ export async function listCourses(): Promise<CourseListItem[]> {
   }
   const pageCounts = new Map<string, number>();
   for (const p of pages ?? []) {
-    const courseId = sectionToCourse.get(p.section_id);
+    const courseId =
+      p.course_id ?? (p.section_id ? sectionToCourse.get(p.section_id) : undefined);
     if (courseId) pageCounts.set(courseId, (pageCounts.get(courseId) ?? 0) + 1);
   }
 
@@ -60,6 +62,7 @@ export async function createCourse(title: string): Promise<Course> {
     .select()
     .single();
   if (error) fail("Creating course", error);
+  await ensureHomePage(data.id);
   return data;
 }
 
@@ -94,7 +97,7 @@ export async function getCourseTree(courseId: string): Promise<CourseTree> {
   if (sErr) fail("Loading sections", sErr);
 
   const sectionIds = (sections ?? []).map((s) => s.id);
-  let pages: Page[] = [];
+  let sectionPages: Page[] = [];
   if (sectionIds.length > 0) {
     const { data, error: pErr } = await supabase
       .from("pages")
@@ -102,8 +105,11 @@ export async function getCourseTree(courseId: string): Promise<CourseTree> {
       .in("section_id", sectionIds)
       .order("position");
     if (pErr) fail("Loading pages", pErr);
-    pages = data ?? [];
+    sectionPages = data ?? [];
   }
+
+  const homePage = await ensureHomePage(courseId);
+  const pages = [homePage, ...sectionPages];
 
   return { course, sections: sections ?? [], pages };
 }
@@ -143,6 +149,43 @@ export async function reorderSections(orderedIds: string[]): Promise<void> {
 
 // ─── Pages ──────────────────────────────────────────────────────────────────
 
+/** Ensures every course has a single home page ("עמוד ראשי") above the lessons. */
+export async function ensureHomePage(courseId: string): Promise<Page> {
+  const { data: existing, error: findErr } = await supabase
+    .from("pages")
+    .select("*")
+    .eq("course_id", courseId)
+    .is("section_id", null)
+    .maybeSingle();
+  if (findErr) fail("Loading home page", findErr);
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from("pages")
+    .insert({
+      course_id: courseId,
+      section_id: null,
+      title: "עמוד ראשי",
+      position: 0,
+    })
+    .select()
+    .single();
+
+  // Parallel loads (e.g. React Strict Mode) can race the unique home-page index.
+  if (error) {
+    const { data: raced, error: refetchErr } = await supabase
+      .from("pages")
+      .select("*")
+      .eq("course_id", courseId)
+      .is("section_id", null)
+      .maybeSingle();
+    if (refetchErr) fail("Creating home page", error);
+    if (raced) return raced;
+    fail("Creating home page", error);
+  }
+  return data;
+}
+
 export async function addPage(
   sectionId: string,
   title: string,
@@ -150,7 +193,7 @@ export async function addPage(
 ): Promise<Page> {
   const { data, error } = await supabase
     .from("pages")
-    .insert({ section_id: sectionId, title, position })
+    .insert({ section_id: sectionId, course_id: null, title, position })
     .select()
     .single();
   if (error) fail("Adding page", error);
@@ -224,19 +267,78 @@ export async function reorderComponents(orderedIds: string[]): Promise<void> {
   await renumber("components", orderedIds);
 }
 
-/** Marks implemented. The updated_at trigger fires in the same statement, so both timestamps get the same now() and status becomes 'implemented'. */
-export async function markImplemented(id: string): Promise<PageComponent> {
+/** Sets implementation status by writing `implemented_at` relative to the `updated_at` trigger. */
+export async function setComponentStatus(
+  id: string,
+  status: ImplementationStatus
+): Promise<PageComponent> {
+  if (status === "implemented") {
+    return markImplemented(id);
+  }
+
+  const implemented_at =
+    status === "not_implemented"
+      ? null
+      : // Must be strictly before the trigger's new updated_at.
+        new Date(Date.now() - 60_000).toISOString();
+
   const { data, error } = await supabase
     .from("components")
-    .update({ implemented_at: new Date().toISOString() })
+    .update({ implemented_at })
     .eq("id", id)
     .select()
     .single();
-  if (error) fail("Marking component implemented", error);
+  if (error) fail("Updating component status", error);
   return data;
 }
 
+/**
+ * Marks implemented via DB `now()` so `implemented_at` matches the `updated_at`
+ * trigger in the same statement (avoids client-clock skew → needs_update).
+ * Falls back to a slightly-ahead client timestamp if the RPC is not deployed yet.
+ */
+export async function markImplemented(id: string): Promise<PageComponent> {
+  const { data, error } = await supabase.rpc("mark_component_implemented", {
+    component_id: id,
+  });
+  if (!error && data) return data as PageComponent;
+
+  // Fallback: client clock can lag the DB trigger; pad ahead so status is הוטמע.
+  const { data: row, error: fallbackError } = await supabase
+    .from("components")
+    .update({ implemented_at: new Date(Date.now() + 30_000).toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (fallbackError) {
+    fail("Marking component implemented", error ?? fallbackError);
+  }
+  return row;
+}
+
 // ─── Status rollups (from DB views) ─────────────────────────────────────────
+
+/**
+ * Prefer summing status buckets over `total_count` from the view.
+ * A LEFT JOIN + `count(*)` (instead of `count(cs.id)`) yields a phantom
+ * total of 1 for pages with no components — which shows up as "0/1".
+ */
+function normalizeRollup(row: {
+  implemented_count?: number | string | null;
+  needs_update_count?: number | string | null;
+  not_implemented_count?: number | string | null;
+  total_count?: number | string | null;
+}): StatusRollup {
+  const implemented_count = Number(row.implemented_count ?? 0);
+  const needs_update_count = Number(row.needs_update_count ?? 0);
+  const not_implemented_count = Number(row.not_implemented_count ?? 0);
+  return {
+    implemented_count,
+    needs_update_count,
+    not_implemented_count,
+    total_count: implemented_count + needs_update_count + not_implemented_count,
+  };
+}
 
 export async function getStatusRollups(
   sectionIds: string[],
@@ -255,12 +357,7 @@ export async function getStatusRollups(
       .in("page_id", pageIds);
     if (error) fail("Loading page status", error);
     for (const row of data ?? []) {
-      perPage.set(row.page_id, {
-        implemented_count: Number(row.implemented_count ?? 0),
-        needs_update_count: Number(row.needs_update_count ?? 0),
-        not_implemented_count: Number(row.not_implemented_count ?? 0),
-        total_count: Number(row.total_count ?? 0),
-      });
+      perPage.set(row.page_id, normalizeRollup(row));
     }
   }
 
@@ -271,12 +368,7 @@ export async function getStatusRollups(
       .in("section_id", sectionIds);
     if (error) fail("Loading section status", error);
     for (const row of data ?? []) {
-      perSection.set(row.section_id, {
-        implemented_count: Number(row.implemented_count ?? 0),
-        needs_update_count: Number(row.needs_update_count ?? 0),
-        not_implemented_count: Number(row.not_implemented_count ?? 0),
-        total_count: Number(row.total_count ?? 0),
-      });
+      perSection.set(row.section_id, normalizeRollup(row));
     }
   }
 
