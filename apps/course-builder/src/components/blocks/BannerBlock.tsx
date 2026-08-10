@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BannerProps, CourseViewMode } from "../../lib/types";
 import { ChevronDownIcon } from "../icons";
-import { Field, TextField } from "./fields";
+import { Field, NotesField, TextField } from "./fields";
 
 interface Props {
   props: BannerProps;
@@ -158,6 +158,10 @@ function SettingsFields({
           onChange={(e) => onChange({ ...props, imageUrl: e.target.value })}
         />
       </Field>
+      <NotesField
+        value={props.notes}
+        onChange={(notes) => onChange({ ...props, notes })}
+      />
     </div>
   );
 }

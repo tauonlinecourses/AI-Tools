@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,9 @@ import React, {
 import { Spinner } from "@workspace/ui";
 
 export type SavePhase = "idle" | "saving" | "saved";
+
+/** Keep "שומר שינויים..." visible at least this long so it doesn't flash. */
+const MIN_SAVING_MS = 2000;
 
 interface SaveStatusContextValue {
   phase: SavePhase;
@@ -25,14 +29,52 @@ export function SaveStatusProvider({ children }: { children: React.ReactNode }) 
   const [phase, setPhase] = useState<SavePhase>("idle");
   const pendingKeys = useRef(new Set<string>());
   const inflight = useRef(0);
+  const savingStartedAt = useRef<number | null>(null);
+  const minSaveTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (minSaveTimer.current) window.clearTimeout(minSaveTimer.current);
+    };
+  }, []);
+
+  const goSaved = useCallback(() => {
+    savingStartedAt.current = null;
+    minSaveTimer.current = null;
+    setPhase((prev) => (prev === "idle" ? "idle" : "saved"));
+  }, []);
 
   const refresh = useCallback(() => {
-    if (pendingKeys.current.size > 0 || inflight.current > 0) {
+    const busy = pendingKeys.current.size > 0 || inflight.current > 0;
+
+    if (busy) {
+      if (savingStartedAt.current === null) {
+        savingStartedAt.current = Date.now();
+      }
+      if (minSaveTimer.current) {
+        window.clearTimeout(minSaveTimer.current);
+        minSaveTimer.current = null;
+      }
       setPhase("saving");
-    } else {
-      setPhase((prev) => (prev === "idle" ? "idle" : "saved"));
+      return;
     }
-  }, []);
+
+    // Nothing pending — hold "saving" until the minimum duration has elapsed.
+    const started = savingStartedAt.current;
+    if (started === null) {
+      goSaved();
+      return;
+    }
+
+    const remaining = Math.max(0, MIN_SAVING_MS - (Date.now() - started));
+    if (remaining === 0) {
+      goSaved();
+      return;
+    }
+
+    if (minSaveTimer.current) window.clearTimeout(minSaveTimer.current);
+    minSaveTimer.current = window.setTimeout(goSaved, remaining);
+  }, [goSaved]);
 
   const beginSave = useCallback(
     (key: string) => {
@@ -94,13 +136,13 @@ export function SaveStatusIndicator() {
 
   return (
     <div
-      className="flex items-center gap-1.5 text-xs text-surface-500"
+      className="flex items-center gap-2 text-base font-medium text-surface-600"
       dir="rtl"
       aria-live="polite"
     >
       {phase === "saving" ? (
         <>
-          <Spinner size="sm" className="border-surface-200 border-t-surface-600" />
+          <Spinner size="md" className="border-surface-200 border-t-surface-600" />
           <span>שומר שינויים...</span>
         </>
       ) : (

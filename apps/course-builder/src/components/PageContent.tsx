@@ -10,10 +10,13 @@ import type {
 } from "../lib/types";
 import { componentStatus } from "../lib/types";
 import * as api from "../lib/api";
+import { writeClipboard } from "../lib/clipboard";
 import { useSaveStatus } from "../lib/saveStatus";
+import { htmlToPlainText, resolveTextHtml, sanitizeTextHtml } from "../lib/textHtml";
 import { SortableList } from "./SortableList";
 import { BlockRenderer } from "./blocks/BlockRenderer";
-import { StatusBadge, nextStatus, statusHeaderClass } from "./StatusBadge";
+import { NotesDisplay } from "./blocks/fields";
+import { StatusBadge, nextStatus, statusBorderClass, statusHeaderClass } from "./StatusBadge";
 import {
   BannerIcon,
   ChevronDownIcon,
@@ -26,17 +29,21 @@ import {
   VideoIcon,
 } from "./icons";
 
+type ClipboardPayload = { html?: string; plain: string };
+
 /** Clipboard payload for the implement-mode header copy button (by block type). */
-function headerCopyText(component: PageComponent): string {
+function headerCopyPayload(component: PageComponent): ClipboardPayload {
   switch (component.type) {
-    case "text":
-      return component.props.markdown ?? "";
+    case "text": {
+      const html = sanitizeTextHtml(resolveTextHtml(component.props));
+      return { html, plain: htmlToPlainText(html) };
+    }
     case "banner":
-      return component.props.imageUrl ?? "";
+      return { plain: component.props.imageUrl ?? "" };
     case "video":
-      return component.props.url ?? "";
+      return { plain: component.props.url ?? "" };
     case "question":
-      return component.props.prompt ?? "";
+      return { plain: component.props.prompt ?? "" };
   }
 }
 
@@ -56,7 +63,7 @@ function defaultProps(type: ComponentType): BlockProps {
     case "video":
       return { url: "", provider: "youtube" };
     case "text":
-      return { markdown: "" };
+      return { html: "" };
     case "question":
       return {
         questionType: "single_choice",
@@ -224,10 +231,11 @@ export function PageContent({
       .catch((e: Error) => setError(e.message));
   }
 
-  async function handleCopyAndMark(id: string, text: string) {
+  async function handleCopyAndMark(id: string, payload: string | ClipboardPayload) {
     setError(null);
     try {
-      await navigator.clipboard.writeText(text);
+      const clip = typeof payload === "string" ? { plain: payload } : payload;
+      await writeClipboard(clip);
       const updated = await trackSave(api.markImplemented(id));
       setComponents((prev) =>
         prev ? prev.map((c) => (c.id === id ? updated : c)) : prev
@@ -297,9 +305,15 @@ export function PageContent({
     const headerTogglesSettings = editable && (isVideo || isBanner);
 
     return (
-      <Card padding="none" className="mb-3">
+      <Card
+        padding="none"
+        border={false}
+        className={`mb-3 border-2 transition-colors duration-fast ${
+          isImplement ? statusBorderClass(status) : "border-surface-200"
+        }`}
+      >
         <div
-          className={`flex items-center gap-2 px-3 h-10 border-b transition-colors duration-fast ${
+          className={`flex items-center gap-2 px-3 h-10 border-b-2 transition-colors duration-fast ${
             editable
               ? "border-surface-200 bg-[#F8F9FA]"
               : statusHeaderClass(status)
@@ -354,7 +368,7 @@ export function PageContent({
                 title="העתק"
                 aria-label="העתק"
                 onClick={() =>
-                  handleCopyAndMark(component.id, headerCopyText(component))
+                  handleCopyAndMark(component.id, headerCopyPayload(component))
                 }
               >
                 <CopyIcon className="w-4 h-4" />
@@ -374,7 +388,16 @@ export function PageContent({
             )}
           </span>
         </div>
-        <div className={flushBody ? undefined : "p-4"}>{renderBlock(component)}</div>
+        <div className={flushBody ? undefined : "p-4"}>
+          {renderBlock(component)}
+          {isImplement &&
+            component.type !== "text" &&
+            component.props.notes?.trim() && (
+            <div className={flushBody ? "px-4 py-3" : "mt-3"}>
+              <NotesDisplay notes={component.props.notes} />
+            </div>
+          )}
+        </div>
       </Card>
     );
   }

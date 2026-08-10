@@ -8,32 +8,42 @@ const config: Record<
     label: string;
     variant: "success" | "warning" | "default";
     headerClass: string;
+    /** Outer card border tint (implement mode). */
+    borderClass: string;
     buttonClass: string;
   }
 > = {
   implemented: {
     label: "הוטמע",
     variant: "success",
-    headerClass: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    headerClass: "bg-emerald-50 border-emerald-300 text-emerald-900",
+    borderClass: "border-emerald-300",
     buttonClass: "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100",
   },
   needs_update: {
     label: "דורש עדכון",
     variant: "warning",
-    headerClass: "bg-amber-50 border-amber-200 text-amber-900",
+    headerClass: "bg-amber-50 border-amber-300 text-amber-900",
+    borderClass: "border-amber-300",
     buttonClass: "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100",
   },
   not_implemented: {
     label: "לא הוטמע",
     variant: "default",
     headerClass: "bg-surface-100 border-surface-200 text-surface-700",
+    borderClass: "border-surface-300",
     buttonClass: "bg-surface-100 text-surface-600 border-surface-200 hover:bg-surface-200",
   },
 };
 
-/** Header background/border/text tint for a component card in review mode. */
+/** Header background/text tint for a component card in implement mode. */
 export function statusHeaderClass(status: ImplementationStatus): string {
   return config[status].headerClass;
+}
+
+/** Outer card border color for a component card in implement mode. */
+export function statusBorderClass(status: ImplementationStatus): string {
+  return config[status].borderClass;
 }
 
 /** Cycle used when clicking the review-mode status badge. */

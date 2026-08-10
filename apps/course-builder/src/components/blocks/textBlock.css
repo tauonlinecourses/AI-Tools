@@ -1,0 +1,50 @@
+/* TipTap Placeholder — empty paragraph hint */
+.text-block-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: right;
+  height: 0;
+  pointer-events: none;
+  color: #9ca3af; /* surface-400-ish */
+}
+
+/* Explicit heading styles — Tailwind preflight resets h1–h6 to unstyled. */
+.text-block-prose p {
+  margin: 0;
+}
+.text-block-prose p + p {
+  margin-top: 0.75rem;
+}
+.text-block-prose h1 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 700;
+  color: inherit;
+}
+.text-block-prose h2 {
+  margin: 0.75rem 0 0.375rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  color: inherit;
+}
+.text-block-prose h3 {
+  margin: 0.75rem 0 0.375rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  color: inherit;
+}
+.text-block-prose h1:first-child,
+.text-block-prose h2:first-child,
+.text-block-prose h3:first-child {
+  margin-top: 0;
+}
+.text-block-prose a {
+  color: #0f6cbf;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.text-block-prose strong {
+  font-weight: 700;
+}

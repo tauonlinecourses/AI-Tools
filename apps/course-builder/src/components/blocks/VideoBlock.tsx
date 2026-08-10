@@ -1,7 +1,7 @@
 import type { CourseViewMode, VideoProps } from "../../lib/types";
 import { resolveVideoEmbedSrc } from "../../lib/videoEmbed";
 import { ChevronDownIcon, PlayCircleIcon } from "../icons";
-import { Field, SelectField, TextField } from "./fields";
+import { Field, NotesField, SelectField, TextField } from "./fields";
 
 interface Props {
   props: VideoProps;
@@ -142,6 +142,10 @@ function SettingsFields({
           <option value="other">אחר</option>
         </SelectField>
       </Field>
+      <NotesField
+        value={props.notes}
+        onChange={(notes) => onChange({ ...props, notes })}
+      />
     </div>
   );
 }

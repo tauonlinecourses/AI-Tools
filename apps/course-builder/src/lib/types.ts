@@ -34,12 +34,17 @@ export type ComponentType = "banner" | "video" | "text" | "question";
 /** URL-driven course shell mode: authoring, implementer, or polished preview. */
 export type CourseViewMode = "edit" | "implement" | "review";
 
-export interface BannerProps {
+/** Implementer notes — shared by banner, video, and question (not text). */
+export interface NotesProps {
+  notes?: string;
+}
+
+export interface BannerProps extends NotesProps {
   title?: string;
   imageUrl?: string;
 }
 
-export interface VideoProps {
+export interface VideoProps extends NotesProps {
   /** Custom display name; empty → default `{page title} | סרטון מספר N`. */
   title?: string;
   url?: string;
@@ -47,6 +52,9 @@ export interface VideoProps {
 }
 
 export interface TextProps {
+  /** Sanitized rich-text HTML from the TipTap editor. */
+  html?: string;
+  /** Legacy plain-text body; migrated to `html` on next edit/save. */
   markdown?: string;
 }
 
@@ -55,7 +63,7 @@ export interface QuestionOption {
   text: string;
 }
 
-export interface QuestionProps {
+export interface QuestionProps extends NotesProps {
   questionType?: "single_choice";
   prompt?: string;
   options?: QuestionOption[];

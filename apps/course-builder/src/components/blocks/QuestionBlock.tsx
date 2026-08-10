@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { CourseViewMode, QuestionOption, QuestionProps } from "../../lib/types";
 import { CheckIcon, CopyIcon, PlusIcon, XIcon } from "../icons";
-import { Field, TextField } from "./fields";
+import { Field, NotesField, TextField } from "./fields";
 
 interface Props {
   props: QuestionProps;
@@ -125,6 +125,11 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
           הוסף אפשרות
         </button>
       </div>
+
+      <NotesField
+        value={props.notes}
+        onChange={(notes) => onChange({ ...props, notes })}
+      />
     </div>
   );
 }
