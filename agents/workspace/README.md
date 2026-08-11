@@ -61,6 +61,7 @@ Each section file has Previous / Next links at the top.
 | video-curator | 5174 |
 | tool-starter | 5175 |
 | course-builder | 5176 |
+| mbz-explorer | 5177 |
 
 Assign the next free port when adding a tool.
 
@@ -68,6 +69,6 @@ Assign the next free port when adding a tool.
 
 ## Related paths in the repo
 
-- Live apps: `apps/hub`, `apps/video-curator`, `apps/tool-starter`, `apps/course-builder`
+- Live apps: `apps/hub`, `apps/video-curator`, `apps/tool-starter`, `apps/course-builder`, `apps/mbz-explorer`
 - Shared: `packages/config`, `packages/ui`, `packages/ai-client`
 - Root project overview: [`../../README.md`](../../README.md)

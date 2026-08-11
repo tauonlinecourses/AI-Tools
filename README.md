@@ -9,7 +9,9 @@ AI-Tools/
 ├── apps/                 ← Applications
 │   ├── hub/              ← Homepage launcher — links to every tool
 │   ├── tool-starter/     ← Template for creating a new tool
-│   └── video-curator/    ← Tool for curating video transcripts and exporting clips
+│   ├── video-curator/    ← Tool for curating video transcripts and exporting clips
+│   ├── course-builder/   ← Course structure and page authoring
+│   └── mbz-explorer/     ← Explore and work with MBZ packages
 │
 ├── packages/             ← Shared code
 │   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
@@ -85,7 +87,7 @@ pnpm dev
 
 1. Copy `apps/tool-starter/` → `apps/tool-myname/`
 2. In the copy, set `"name": "tool-myname"` in `package.json`
-3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, next free…)
+3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, course-builder `5176`, mbz-explorer `5177`, next free…)
 4. Build the tool in `src/App.tsx` (keep `PageLayout`)
 5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
 6. Deploy on Vercel (one project per app):

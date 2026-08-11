@@ -1,0 +1,23 @@
+/*
+ * Moodle content uses inline styles (text-align, direction, etc.)
+ * that Tailwind prose would override. Preserve them.
+ */
+.mbz-rendered-content * {
+  text-align: revert;
+}
+
+.mbz-rendered-content [style] {
+  text-align: revert !important;
+}
+
+/*
+ * Unresolved Moodle cross-links (RESOURCEVIEWBYID etc.)
+ * Styled as visible but inert links.
+ */
+.mbz-rendered-content a[data-mbz-unresolved] {
+  pointer-events: auto !important;
+  cursor: help;
+  color: #6b7280;
+  text-decoration: none;
+  border-bottom: 1px dashed #f59e0b;
+}

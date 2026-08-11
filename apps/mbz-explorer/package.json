@@ -1,0 +1,36 @@
+{
+  "name": "mbz-explorer",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@workspace/ai-client": "workspace:*",
+    "@workspace/ui": "workspace:*",
+    "fast-xml-parser": "^5.10.1",
+    "fflate": "^0.8.3",
+    "idb": "^8.0.3",
+    "jszip": "^3.10.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6",
+    "shiki": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/jszip": "^3.4.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vercel/node": "^3.2.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "@workspace/config": "workspace:*",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

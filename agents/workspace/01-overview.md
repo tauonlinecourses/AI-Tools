@@ -77,15 +77,20 @@ workspace/
 │   │   └── …                       Live: https://ai-tools-video-curator.vercel.app (local Vite port 5174)
 │   │                                   Uses PageLayout (Hub nav) like tool-starter; padded={false} for full-bleed UI
 │   │
-│   └── course-builder/             ← Course Builder tool (hub id: course-builder)
-│       ├── agents/                 ← Per-tool agent docs (e.g. course-builder-mvp-spec.md)
-│       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (unused by MVP)
-│       ├── supabase/schema.sql     ← DB schema (applied to live Supabase; committed as source of truth)
-│       └── …                       Local Vite port 5176; RTL Hebrew authoring + review tool.
-│                                       react-router SPA + supabase-js (VITE_SUPABASE_* env) + dnd-kit.
-│                                       SPA rewrite in vercel.json for deep links.
+│   ├── course-builder/             ← Course Builder tool (hub id: course-builder)
+│   │   ├── agents/                 ← Per-tool agent docs (e.g. course-builder-mvp-spec.md)
+│   │   ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (unused by MVP)
+│   │   ├── supabase/schema.sql     ← DB schema (applied to live Supabase; committed as source of truth)
+│   │   └── …                       Local Vite port 5176; RTL Hebrew authoring + review tool.
+│   │                                   react-router SPA + supabase-js (VITE_SUPABASE_* env) + dnd-kit.
+│   │                                   SPA rewrite in vercel.json for deep links.
+│   │
+│   └── mbz-explorer/               ← MBZ Explorer tool (hub id: mbz-explorer)
+│       ├── agents/                 ← Per-tool agent docs
+│       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
+│       └── …                       Local Vite port 5177
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177
 │   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`
 │
 ├── packages/
