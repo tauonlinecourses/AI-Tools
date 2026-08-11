@@ -21,7 +21,7 @@ const config: Record<
     buttonClass: "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100",
   },
   needs_update: {
-    label: "דורש עדכון",
+    label: "עבר שינוי",
     variant: "warning",
     headerClass: "bg-amber-50 border-amber-300 text-amber-900",
     borderClass: "border-amber-300",

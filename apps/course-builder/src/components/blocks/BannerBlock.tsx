@@ -27,14 +27,11 @@ function BannerPlaceholder({
   imageUrl,
   settingsOpen = false,
   onChevronClick,
-  /** Preview: hide title overlay only when the image is actually visible. */
-  hideTitleWhenImage = false,
 }: {
   label: string;
   imageUrl?: string;
   settingsOpen?: boolean;
   onChevronClick?: () => void;
-  hideTitleWhenImage?: boolean;
 }) {
   const src = imageUrl?.trim() || undefined;
   const [imageStatus, setImageStatus] = useState<"none" | "loading" | "loaded" | "error">(
@@ -47,18 +44,13 @@ function BannerPlaceholder({
 
   const showStrip = Boolean(onChevronClick);
   const imageShowing = imageStatus === "loaded";
-  // Keep the name when there is no URL, the image failed / hasn't painted, or
-  // this mode always shows the title (edit / implement).
-  const showTitle = !hideTitleWhenImage || !imageShowing;
+  // Name + "ללא קובץ" only when there is no painted image.
+  const showTitle = !imageShowing;
   const showNoFile = imageStatus === "none" || imageStatus === "error";
 
   const labelEl = showTitle ? (
     <div className="flex flex-col items-center gap-2 max-w-2xl">
-      <p
-        className={`text-xl sm:text-2xl font-semibold text-center ${
-          imageShowing ? "text-white drop-shadow" : "text-surface-700"
-        }`}
-      >
+      <p className="text-xl sm:text-2xl font-semibold text-center text-surface-700">
         {label}
       </p>
       {showNoFile && (
@@ -180,13 +172,7 @@ export function BannerBlock({
   const editable = mode === "edit";
 
   if (!editable) {
-    return (
-      <BannerPlaceholder
-        label={label}
-        imageUrl={props.imageUrl}
-        hideTitleWhenImage={mode === "review"}
-      />
-    );
+    return <BannerPlaceholder label={label} imageUrl={props.imageUrl} />;
   }
 
   return (

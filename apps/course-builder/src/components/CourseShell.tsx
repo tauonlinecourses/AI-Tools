@@ -239,7 +239,7 @@ export function CourseShell({ mode }: CourseShellProps) {
               ? "text-success font-semibold"
               : "text-surface-500"
         }`}
-        title={`${rollup.implemented_count} הוטמעו, ${rollup.needs_update_count} דורשים עדכון, ${rollup.not_implemented_count} לא הוטמעו`}
+        title={`${rollup.implemented_count} הוטמעו, ${rollup.needs_update_count} עברו שינוי, ${rollup.not_implemented_count} לא הוטמעו`}
       >
         {rollup.implemented_count}/{rollup.total_count}
       </span>

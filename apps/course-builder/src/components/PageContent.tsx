@@ -236,6 +236,11 @@ export function PageContent({
     try {
       const clip = typeof payload === "string" ? { plain: payload } : payload;
       await writeClipboard(clip);
+
+      const current = components?.find((c) => c.id === id);
+      // Already הוטמע — clipboard only; skip DB write / save spinner.
+      if (current && componentStatus(current) === "implemented") return;
+
       const updated = await trackSave(api.markImplemented(id));
       setComponents((prev) =>
         prev ? prev.map((c) => (c.id === id ? updated : c)) : prev
@@ -429,7 +434,7 @@ export function PageContent({
         {isImplement && rollup && rollup.total_count > 0 && (
           <span className="text-sm text-surface-500">
             {rollup.implemented_count}/{rollup.total_count} רכיבים הוטמעו
-            {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} דורשים עדכון`}
+            {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} עברו שינוי`}
           </span>
         )}
       </div>

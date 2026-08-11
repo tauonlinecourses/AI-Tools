@@ -23,9 +23,22 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
   if (!editable) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-base font-semibold text-surface-900">
-          {props.prompt || <span className="font-normal text-surface-400">ללא שאלה</span>}
-        </p>
+        <div className="flex items-start gap-2">
+          <p className="flex-1 min-w-0 text-base font-semibold text-surface-900">
+            {props.prompt || <span className="font-normal text-surface-400">ללא שאלה</span>}
+          </p>
+          {onCopyOption && (
+            <button
+              type="button"
+              className="p-1 text-surface-400 hover:text-surface-900 transition-colors duration-fast shrink-0"
+              title="העתק שאלה"
+              aria-label="העתק שאלה"
+              onClick={() => onCopyOption(props.prompt ?? "")}
+            >
+              <CopyIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <div className="flex flex-col gap-1.5">
           {options.map((opt) => {
             const correct = opt.id === props.correctOptionId;

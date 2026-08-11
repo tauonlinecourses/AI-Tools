@@ -20,7 +20,7 @@ interface Props {
 }
 
 const toolbarBtn =
-  "inline-flex items-center justify-center min-w-8 px-2 h-8 text-sm font-semibold rounded border border-transparent " +
+  "inline-flex items-center justify-center min-w-7 px-1.5 h-7 text-sm font-semibold rounded border border-transparent " +
   "text-surface-700 hover:bg-surface-100 disabled:opacity-40 disabled:pointer-events-none";
 
 const toolbarBtnActive = "bg-surface-200 border-surface-300 text-surface-900";
@@ -39,7 +39,7 @@ function TextToolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEdit
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 mb-2 pb-2 border-b border-surface-200">
+    <div className="flex flex-wrap items-center gap-0.5 mb-0 pb-1 border-b border-surface-200">
       <button
         type="button"
         title="מודגש"
