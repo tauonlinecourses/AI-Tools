@@ -1,5 +1,10 @@
-import React from "react";
-import { hubHref } from "../hub";
+import React, { useEffect, useState } from "react";
+import {
+  hubHref,
+  persistHubLocale,
+  resolveHubLocale,
+  type HubLocale,
+} from "../hub";
 import logoSrc from "../assets/Logo.png";
 
 interface PageLayoutProps {
@@ -7,7 +12,16 @@ interface PageLayoutProps {
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
   toolName?: string;
   toolDescription?: string;
-  /** Defaults to localhost in DEV and the Vercel hub URL in production. */
+  /** Hebrew tool title shown when hub locale is `he`. Falls back to `toolName`. */
+  toolNameHe?: string;
+  /** Hebrew tool description shown when hub locale is `he`. Falls back to `toolDescription`. */
+  toolDescriptionHe?: string;
+  /**
+   * Force header locale. When omitted, uses `?lang=` then localStorage
+   * (`ai-tools-hub-locale`), defaulting to Hebrew.
+   */
+  locale?: HubLocale;
+  /** Defaults to the hub home for the active locale (localhost in DEV, Vercel in production). */
   hubUrl?: string;
   /** When false, content fills the area under the nav with no outer padding (for full-bleed tools). */
   padded?: boolean;
@@ -22,44 +36,77 @@ const maxWidthStyles = {
   full: "max-w-full",
 };
 
+const hubLabel: Record<HubLocale, string> = {
+  en: "Hub",
+  he: "בית",
+};
+
 export const PageLayout: React.FC<PageLayoutProps> = ({
   children,
   maxWidth = "xl",
   toolName,
   toolDescription,
-  hubUrl = hubHref(),
+  toolNameHe,
+  toolDescriptionHe,
+  locale: localeProp,
+  hubUrl,
   padded = true,
 }) => {
+  const [locale, setLocale] = useState<HubLocale>(
+    () => localeProp ?? resolveHubLocale(),
+  );
+
+  useEffect(() => {
+    const next = localeProp ?? resolveHubLocale();
+    setLocale(next);
+    persistHubLocale(next);
+  }, [localeProp]);
+
+  const resolvedHubUrl = hubUrl ?? hubHref(locale);
+  const displayName =
+    locale === "he" ? (toolNameHe ?? toolName) : toolName;
+  const displayDescription =
+    locale === "he"
+      ? (toolDescriptionHe ?? toolDescription)
+      : toolDescription;
+  const dir = locale === "he" ? "rtl" : "ltr";
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Top nav bar */}
-      <header className="h-12 bg-white border-b border-surface-200 flex items-center px-4 shrink-0">
+      <header
+        dir={dir}
+        lang={locale === "he" ? "he" : "en"}
+        className="h-12 bg-white border-b border-surface-200 flex items-center px-4 shrink-0"
+      >
         <a
-          href={hubUrl}
+          href={resolvedHubUrl}
           className="text-xs text-surface-500 hover:text-surface-900 transition-colors duration-fast flex items-center gap-1.5"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
-          Hub
+          {hubLabel[locale]}
         </a>
-        {toolName && (
+        {displayName && (
           <>
             <span className="mx-2 text-surface-300">/</span>
-            <span className="text-sm font-semibold text-surface-900">{toolName}</span>
+            <span className="text-sm font-semibold text-surface-900">{displayName}</span>
           </>
         )}
-        {toolDescription && (
-          <span className="ml-3 text-xs text-surface-500 hidden sm:block">
-            {toolDescription}
+        {displayDescription && (
+          <span className="ms-3 text-xs text-surface-500 hidden sm:block truncate">
+            {displayDescription}
           </span>
         )}
-        <img
-          src={logoSrc}
-          alt=""
-          aria-hidden
-          className="ml-auto h-8 w-auto shrink-0"
-        />
+        <a href={resolvedHubUrl} className="ms-auto shrink-0" aria-label={hubLabel[locale]}>
+          <img
+            src={logoSrc}
+            alt=""
+            aria-hidden
+            className="h-8 w-auto"
+          />
+        </a>
       </header>
 
       {/* Main content */}

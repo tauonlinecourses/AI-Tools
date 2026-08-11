@@ -35,6 +35,8 @@ function App() {
     <PageLayout
       toolName="Video Curator"
       toolDescription="Curate video transcripts into sections, then export clips, SRT, and PDF."
+      toolNameHe="ניתוח וידאו"
+      toolDescriptionHe="ניתוח קבצי וידאו ותמלול לקטעים וייצוא קליפים, כתוביות ומסמכי עריכה"
       maxWidth="full"
       padded={false}
     >

@@ -57,6 +57,8 @@ export function CoursesPage() {
     <PageLayout
       toolName="Course Builder"
       toolDescription="Author course structure and content for implementers"
+      toolNameHe="פיתוח קורסים"
+      toolDescriptionHe="פיתוח ובניית מסמכי הטמעה דינאמיים. תצוגת הטמעה עבור צוות ההטמעה"
     >
       <div className="fixed top-14 left-4 z-20 pointer-events-none">
         <SaveStatusIndicator />

@@ -14,6 +14,19 @@ export function toolHref(tool: Tool): string {
   return import.meta.env.DEV ? tool.devUrl : tool.url;
 }
 
+/** Tool URL with `?lang=` so PageLayout can show the matching hub header locale. */
+export function toolHrefWithLocale(tool: Tool, locale: "en" | "he"): string {
+  const href = toolHref(tool);
+  try {
+    const url = new URL(href);
+    url.searchParams.set("lang", locale);
+    return url.toString();
+  } catch {
+    const join = href.includes("?") ? "&" : "?";
+    return `${href}${join}lang=${locale}`;
+  }
+}
+
 export const tools: Tool[] = [
   // ── Add your tools here ─────────────────────────────────────────────
   {
@@ -44,7 +57,7 @@ export const tools: Tool[] = [
     devUrl:      "http://localhost:5177",
     icon:        "zip",
     status:      "beta",
-    category:    "Education",
+    category:    "Tech",
   },
   // ── Example entries (fill in real URLs after deploying) ─────────────
   // {

@@ -31,7 +31,8 @@ Hub launcher wiring. UI continues in [08-apps-hub-ui.md](./08-apps-hub-ui.md).
   "dependencies": {
     "@workspace/ui":     "file:../../packages/ui",
     "react":             "^18.2.0",
-    "react-dom":         "^18.2.0"
+    "react-dom":         "^18.2.0",
+    "react-router-dom":  "^6"
   },
   "devDependencies": {
     "@workspace/config": "file:../../packages/config",
@@ -84,11 +85,11 @@ export default defineConfig({
 
 ```html
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tools Hub</title>
+    <title>כלי בינה מלאכותית</title>
   </head>
   <body>
     <div id="root"></div>
@@ -102,21 +103,26 @@ export default defineConfig({
 ```tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import "@workspace/ui/styles";
 import App from "./App";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>
 );
 ```
+
+Hub depends on `react-router-dom` (`^6`) for `/` (Hebrew, default) and `/en` (English). See [08-apps-hub-ui.md](./08-apps-hub-ui.md) for i18n + RTL.
 
 ### `apps/hub/src/tools.config.ts`
 
 This is the single file you edit to add or remove tools from the hub. Add a new entry here whenever you create a new tool.
 
-Each tool needs both a production `url` (Vercel) and a `devUrl` (local Vite). `toolHref()` picks localhost when the hub is running via `vite` DEV, and the Vercel URL when the hub is built/deployed (Vercel mode).
+Each tool needs both a production `url` (Vercel) and a `devUrl` (local Vite). `toolHref()` picks localhost when the hub is running via `vite` DEV, and the Vercel URL when the hub is built/deployed (Vercel mode). `toolHrefWithLocale(tool, locale)` appends `?lang=` for the shared tool header locale.
 
 ```typescript
 export interface Tool {
@@ -165,7 +171,7 @@ export const tools: Tool[] = [
     devUrl:      "http://localhost:5177",
     icon:        "zip",
     status:      "beta",
-    category:    "Education",
+    category:    "Tech",
   },
   // ── Example entries (fill in real URLs after deploying) ─────────────
   // {

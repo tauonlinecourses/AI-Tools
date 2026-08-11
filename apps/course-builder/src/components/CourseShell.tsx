@@ -446,7 +446,12 @@ export function CourseShell({ mode }: CourseShellProps) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <PageLayout toolName="Course Builder" maxWidth="full" padded={false}>
+    <PageLayout
+      toolName="Course Builder"
+      toolNameHe="פיתוח קורסים"
+      maxWidth="full"
+      padded={false}
+    >
       <div dir="rtl" lang="he" className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden">
         {/* Sidebar — fixed pane; own scrollbar when nav overflows */}
         <aside className="w-80 shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
@@ -481,7 +486,7 @@ export function CourseShell({ mode }: CourseShellProps) {
                     } ${
                       mode === seg.value
                         ? "bg-black text-white"
-                        : "text-surface-600 hover:bg-white"
+                        : "bg-white text-surface-600"
                     }`}
                   >
                     {seg.label}

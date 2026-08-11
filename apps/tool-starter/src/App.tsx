@@ -27,6 +27,8 @@ export default function App() {
     <PageLayout
       toolName="Starter Tool"
       toolDescription="Use this template to create new tools"
+      toolNameHe="כלי לדוגמה"
+      toolDescriptionHe="תבנית ליצירת כלים חדשים"
     >
       <div className="flex flex-col gap-6 max-w-2xl">
         <Card>

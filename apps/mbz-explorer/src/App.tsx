@@ -9,6 +9,8 @@ export default function App() {
       <PageLayout
         toolName="MBZ Explorer"
         toolDescription="Inspect Moodle .mbz course backups"
+        toolNameHe="ניתוח קבצי MBZ"
+        toolDescriptionHe="ניתוח והצגת מבנה ותוכן של קורסי מודל באמצעות קבצי MBZ"
         maxWidth="full"
         padded={false}
       >

@@ -14,7 +14,8 @@
     "@workspace/ai-client": "workspace:*",
     "@workspace/ui":     "workspace:*",
     "react":             "^18.2.0",
-    "react-dom":         "^18.2.0"
+    "react-dom":         "^18.2.0",
+    "react-router-dom":  "^6"
   },
   "devDependencies": {
     "@workspace/config": "workspace:*",

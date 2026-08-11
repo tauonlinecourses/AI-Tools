@@ -1,5 +1,5 @@
 ﻿<!-- AGENT DOC: Step 5b — apps/hub App.tsx -->
-<!-- Topic: hub launcher UI, tool cards, categories -->
+<!-- Topic: hub launcher UI, tool cards, categories, Hebrew locale -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 
 > **Agents:** Read [README.md](./README.md) first for the full map. This file is **part 8 of 10**.
@@ -11,145 +11,41 @@
 
 ## Step 5b — `apps/hub` launcher UI
 
-Continues Step 5 from [07-apps-hub-config.md](./07-apps-hub-config.md). This is the hub homepage (`App.tsx`).
+Continues Step 5 from [07-apps-hub-config.md](./07-apps-hub-config.md).
+
+### Locales & routing
+
+| Route | Locale | Direction |
+|-------|--------|-----------|
+| `/`   | Hebrew (`he`, default) | RTL |
+| `/en` | English (`en`)         | LTR |
+
+- `react-router-dom` wraps the app in `main.tsx` (`BrowserRouter`).
+- `App.tsx` routes `/` → `<HubPage locale="he" />` and `/en` → `<HubPage locale="en" />`. Legacy `/he` redirects to `/`.
+- Header language switcher: Hebrew page links to `/en` (label **English**); English page links to `/` (label **עברית**).
+- On mount / locale change, `HubPage` sets `document.documentElement.lang` + `dir`, `document.title`, and `persistHubLocale(locale)` so tool headers match.
+- Tool cards use `toolHrefWithLocale(tool, locale)` (`?lang=he` / `?lang=en`) so `PageLayout` on tool apps shows the matching Hebrew/English hub chrome.
+- Vercel SPA rewrite in `apps/hub/vercel.json` so `/en` serves `index.html`.
+
+### `apps/hub/src/i18n.ts`
+
+Single source for hub chrome copy, category labels, and Hebrew tool names/descriptions.
+
+- `ui.en` / `ui.he` — title, subtitle, All/הכל, empty state, Coming Soon/בקרוב, lang switch label + href, `dir`, `htmlLang`.
+- `categoryLabels` — maps English category keys from `tools.config.ts` (e.g. `Video`, `Education`, `Tech`) to localized tab labels.
+- `toolCopy` — Hebrew `name` + `description` keyed by tool `id`. When adding a tool, add an entry here for the Hebrew page.
+- Helpers: `localizeCategory(locale, category)`, `localizeTool(locale, tool)`.
 
 ### `apps/hub/src/App.tsx`
 
-```tsx
-import React, { useState } from "react";
-import { Badge } from "@workspace/ui";
-import { tools, categories, toolHref } from "./tools.config";
-import type { Tool } from "./tools.config";
+Shared launcher UI driven by `locale`:
 
-const iconPaths: Record<string, string> = {
-  bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
-  film:   "M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z",
-  search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
-};
+- **ToolCard** — uses `localizeTool` for name/description; Coming Soon badge uses `ui[locale].comingSoon`.
+- **HubPage** — category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`.
+- Same layout as before: header (logo + title + lang switch), category strip, tool grid.
 
-function ToolIcon({ name }: { name: string }) {
-  const d = iconPaths[name] ?? iconPaths.bolt;
-  return (
-    <svg
-      className="w-6 h-6 text-surface-900"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      aria-hidden
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
-    </svg>
-  );
-}
+### Adding a new tool (Hebrew)
 
-function ToolCard({ tool }: { tool: Tool }) {
-  const isClickable = tool.status !== "coming-soon";
-  const isComingSoon = tool.status === "coming-soon";
-
-  const card = (
-    <div
-      className={[
-        "group bg-white border border-surface-200 p-5",
-        "flex flex-col gap-3",
-        "transition-colors duration-fast",
-        isClickable
-          ? "hover:bg-surface-50 hover:border-surface-900 cursor-pointer"
-          : "opacity-60 cursor-not-allowed",
-      ].join(" ")}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-lg font-semibold text-surface-900 truncate">
-            {tool.name}
-          </h3>
-          {isComingSoon && (
-            <Badge variant="default" size="sm">Coming Soon</Badge>
-          )}
-        </div>
-        <ToolIcon name={tool.icon} />
-      </div>
-      <p className="text-sm text-surface-500 leading-relaxed">
-        {tool.description}
-      </p>
-    </div>
-  );
-
-  if (!isClickable) return card;
-
-  return (
-    <a href={toolHref(tool)} className="contents">
-      {card}
-    </a>
-  );
-}
-
-export default function App() {
-  const [activeCategory, setActiveCategory] = useState<string>("All");
-
-  const filteredTools =
-    activeCategory === "All"
-      ? tools
-      : tools.filter((t) => t.category === activeCategory);
-
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="bg-white border-b border-surface-200">
-        <div className="max-w-screen-xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-4">
-            <img
-              src="/logo-narrow.png"
-              alt="Feynman"
-              className="h-16 w-auto shrink-0"
-            />
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-                AI Tools Hub
-              </h1>
-              <p className="text-surface-600 mt-1 text-sm">
-                Our homemade AI-powered tools for daily works
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Category filter */}
-      <div className="bg-white border-b border-surface-200">
-        <div className="max-w-screen-xl mx-auto px-6">
-          <div className="flex gap-1 overflow-x-auto py-2">
-            {["All", ...categories].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={[
-                  "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
-                  activeCategory === cat
-                    ? "bg-black text-white"
-                    : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
-                ].join(" ")}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Tool grid */}
-      <div className="max-w-screen-xl mx-auto px-6 py-8">
-        {filteredTools.length === 0 ? (
-          <p className="text-surface-500 text-sm">No tools in this category yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-```
-
+1. Add the tool in `tools.config.ts` (English name/description/category).
+2. Add Hebrew `name` + `description` in `i18n.ts` → `toolCopy[id]`.
+3. If the category is new, add labels under `categoryLabels.en` and `categoryLabels.he`.

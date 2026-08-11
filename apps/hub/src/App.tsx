@@ -1,7 +1,14 @@
-import { useState } from "react";
-import { Badge } from "@workspace/ui";
-import { tools, categories, toolHref } from "./tools.config";
+import { useEffect, useState } from "react";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Badge, persistHubLocale } from "@workspace/ui";
+import { tools, categories, toolHrefWithLocale } from "./tools.config";
 import type { Tool } from "./tools.config";
+import {
+  ui,
+  localizeCategory,
+  localizeTool,
+  type Locale,
+} from "./i18n";
 
 const iconPaths: Record<string, string> = {
   bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
@@ -26,9 +33,11 @@ function ToolIcon({ name }: { name: string }) {
   );
 }
 
-function ToolCard({ tool }: { tool: Tool }) {
+function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
   const isClickable = tool.status !== "coming-soon";
   const isComingSoon = tool.status === "coming-soon";
+  const copy = localizeTool(locale, tool);
+  const t = ui[locale];
 
   const card = (
     <div
@@ -44,16 +53,16 @@ function ToolCard({ tool }: { tool: Tool }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="text-lg font-semibold text-surface-900 truncate">
-            {tool.name}
+            {copy.name}
           </h3>
           {isComingSoon && (
-            <Badge variant="default" size="sm">Coming Soon</Badge>
+            <Badge variant="default" size="sm">{t.comingSoon}</Badge>
           )}
         </div>
         <ToolIcon name={tool.icon} />
       </div>
       <p className="text-sm text-surface-500 leading-relaxed">
-        {tool.description}
+        {copy.description}
       </p>
     </div>
   );
@@ -61,39 +70,59 @@ function ToolCard({ tool }: { tool: Tool }) {
   if (!isClickable) return card;
 
   return (
-    <a href={toolHref(tool)} className="contents">
+    <a href={toolHrefWithLocale(tool, locale)} className="contents">
       {card}
     </a>
   );
 }
 
-export default function App() {
+function HubPage({ locale }: { locale: Locale }) {
+  const t = ui[locale];
   const [activeCategory, setActiveCategory] = useState<string>("All");
+
+  useEffect(() => {
+    document.documentElement.lang = t.htmlLang;
+    document.documentElement.dir = t.dir;
+    document.title = t.title;
+    persistHubLocale(locale);
+  }, [t, locale]);
 
   const filteredTools =
     activeCategory === "All"
       ? tools
-      : tools.filter((t) => t.category === activeCategory);
+      : tools.filter((tool) => tool.category === activeCategory);
+
+  const categoryTabs = ["All", ...categories] as const;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white" dir={t.dir} lang={t.htmlLang}>
       {/* Header */}
       <div className="bg-white border-b border-surface-200">
         <div className="max-w-screen-xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-4">
-            <img
-              src="/logo-narrow.png"
-              alt="Feynman"
-              className="h-16 w-auto shrink-0"
-            />
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-                AI Tools
-              </h1>
-              <p className="text-surface-600 mt-1 text-sm">
-                Our homemade AI-powered tools for daily work
-              </p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <Link to={locale === "en" ? "/en" : "/"} className="shrink-0">
+                <img
+                  src="/logo-narrow.png"
+                  alt="Feynman"
+                  className="h-16 w-auto"
+                />
+              </Link>
+              <div className="min-w-0">
+                <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
+                  {t.title}
+                </h1>
+                <p className="text-surface-600 mt-1 text-sm">
+                  {t.subtitle}
+                </p>
+              </div>
             </div>
+            <Link
+              to={t.langHref}
+              className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-control border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors duration-fast"
+            >
+              {t.langLabel}
+            </Link>
           </div>
         </div>
       </div>
@@ -102,9 +131,10 @@ export default function App() {
       <div className="bg-white border-b border-surface-200">
         <div className="max-w-screen-xl mx-auto px-6">
           <div className="flex gap-1 overflow-x-auto py-2">
-            {["All", ...categories].map((cat) => (
+            {categoryTabs.map((cat) => (
               <button
                 key={cat}
+                type="button"
                 onClick={() => setActiveCategory(cat)}
                 className={[
                   "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
@@ -113,7 +143,7 @@ export default function App() {
                     : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
                 ].join(" ")}
               >
-                {cat}
+                {cat === "All" ? t.all : localizeCategory(locale, cat)}
               </button>
             ))}
           </div>
@@ -123,15 +153,25 @@ export default function App() {
       {/* Tool grid */}
       <div className="max-w-screen-xl mx-auto px-6 py-8">
         {filteredTools.length === 0 ? (
-          <p className="text-surface-500 text-sm">No tools in this category yet.</p>
+          <p className="text-surface-500 text-sm">{t.empty}</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
+              <ToolCard key={tool.id} tool={tool} locale={locale} />
             ))}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HubPage locale="he" />} />
+      <Route path="/en" element={<HubPage locale="en" />} />
+      <Route path="/he" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
