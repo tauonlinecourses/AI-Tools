@@ -51,6 +51,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 ## Pages & sidebar
 
 - [ ] Page types with icons — assign a type to each page and show the matching icon in the implement-view sidebar
+- [ ] Duplicate page button in edit-mode sidebar — clone the whole page (same components + field details) with new IDs for the page and all components
 
 ---
 
