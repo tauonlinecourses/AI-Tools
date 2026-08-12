@@ -41,7 +41,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 ## Data & API
 
 - [ ] Add teachers and course developer fields to course data (schema + edit UI)
-- [ ] Add "available from" date + hour to sections (schema + edit UI)
+- [ ] Lesson overview page per section — open/close dates, general notes, files-folder link (schema + edit UI)
 - [ ] Apply pending migrations on live DB if missing (`001_course_home_page`, `002_fix_empty_page_rollup`, `mark_component_implemented`)
 - [x] Bump course `updated_at` when nested content changes (today only title/description)
 - [ ] Soft-delete / undo for destructive actions (today: `window.confirm` only)
@@ -53,6 +53,9 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] Page types with icons — assign a type to each page and show the matching icon in the implement-view sidebar
   - Derived from blocks: any `question` → H5P (`h5p-logo.svg`); otherwise normal page (`page-logo.svg`). Extra logos in `public/` reserved for future block types.
 - [ ] Duplicate page button in edit-mode sidebar — clone the whole page (same components + field details) with new IDs for the page and all components
+- [ ] Edit-mode workflow statuses on the course-builder edit screen: Ready for implementation (מוכן להטמעה), In progress (בעבודה)
+- [ ] Ready-for-implementation count on the page / lesson (e.g. 3/5 ready)
+- [ ] Change status for a whole page at once (not only component-by-component)
 
 ---
 
