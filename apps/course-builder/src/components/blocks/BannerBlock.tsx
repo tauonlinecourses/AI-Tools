@@ -27,11 +27,14 @@ function BannerPlaceholder({
   imageUrl,
   settingsOpen = false,
   onChevronClick,
+  openOnClick = true,
 }: {
   label: string;
   imageUrl?: string;
   settingsOpen?: boolean;
   onChevronClick?: () => void;
+  /** When false (preview), the image is not wrapped in a link. */
+  openOnClick?: boolean;
 }) {
   const src = imageUrl?.trim() || undefined;
   const [imageStatus, setImageStatus] = useState<"none" | "loading" | "loaded" | "error">(
@@ -70,7 +73,7 @@ function BannerPlaceholder({
           key={src}
           src={src}
           alt=""
-          className={`absolute inset-0 w-full h-full object-cover ${
+          className={`absolute inset-0 w-full h-full object-contain ${
             imageShowing ? "" : "invisible"
           }`}
           onLoad={() => setImageStatus("loaded")}
@@ -107,7 +110,7 @@ function BannerPlaceholder({
         </div>
       )}
 
-      {src ? (
+      {src && openOnClick ? (
         <a
           href={src}
           target="_blank"
@@ -172,7 +175,13 @@ export function BannerBlock({
   const editable = mode === "edit";
 
   if (!editable) {
-    return <BannerPlaceholder label={label} imageUrl={props.imageUrl} />;
+    return (
+      <BannerPlaceholder
+        label={label}
+        imageUrl={props.imageUrl}
+        openOnClick={mode !== "review"}
+      />
+    );
   }
 
   return (

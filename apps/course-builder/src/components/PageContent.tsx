@@ -85,6 +85,8 @@ interface PageContentProps {
   onPageChange: (fields: Partial<Pick<Page, "title" | "notes">>) => void;
   /** Notify the shell that implementation status may have changed (implement rollups). */
   onStatusChange: () => void;
+  /** Notify the shell that nested content was saved (refresh course last-updated). */
+  onContentChange: () => void;
 }
 
 export function PageContent({
@@ -94,6 +96,7 @@ export function PageContent({
   rollup,
   onPageChange,
   onStatusChange,
+  onContentChange,
 }: PageContentProps) {
   const { trackSave, beginSave, endSave } = useSaveStatus();
   const editable = mode === "edit";
@@ -128,11 +131,15 @@ export function PageContent({
       }
       timersMap.clear();
       for (const [id, props] of pendingMap) {
-        trackSave(api.updateComponentProps(id, props)).catch(() => undefined);
+        trackSave(
+          api.updateComponentProps(id, props).then(() => {
+            onContentChange();
+          })
+        ).catch(() => undefined);
       }
       pendingMap.clear();
     };
-  }, [page.id, trackSave, endSave]);
+  }, [page.id, trackSave, endSave, onContentChange]);
 
   function scheduleSave(key: string, save: () => Promise<void>) {
     beginSave(key);
@@ -162,18 +169,25 @@ export function PageContent({
           ? prev.map((c) => (c.id === id ? { ...c, updated_at: updated.updated_at } : c))
           : prev
       );
+      onContentChange();
       onStatusChange();
     });
   }
 
   function handleTitleChange(title: string) {
     onPageChange({ title });
-    scheduleSave(`page-title:${page.id}`, () => api.updatePage(page.id, { title }));
+    scheduleSave(`page-title:${page.id}`, async () => {
+      await api.updatePage(page.id, { title });
+      onContentChange();
+    });
   }
 
   function handleNotesChange(notes: string) {
     onPageChange({ notes });
-    scheduleSave(`page-notes:${page.id}`, () => api.updatePage(page.id, { notes }));
+    scheduleSave(`page-notes:${page.id}`, async () => {
+      await api.updatePage(page.id, { notes });
+      onContentChange();
+    });
   }
 
   function toggleSettings(id: string) {
@@ -206,6 +220,7 @@ export function PageContent({
       if (type === "video" || type === "banner") {
         setOpenSettings((prev) => new Set(prev).add(created.id));
       }
+      onContentChange();
       onStatusChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -218,6 +233,7 @@ export function PageContent({
     try {
       await trackSave(api.deleteComponent(id));
       setComponents((prev) => prev?.filter((c) => c.id !== id) ?? prev);
+      onContentChange();
       onStatusChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -227,7 +243,10 @@ export function PageContent({
   function handleReorder(next: PageComponent[]) {
     setComponents(next);
     trackSave(api.reorderComponents(next.map((c) => c.id)))
-      .then(() => onStatusChange())
+      .then(() => {
+        onContentChange();
+        onStatusChange();
+      })
       .catch((e: Error) => setError(e.message));
   }
 

@@ -1,3 +1,5 @@
+import { activityTypeIcon } from "../../lib/activityTypeIcon";
+
 interface StructureStats {
   sectionCount: number;
   activityCount: number;
@@ -27,6 +29,11 @@ export function structureStatsFromManifest(manifest: {
   };
 }
 
+function typeDisplayLabel(type: string): string {
+  if (type === "hvp") return "h5p";
+  return type;
+}
+
 export function StructureOverview({ stats, compact }: StructureOverviewProps) {
   const types = Object.entries(stats.activityTypeCounts).sort((a, b) => b[1] - a[1]);
 
@@ -48,16 +55,29 @@ export function StructureOverview({ stats, compact }: StructureOverviewProps) {
         <span>{stats.fileCount} files</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {types.map(([type, n]) => (
-          <span
-            key={type}
-            className={`inline-flex items-center border border-surface-200 bg-white px-2 py-0.5 rounded-control font-medium text-surface-700 ${
-              compact ? "text-xs" : "text-2xs"
-            }`}
-          >
-            {type}: {n}
-          </span>
-        ))}
+        {types.map(([type, n]) => {
+          const icon = activityTypeIcon(type);
+          return (
+            <span
+              key={type}
+              title={icon?.label ?? typeDisplayLabel(type)}
+              className={`inline-flex items-center gap-1.5 border border-surface-200 bg-white px-2 py-0.5 rounded-control font-medium text-surface-700 ${
+                compact ? "text-xs" : "text-2xs"
+              }`}
+            >
+              {icon ? (
+                <img
+                  src={icon.src}
+                  alt=""
+                  className="w-4 h-4 shrink-0 object-contain"
+                />
+              ) : (
+                <span>{typeDisplayLabel(type)}</span>
+              )}
+              <span className="tabular-nums">{n}</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );

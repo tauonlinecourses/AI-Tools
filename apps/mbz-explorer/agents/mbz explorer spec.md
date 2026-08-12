@@ -35,7 +35,9 @@ Common scaffold: `module.xml`, `inforef.xml`, `roles.xml`, `grades.xml`, `grade_
 
 ### 2.3 Subsection pattern (Moodle 4.x+)
 
-A `subsection` activity is a pointer. A separate section with `component === "mod_subsection"` and `itemid` matching the subsection module’s own id holds the real content. Resolve this linkage; clicking a subsection jumps to the delegated section.
+A `subsection` activity is a pointer. A separate section with `component === "mod_subsection"` and `itemid` matching the subsection module’s own id holds the real content. Resolve this linkage in the parser (`delegatedBy` on the content section).
+
+**UI:** delegated content sections are **not** shown at the course root. The subsection activity appears as a **nested folder** inside its parent section (sidebar + home structure tree). Expanding the subsection folder shows that section’s activities as children. Decode runs on the delegated section when the subsection folder is expanded.
 
 ### 2.4 Content encoding
 
@@ -179,16 +181,18 @@ apps/mbz-explorer/
     pages/DashboardPage.tsx
     pages/ExplorerPage.tsx
     components/
-      icons.tsx                 — chevron (Course Builder–matched chrome)
+      icons.tsx                 — chevron / folder / file / home (Course Builder–matched chrome)
       explorer/
         Tree.tsx                — sidebar (look/feel matched to Course Builder)
         ContentViewer.tsx
+        HomeStructureTree.tsx   — explorer home: folder-tree of sections/activities
         H5pQuestionCard.tsx
         StructureOverview.tsx
         UploadDropzone.tsx
     lib/
       mbz-parser/             — §5
       idb.ts                  — IndexedDB cache
+      courseTree.ts           — nested section/subsection tree for sidebar + home
       blobUrls.ts             — blob URL cache + revoke
       session.ts              — load/upload/decode orchestration
 ```
@@ -199,19 +203,30 @@ Matches Course Builder chrome (LTR English): fixed `w-80` pane `bg-[#F8F9FA]`, i
 
 - **Header:** `.mbz` filename as title (`text-xl`), Moodle course fullname as muted subtitle, “Back to dashboard”, collapsible Structure Overview, **Analyze full course**
 - Dashboard list titles use the `.mbz` filename; Moodle fullname stays in the meta line
-- **Nav:** sections (`number` order) with chevron collapse; activities as inset pills `type | name` (e.g. `page | Intro`, `h5p | Quiz`). Type display: `hvp` → `h5p`; `label` → no type prefix (name only)
-- Selected activity: `rounded-lg bg-[#0F6CBF]` white text (same pill as Course Builder)
-- Pending sections/activities muted; expand pending → `decodeSection` (spinner)
-- First 2 sections open by default; rest collapsed
-- Subsection node → expand + jump to delegated section
+- **Nav:** **Home** row first (selected when no activity is open) → top-level sections only (`delegatedBy` sections hidden) with chevron collapse; subsection activities render as nested folders inside the parent section; other activities as inset pills with a type icon (when mapped) + name. Logos in `public/`: `page` → `page-logo.svg`, `hvp` → `h5p-logo.svg`, `forum` → `forum-icon.svg`, `assign` → `task-logo.svg`, `glossary` → `dictunary-logo.svg`, `board` → `notes-board-logo.svg` (`activityTypeIcon.ts`). Unmapped types keep the text `type | name` prefix (`hvp` displayed as `h5p` if ever shown as text; `label` → name only, no icon). Monochrome icons invert to white on the selected blue pill; H5P logo does not.
+- Selected activity: `rounded-lg bg-[#0F6CBF]` white text (same pill as Course Builder); Home uses the same selected pill when the structure home is showing
+- Pending sections/activities muted; expand pending section or subsection folder → `decodeSection` on the relevant section (spinner)
+- First 2 top-level sections open by default; subsection folders collapsed by default
 - Fixed split: `h-[calc(100vh-3rem)]`; sidebar `nav` and main pane scroll independently
 
-### 6.2 Content viewer
+### 6.2 Main canvas — Home vs Content viewer
 
+**Default on open / reopen:** land on **Home** (`selectedCmid === null`), not the first activity.
+
+**Home** (`HomeStructureTree.tsx`): folder-tree overview of the backup.
+- Header: “Course structure” + compact Structure Overview stats
+- Tree: `.mbz` root folder → top-level section folders → activities; subsection activities are nested folders with their delegated activities inside
+- Same sans-serif `text-base` as the sidebar (not monospace) so Hebrew section/activity names match
+- Root backup folder open at start; all section folders collapsed until expanded; subsection folders collapsed until expanded
+- Sections expandable; child count per section/subsection folder; undecoded items use muted text (no “pending” label)
+- Click an activity → select it and show the content viewer (same as sidebar click)
+
+**Content viewer** (when an activity is selected):
 - Tabs: Rendered / Raw XML / Metadata
 - Pending activity: prompt to decode section (Raw XML still available from VFS)
 - HTML: `dir="auto"`, unresolved tokens as badges
 - Tool chrome: English LTR fixed
+- Sidebar **Home** returns to the structure tree
 
 ### 6.3 Persistence
 

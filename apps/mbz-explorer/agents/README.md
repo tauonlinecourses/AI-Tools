@@ -13,15 +13,19 @@ Inspect Moodle `.mbz` backups in the browser: extract → structure tree → laz
 ## Docs
 
 - **[`mbz explorer spec.md`](./mbz%20explorer%20spec.md)** — single source of truth (stack, manifest, parser, lazy decode, milestones)
+- **[`mbz-file.md`](./mbz-file.md)** — Moodle `.mbz` format reference (folder layout, file types, structured vs custom content)
 
 ## Key folders
 
 | Path | Role |
 |---|---|
 | `src/lib/mbz-parser/` | Pure extract/parse/decode (no UI) |
+| `src/lib/courseTree.ts` | Top-level sections + nested subsection folders for UI |
+| `src/lib/activityTypeIcon.ts` | Sidebar activity-type → logo map |
 | `src/lib/idb.ts` / `session.ts` | IndexedDB + orchestration |
-| `src/components/explorer/` | Sidebar Tree (Course Builder chrome), ContentViewer, H5P card, overview |
-| `src/components/icons.tsx` | Shared icons (chevron) |
+| `public/*.svg` | Activity type logos (page, h5p, forum, assign/task, glossary, board) |
+| `src/components/explorer/` | Sidebar Tree (Course Builder chrome), HomeStructureTree, ContentViewer, H5P card, overview |
+| `src/components/icons.tsx` | Shared icons (chevron, folder, file, home) |
 | `src/pages/` | Dashboard + Explorer routes |
 
 ## Convention

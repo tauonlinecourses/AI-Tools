@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageLayout, Card, Spinner } from "@workspace/ui";
-import type { CourseViewMode, Page, Section, CourseTree, StatusRollup } from "../lib/types";
-import { isHomePage } from "../lib/types";
+import type { CourseViewMode, Page, PageType, Section, CourseTree, StatusRollup } from "../lib/types";
+import { isHomePage, PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
 import { PageContent } from "./PageContent";
 import { SortableList, type DragHandleProps } from "./SortableList";
@@ -38,6 +38,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     perPage: Map<string, StatusRollup>;
     perSection: Map<string, StatusRollup>;
   } | null>(null);
+  const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
 
   useEffect(() => {
     if (!courseId) return;
@@ -58,9 +59,21 @@ export function CourseShell({ mode }: CourseShellProps) {
       .catch(() => undefined);
   }, [showRollups, tree]);
 
+  const refreshPageTypes = useCallback(() => {
+    if (!showRollups || !tree) return;
+    api
+      .getPageTypes(tree.pages.map((p) => p.id))
+      .then(setPageTypes)
+      .catch(() => undefined);
+  }, [showRollups, tree]);
+
   useEffect(() => {
     refreshRollups();
   }, [refreshRollups]);
+
+  useEffect(() => {
+    refreshPageTypes();
+  }, [refreshPageTypes]);
 
   // ─── Derived structure ────────────────────────────────────────────────────
 
@@ -111,6 +124,18 @@ export function CourseShell({ mode }: CourseShellProps) {
     setSearchParams({ page: pageId }, { replace: true });
   }
 
+  /** Refresh sidebar "last updated" after nested content saves (API already bumps DB). */
+  const markCourseTouched = useCallback(() => {
+    setTree((prev) =>
+      prev
+        ? {
+            ...prev,
+            course: { ...prev.course, updated_at: new Date().toISOString() },
+          }
+        : prev
+    );
+  }, []);
+
   // ─── Section mutations ────────────────────────────────────────────────────
 
   async function handleAddSection() {
@@ -120,6 +145,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         api.addSection(courseId, "שיעור חדש", tree.sections.length)
       );
       setTree((prev) => (prev ? { ...prev, sections: [...prev.sections, section] } : prev));
+      markCourseTouched();
       setRenaming({ kind: "section", id: section.id });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -139,6 +165,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     try {
       if (kind === "section") await trackSave(api.updateSection(id, { title: trimmed }));
       else await trackSave(api.updatePage(id, { title: trimmed }));
+      markCourseTouched();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -162,6 +189,7 @@ export function CourseShell({ mode }: CourseShellProps) {
             }
           : prev
       );
+      markCourseTouched();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -169,9 +197,9 @@ export function CourseShell({ mode }: CourseShellProps) {
 
   function handleReorderSections(next: Section[]) {
     setTree((prev) => (prev ? { ...prev, sections: next } : prev));
-    trackSave(api.reorderSections(next.map((s) => s.id))).catch((e: Error) =>
-      setError(e.message)
-    );
+    trackSave(api.reorderSections(next.map((s) => s.id)))
+      .then(() => markCourseTouched())
+      .catch((e: Error) => setError(e.message));
   }
 
   // ─── Page mutations ───────────────────────────────────────────────────────
@@ -181,6 +209,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     try {
       const page = await trackSave(api.addPage(sectionId, "עמוד חדש", siblings.length));
       setTree((prev) => (prev ? { ...prev, pages: [...prev.pages, page] } : prev));
+      markCourseTouched();
       setRenaming({ kind: "page", id: page.id });
       selectPage(page.id);
     } catch (e) {
@@ -196,6 +225,7 @@ export function CourseShell({ mode }: CourseShellProps) {
       setTree((prev) =>
         prev ? { ...prev, pages: prev.pages.filter((p) => p.id !== page.id) } : prev
       );
+      markCourseTouched();
       if (searchParams.get("page") === page.id) setSearchParams({}, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -208,7 +238,9 @@ export function CourseShell({ mode }: CourseShellProps) {
       const others = prev.pages.filter((p) => p.section_id !== sectionId);
       return { ...prev, pages: [...others, ...next] };
     });
-    trackSave(api.reorderPages(next.map((p) => p.id))).catch((e: Error) => setError(e.message));
+    trackSave(api.reorderPages(next.map((p) => p.id)))
+      .then(() => markCourseTouched())
+      .catch((e: Error) => setError(e.message));
   }
 
   function handlePageFieldChange(fields: Partial<Pick<Page, "title" | "notes">>) {
@@ -272,6 +304,8 @@ export function CourseShell({ mode }: CourseShellProps) {
       !!pageRollup &&
       pageRollup.total_count > 0 &&
       pageRollup.implemented_count === pageRollup.total_count;
+    const pageType =
+      showRollups && !isHome ? (pageTypes.get(page.id) ?? "page") : null;
     return (
       <div
         className={`group flex items-center gap-1.5 mx-2 ${isHome ? "ps-2" : "ps-5"} pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
@@ -295,6 +329,16 @@ export function CourseShell({ mode }: CourseShellProps) {
           >
             <GripIcon className="w-3 h-3" />
           </button>
+        )}
+        {pageType && (
+          <img
+            src={PAGE_TYPE_LOGO[pageType]}
+            alt=""
+            title={PAGE_TYPE_LABEL[pageType]}
+            className={`w-4 h-4 shrink-0 object-contain ${
+              isSelected && pageType === "page" ? "brightness-0 invert" : ""
+            }`}
+          />
         )}
         {pageNumber && (
           <>
@@ -573,6 +617,7 @@ export function CourseShell({ mode }: CourseShellProps) {
               rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
               onPageChange={handlePageFieldChange}
               onStatusChange={refreshRollups}
+              onContentChange={markCourseTouched}
             />
           )}
         </div>

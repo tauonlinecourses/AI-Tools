@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Spinner } from "@workspace/ui";
 import { Tree } from "../components/explorer/Tree";
 import { ContentViewer } from "../components/explorer/ContentViewer";
+import { HomeStructureTree } from "../components/explorer/HomeStructureTree";
 import type { MbzManifest } from "../lib/mbz-parser";
 import {
   loadSession,
@@ -18,6 +19,7 @@ export function ExplorerPage() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** null = home (structure tree); otherwise selected activity cmid */
   const [selectedCmid, setSelectedCmid] = useState<string | null>(null);
   const [decodingSectionId, setDecodingSectionId] = useState<string | null>(null);
   const [analyzingFull, setAnalyzingFull] = useState(false);
@@ -36,8 +38,8 @@ export function ExplorerPage() {
           setSession(null);
         } else {
           setSession(s);
-          const first = s.manifest.activities[0];
-          setSelectedCmid(first?.cmid ?? null);
+          // Land on home structure overview (not first activity).
+          setSelectedCmid(null);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -81,14 +83,6 @@ export function ExplorerPage() {
     }
   }
 
-  function onJumpToSection(sectionId: string) {
-    const el = document.getElementById(`section-${sectionId}`);
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    const section = session?.manifest.sections.find((s) => s.id === sectionId);
-    const firstCmid = section?.activityRefs[0];
-    if (firstCmid) setSelectedCmid(firstCmid);
-  }
-
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-3rem)] items-center justify-center gap-2 text-sm text-surface-500">
@@ -114,40 +108,49 @@ export function ExplorerPage() {
         key={session.manifest.sourceFile.sha1}
         manifest={session.manifest}
         selectedCmid={selectedCmid}
+        homeSelected={selectedCmid === null}
         decodingSectionId={decodingSectionId}
+        onSelectHome={() => setSelectedCmid(null)}
         onSelectActivity={setSelectedCmid}
         onExpandSection={onExpandSection}
-        onJumpToSection={onJumpToSection}
         onAnalyzeFull={onAnalyzeFull}
         analyzingFull={analyzingFull}
       />
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-white">
-        <ContentViewer
-          manifest={session.manifest}
-          vfs={session.vfs}
-          activity={activity}
-          hydrateHtml={(html) =>
-            hydrateHtmlBlobs(
-              html,
-              session.manifest,
-              session.vfs,
-              session.blobStore,
-              session.urlCache
-            )
-          }
-          onDecodeSection={onExpandSection}
-          onRedecode={async (sectionId) => {
-            if (!sha1) return;
-            setDecodingSectionId(sectionId);
-            try {
-              const manifest = await runForceRedecode(sha1, sectionId);
-              if (manifest) applyManifest(manifest);
-            } finally {
-              setDecodingSectionId(null);
+        {selectedCmid === null ? (
+          <HomeStructureTree
+            manifest={session.manifest}
+            onSelectActivity={setSelectedCmid}
+            onExpandSection={onExpandSection}
+          />
+        ) : (
+          <ContentViewer
+            manifest={session.manifest}
+            vfs={session.vfs}
+            activity={activity}
+            hydrateHtml={(html) =>
+              hydrateHtmlBlobs(
+                html,
+                session.manifest,
+                session.vfs,
+                session.blobStore,
+                session.urlCache
+              )
             }
-          }}
-          decoding={decodingSectionId != null}
-        />
+            onDecodeSection={onExpandSection}
+            onRedecode={async (sectionId) => {
+              if (!sha1) return;
+              setDecodingSectionId(sectionId);
+              try {
+                const manifest = await runForceRedecode(sha1, sectionId);
+                if (manifest) applyManifest(manifest);
+              } finally {
+                setDecodingSectionId(null);
+              }
+            }}
+            decoding={decodingSectionId != null}
+          />
+        )}
       </div>
     </div>
   );

@@ -8,12 +8,64 @@ import type {
   ImplementationStatus,
   Page,
   PageComponent,
+  PageType,
   Section,
   StatusRollup,
 } from "./types";
+import { derivePageType } from "./types";
 
 function fail(context: string, error: { message: string } | null): never {
   throw new Error(`${context}: ${error?.message ?? "unknown error"}`);
+}
+
+/**
+ * Bumps `courses.updated_at` so the list / sidebar "last updated" reflects
+ * nested content edits (sections, pages, components). The row trigger sets `now()`.
+ * Not used for implementer-only status changes (`implemented_at`).
+ */
+export async function touchCourse(courseId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("courses")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", courseId)
+    .select("updated_at")
+    .single();
+  if (error) fail("Updating course timestamp", error);
+  return data.updated_at;
+}
+
+async function courseIdFromSection(sectionId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("sections")
+    .select("course_id")
+    .eq("id", sectionId)
+    .single();
+  if (error) fail("Resolving course for section", error);
+  return data.course_id;
+}
+
+async function courseIdFromPage(pageId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("pages")
+    .select("course_id, section_id")
+    .eq("id", pageId)
+    .single();
+  if (error) fail("Resolving course for page", error);
+  if (data.course_id) return data.course_id;
+  if (!data.section_id) {
+    fail("Resolving course for page", { message: "page has no course or section" });
+  }
+  return courseIdFromSection(data.section_id);
+}
+
+async function courseIdFromComponent(componentId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("components")
+    .select("page_id")
+    .eq("id", componentId)
+    .single();
+  if (error) fail("Resolving course for component", error);
+  return courseIdFromPage(data.page_id);
 }
 
 // ─── Courses ────────────────────────────────────────────────────────────────
@@ -127,6 +179,7 @@ export async function addSection(
     .select()
     .single();
   if (error) fail("Adding section", error);
+  await touchCourse(courseId);
   return data;
 }
 
@@ -134,17 +187,24 @@ export async function updateSection(
   id: string,
   fields: Partial<Pick<Section, "title">>
 ): Promise<void> {
+  const courseId = await courseIdFromSection(id);
   const { error } = await supabase.from("sections").update(fields).eq("id", id);
   if (error) fail("Updating section", error);
+  await touchCourse(courseId);
 }
 
 export async function deleteSection(id: string): Promise<void> {
+  const courseId = await courseIdFromSection(id);
   const { error } = await supabase.from("sections").delete().eq("id", id);
   if (error) fail("Deleting section", error);
+  await touchCourse(courseId);
 }
 
 export async function reorderSections(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const courseId = await courseIdFromSection(orderedIds[0]);
   await renumber("sections", orderedIds);
+  await touchCourse(courseId);
 }
 
 // ─── Pages ──────────────────────────────────────────────────────────────────
@@ -191,12 +251,14 @@ export async function addPage(
   title: string,
   position: number
 ): Promise<Page> {
+  const courseId = await courseIdFromSection(sectionId);
   const { data, error } = await supabase
     .from("pages")
     .insert({ section_id: sectionId, course_id: null, title, position })
     .select()
     .single();
   if (error) fail("Adding page", error);
+  await touchCourse(courseId);
   return data;
 }
 
@@ -204,17 +266,24 @@ export async function updatePage(
   id: string,
   fields: Partial<Pick<Page, "title" | "notes">>
 ): Promise<void> {
+  const courseId = await courseIdFromPage(id);
   const { error } = await supabase.from("pages").update(fields).eq("id", id);
   if (error) fail("Updating page", error);
+  await touchCourse(courseId);
 }
 
 export async function deletePage(id: string): Promise<void> {
+  const courseId = await courseIdFromPage(id);
   const { error } = await supabase.from("pages").delete().eq("id", id);
   if (error) fail("Deleting page", error);
+  await touchCourse(courseId);
 }
 
 export async function reorderPages(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const courseId = await courseIdFromPage(orderedIds[0]);
   await renumber("pages", orderedIds);
+  await touchCourse(courseId);
 }
 
 // ─── Components ─────────────────────────────────────────────────────────────
@@ -235,12 +304,14 @@ export async function addComponent(
   position: number,
   props: BlockProps = {}
 ): Promise<PageComponent> {
+  const courseId = await courseIdFromPage(pageId);
   const { data, error } = await supabase
     .from("components")
     .insert({ page_id: pageId, type, position, props })
     .select()
     .single();
   if (error) fail("Adding component", error);
+  await touchCourse(courseId);
   return data;
 }
 
@@ -248,6 +319,7 @@ export async function updateComponentProps(
   id: string,
   props: BlockProps
 ): Promise<PageComponent> {
+  const courseId = await courseIdFromComponent(id);
   const { data, error } = await supabase
     .from("components")
     .update({ props })
@@ -255,16 +327,22 @@ export async function updateComponentProps(
     .select()
     .single();
   if (error) fail("Updating component", error);
+  await touchCourse(courseId);
   return data;
 }
 
 export async function deleteComponent(id: string): Promise<void> {
+  const courseId = await courseIdFromComponent(id);
   const { error } = await supabase.from("components").delete().eq("id", id);
   if (error) fail("Deleting component", error);
+  await touchCourse(courseId);
 }
 
 export async function reorderComponents(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const courseId = await courseIdFromComponent(orderedIds[0]);
   await renumber("components", orderedIds);
+  await touchCourse(courseId);
 }
 
 /** Sets implementation status by writing `implemented_at` relative to the `updated_at` trigger. */
@@ -314,6 +392,34 @@ export async function markImplemented(id: string): Promise<PageComponent> {
     fail("Marking component implemented", error ?? fallbackError);
   }
   return row;
+}
+
+// ─── Page types (from component mix) ────────────────────────────────────────
+
+/** Maps each page to a PageType derived from its component types (implement sidebar logos). */
+export async function getPageTypes(
+  pageIds: string[]
+): Promise<Map<string, PageType>> {
+  const result = new Map<string, PageType>();
+  for (const id of pageIds) result.set(id, "page");
+  if (pageIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from("components")
+    .select("page_id, type")
+    .in("page_id", pageIds);
+  if (error) fail("Loading page types", error);
+
+  const typesByPage = new Map<string, ComponentType[]>();
+  for (const row of data ?? []) {
+    const list = typesByPage.get(row.page_id) ?? [];
+    list.push(row.type as ComponentType);
+    typesByPage.set(row.page_id, list);
+  }
+  for (const [pageId, types] of typesByPage) {
+    result.set(pageId, derivePageType(types));
+  }
+  return result;
 }
 
 // ─── Status rollups (from DB views) ─────────────────────────────────────────

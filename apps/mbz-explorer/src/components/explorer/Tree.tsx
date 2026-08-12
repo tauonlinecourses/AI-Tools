@@ -1,21 +1,33 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Spinner } from "@workspace/ui";
 import type { MbzActivity, MbzManifest, MbzSection } from "../../lib/mbz-parser";
-import { ChevronDownIcon } from "../icons";
+import {
+  buildActivityNodes,
+  collectSubsectionCmids,
+  decodeSectionIdForActivity,
+  getTopLevelSections,
+  sectionPending,
+  subsectionPending,
+  type CourseTreeNode,
+} from "../../lib/courseTree";
+import { activityTypeIcon } from "../../lib/activityTypeIcon";
+import { ChevronDownIcon, HomeIcon } from "../icons";
 import { StructureOverview, structureStatsFromManifest } from "./StructureOverview";
 
 interface TreeProps {
   manifest: MbzManifest;
   selectedCmid: string | null;
+  homeSelected: boolean;
   decodingSectionId: string | null;
+  onSelectHome: () => void;
   onSelectActivity: (cmid: string) => void;
   onExpandSection: (sectionId: string) => void;
-  onJumpToSection: (sectionId: string) => void;
   onAnalyzeFull: () => void;
   analyzingFull?: boolean;
 }
 
+/** Text fallback when no logo is mapped (hvp → h5p; label → none). */
 function activityTypeLabel(type: string): string | null {
   if (type === "label") return null;
   if (type === "hvp") return "h5p";
@@ -25,23 +37,23 @@ function activityTypeLabel(type: string): string | null {
 export function Tree({
   manifest,
   selectedCmid,
+  homeSelected,
   decodingSectionId,
+  onSelectHome,
   onSelectActivity,
   onExpandSection,
-  onJumpToSection,
   onAnalyzeFull,
   analyzingFull,
 }: TreeProps) {
-  const sortedSections = useMemo(
-    () => [...manifest.sections].sort((a, b) => a.number - b.number),
-    [manifest.sections]
-  );
+  const topLevelSections = useMemo(() => getTopLevelSections(manifest), [manifest]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    // First two sections open (eager-decoded); rest collapsed.
-    const openIds = new Set(sortedSections.slice(0, 2).map((s) => s.id));
-    return new Set(sortedSections.filter((s) => !openIds.has(s.id)).map((s) => s.id));
+    const openIds = new Set(topLevelSections.slice(0, 2).map((s) => s.id));
+    return new Set(topLevelSections.filter((s) => !openIds.has(s.id)).map((s) => s.id));
   });
+  const [collapsedSubsections, setCollapsedSubsections] = useState<Set<string>>(
+    () => new Set(collectSubsectionCmids(manifest))
+  );
   const [overviewOpen, setOverviewOpen] = useState(true);
 
   const byCmid = useMemo(() => {
@@ -50,18 +62,13 @@ export function Tree({
     return m;
   }, [manifest.activities]);
 
-  const sectionPending = (section: MbzSection) => {
-    if (section.summaryStatus === "pending") return true;
-    return section.activityRefs.some((id) => byCmid.get(id)?.contentStatus === "pending");
-  };
-
   function toggleSection(section: MbzSection) {
     setCollapsed((prev) => {
       const next = new Set(prev);
       const wasCollapsed = next.has(section.id);
       if (wasCollapsed) {
         next.delete(section.id);
-        if (sectionPending(section)) onExpandSection(section.id);
+        if (sectionPending(manifest, section, byCmid)) onExpandSection(section.id);
       } else {
         next.add(section.id);
       }
@@ -69,39 +76,45 @@ export function Tree({
     });
   }
 
-  function handleActivityClick(act: MbzActivity) {
-    if (act.type === "subsection") {
-      const delegated = manifest.sections.find((s) => s.delegatedBy === act.cmid);
-      if (delegated) {
-        setCollapsed((prev) => {
-          const next = new Set(prev);
-          next.delete(delegated.id);
-          return next;
-        });
-        onJumpToSection(delegated.id);
-        if (sectionPending(delegated)) onExpandSection(delegated.id);
-        return;
+  function toggleSubsection(node: CourseTreeNode & { kind: "subsection" }) {
+    setCollapsedSubsections((prev) => {
+      const next = new Set(prev);
+      const wasCollapsed = next.has(node.cmid);
+      if (wasCollapsed) {
+        next.delete(node.cmid);
+        if (node.delegatedSectionId && subsectionPending(manifest, node, byCmid)) {
+          onExpandSection(node.delegatedSectionId);
+        }
+      } else {
+        next.add(node.cmid);
       }
-    }
-    const parent = manifest.sections.find((s) => s.activityRefs.includes(act.cmid));
-    if (parent && sectionPending(parent) && act.contentStatus === "pending") {
-      onExpandSection(parent.id);
+      return next;
+    });
+  }
+
+  function handleActivityClick(act: MbzActivity) {
+    const decodeId = decodeSectionIdForActivity(manifest, act.cmid);
+    if (decodeId) {
+      const section = manifest.sections.find((s) => s.id === decodeId);
+      if (section && sectionPending(manifest, section, byCmid) && act.contentStatus === "pending") {
+        onExpandSection(decodeId);
+      }
     }
     onSelectActivity(act.cmid);
   }
 
-  function renderActivityRow(act: MbzActivity) {
-    const isSelected = selectedCmid === act.cmid;
+  function renderActivityRow(act: MbzActivity, indentClass = "ps-5") {
+    const isSelected = !homeSelected && selectedCmid === act.cmid;
     const pending = act.contentStatus === "pending";
-    const isSub = act.type === "subsection";
-    const typeLabel = activityTypeLabel(act.type);
+    const icon = activityTypeIcon(act.type);
+    const typeLabel = icon ? null : activityTypeLabel(act.type);
 
     return (
       <div
         role="button"
         tabIndex={0}
         id={`activity-${act.cmid}`}
-        className={`group flex items-center gap-1.5 mx-2 ps-5 pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
+        className={`group flex items-center gap-1.5 mx-2 ${indentClass} pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
           isSelected
             ? "bg-[#0F6CBF] text-white font-medium"
             : pending
@@ -116,6 +129,16 @@ export function Tree({
           }
         }}
       >
+        {icon && (
+          <img
+            src={icon.src}
+            alt=""
+            title={icon.label}
+            className={`w-4 h-4 shrink-0 object-contain ${
+              isSelected && icon.invertWhenSelected ? "brightness-0 invert" : ""
+            }`}
+          />
+        )}
         {typeLabel && (
           <>
             <span className="shrink-0">{typeLabel}</span>
@@ -127,18 +150,84 @@ export function Tree({
             </span>
           </>
         )}
-        <span className="truncate flex-1">
-          {act.name}
-          {isSub ? " →" : ""}
-        </span>
+        <span className="truncate flex-1">{act.name}</span>
+      </div>
+    );
+  }
+
+  function renderTreeNode(node: CourseTreeNode, depth = 0): ReactNode {
+    const indentClass = depth === 0 ? "ps-5" : depth === 1 ? "ps-8" : "ps-11";
+
+    if (node.kind === "activity") {
+      const act = byCmid.get(node.cmid);
+      if (!act) {
+        return (
+          <div
+            key={node.cmid}
+            className={`mx-2 ${indentClass} pe-2 h-8 text-sm text-surface-400 flex items-center`}
+          >
+            missing {node.cmid}
+          </div>
+        );
+      }
+      return <div key={act.cmid}>{renderActivityRow(act, indentClass)}</div>;
+    }
+
+    const act = byCmid.get(node.cmid);
+    const name = act?.name ?? `subsection ${node.cmid}`;
+    const isCollapsed = collapsedSubsections.has(node.cmid);
+    const pending = subsectionPending(manifest, node, byCmid);
+    const decoding =
+      node.delegatedSectionId != null && decodingSectionId === node.delegatedSectionId;
+
+    return (
+      <div key={node.cmid} id={`subsection-${node.cmid}`} className="flex flex-col">
+        <div
+          className={`group flex items-center gap-1.5 mx-2 ${indentClass} pe-2 h-9 text-base font-semibold hover:bg-white transition-colors duration-fast ${
+            pending ? "text-surface-500" : "text-surface-800"
+          }`}
+        >
+          <button
+            type="button"
+            className="p-0.5 text-surface-500 hover:text-surface-900 shrink-0"
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? "Expand subsection" : "Collapse subsection"}
+            onClick={() => toggleSubsection(node)}
+          >
+            <ChevronDownIcon
+              className={`w-3.5 h-3.5 transition-transform duration-fast ${
+                isCollapsed ? "-rotate-90" : ""
+              }`}
+            />
+          </button>
+          <button
+            type="button"
+            className="truncate flex-1 text-left"
+            onClick={() => toggleSubsection(node)}
+          >
+            {name}
+          </button>
+          {decoding && <Spinner size="sm" />}
+        </div>
+        {!isCollapsed && (
+          <div className="flex flex-col gap-0.5 pb-0.5">
+            {node.children.map((child) => renderTreeNode(child, depth + 1))}
+            {node.children.length === 0 && (
+              <div className={`mx-2 ${indentClass} pe-2 text-xs text-surface-400 py-1`}>
+                Empty subsection
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
   function renderSection(section: MbzSection) {
     const isCollapsed = collapsed.has(section.id);
-    const pending = sectionPending(section);
+    const pending = sectionPending(manifest, section, byCmid);
     const decoding = decodingSectionId === section.id;
+    const nodes = buildActivityNodes(manifest, section);
 
     return (
       <div key={section.id} id={`section-${section.id}`} className="flex flex-col">
@@ -168,30 +257,14 @@ export function Tree({
             {section.name}
           </button>
           {decoding && <Spinner size="sm" />}
-          {pending && !decoding && (
-            <span className="text-xs text-surface-400 shrink-0 pe-1">pending</span>
-          )}
-          {section.delegatedBy && (
-            <span className="text-xs text-surface-400 shrink-0 pe-1">sub</span>
-          )}
         </div>
 
         {!isCollapsed && (
           <div className="flex flex-col gap-0.5 pb-1">
-            {section.activityRefs.map((cmid) => {
-              const act = byCmid.get(cmid);
-              if (!act) {
-                return (
-                  <div
-                    key={cmid}
-                    className="mx-2 ps-5 pe-2 h-8 text-sm text-surface-400 flex items-center"
-                  >
-                    missing {cmid}
-                  </div>
-                );
-              }
-              return <div key={act.cmid}>{renderActivityRow(act)}</div>;
-            })}
+            {nodes.map((node) => renderTreeNode(node))}
+            {nodes.length === 0 && (
+              <div className="mx-2 ps-5 pe-2 text-xs text-surface-400 py-1">Empty section</div>
+            )}
           </div>
         )}
       </div>
@@ -202,7 +275,10 @@ export function Tree({
     <aside className="w-80 shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden h-full">
       <div className="p-4 border-b border-surface-200 flex flex-col gap-2 shrink-0">
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-xl font-semibold text-surface-900 leading-snug truncate" title={manifest.sourceFile.name}>
+          <span
+            className="text-xl font-semibold text-surface-900 leading-snug truncate"
+            title={manifest.sourceFile.name}
+          >
             {manifest.sourceFile.name}
           </span>
           {manifest.course.fullname !== manifest.sourceFile.name && (
@@ -252,10 +328,32 @@ export function Tree({
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
-        {sortedSections.length === 0 && (
+        <div
+          role="button"
+          tabIndex={0}
+          className={`group flex items-center gap-1.5 mx-2 pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
+            homeSelected
+              ? "bg-[#0F6CBF] text-white font-medium"
+              : "text-surface-700 hover:bg-white hover:text-surface-900"
+          }`}
+          onClick={onSelectHome}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelectHome();
+            }
+          }}
+        >
+          <HomeIcon
+            className={`w-4 h-4 ms-2 shrink-0 ${homeSelected ? "text-white" : "text-surface-500"}`}
+          />
+          <span className="truncate flex-1">Home</span>
+        </div>
+
+        {topLevelSections.length === 0 && (
           <p className="px-4 py-2 text-base text-surface-400">No sections in this backup.</p>
         )}
-        {sortedSections.map((section) => renderSection(section))}
+        {topLevelSections.map((section) => renderSection(section))}
       </nav>
     </aside>
   );

@@ -31,6 +31,31 @@ export function isHomePage(page: Page): boolean {
 
 export type ComponentType = "banner" | "video" | "text" | "question";
 
+/**
+ * Moodle/edX activity shape implied by a page's blocks.
+ * Today: any question → h5p; otherwise a normal page (text/banner/video/empty).
+ * Extra logos in `public/` (task, forum, notes-board, dictionary) await future block types.
+ */
+export type PageType = "page" | "h5p";
+
+export const PAGE_TYPE_LOGO: Record<PageType, string> = {
+  page: "/page-logo.svg",
+  h5p: "/h5p-logo.svg",
+};
+
+export const PAGE_TYPE_LABEL: Record<PageType, string> = {
+  page: "עמוד",
+  h5p: "H5P",
+};
+
+/** Derive implementer page type from the component types on that page. */
+export function derivePageType(types: Iterable<ComponentType>): PageType {
+  for (const t of types) {
+    if (t === "question") return "h5p";
+  }
+  return "page";
+}
+
 /** URL-driven course shell mode: authoring, implementer, or polished preview. */
 export type CourseViewMode = "edit" | "implement" | "review";
 
