@@ -9,6 +9,28 @@
 
 ---
 
+## Choose a Tool Boundary
+
+The monorepo and deployment boundaries solve different problems: all tools can share one Git repository, while only tools that need operational independence require separate apps and Vercel projects.
+
+### Put a small tool inside the Hub
+
+Implement a small utility or single-page tool as a route in `apps/hub` (for example, `/calculator` or `/text-cleaner`) when it:
+
+- uses the Hub's dependencies, configuration, and release cycle;
+- does not need isolated environment variables, serverless APIs, or scaling; and
+- is simple enough that it does not justify a standalone application.
+
+It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and link to the relative path from the Hub UI. Do not create another Vercel project for it.
+
+### Create a standalone app
+
+Create a separate app under `apps/` and a separate Vercel project when a tool has substantial dependencies, its own API functions or environment variables, independent release needs, or benefits from failure and scaling isolation. Follow the standalone-tool checklist below.
+
+Vercel projects cannot be nested beneath the Hub project. Separate projects can still import the same Git repository: each Vercel project's **Root Directory** determines which app it builds. If a Hub-hosted tool later grows, extract it into a standalone app and replace its Hub route with a link to the new deployment.
+
+---
+
 ## Step 7 — Run It
 
 ```bash
@@ -56,7 +78,7 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool
 
 ---
 
-## How to Add a New Tool
+## How to Add a Standalone Tool
 
 1. Copy `apps/tool-starter/` to `apps/tool-myname/` (includes `agents/` — keep it; put tool-specific agent docs there)
 2. In the copy, rename `"name": "tool-starter"` in `package.json` to `"name": "tool-myname"`
