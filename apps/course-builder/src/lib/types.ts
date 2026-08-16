@@ -11,6 +11,12 @@ export interface Section {
   course_id: string;
   title: string;
   position: number;
+  /** תאריך פתיחה (YYYY-MM-DD) */
+  opens_at: string | null;
+  /** תאריך אחרון להגשת מטלות/תרגילים (YYYY-MM-DD) */
+  assignments_due_at: string | null;
+  /** לינק לתיקיית קבצים של השיעור */
+  files_folder_url: string | null;
 }
 
 export interface Page {
@@ -22,7 +28,11 @@ export interface Page {
   title: string;
   position: number;
   notes: string | null;
+  /** Authoring readiness. In-progress pages are unavailable in implement mode. */
+  workflow_status: PageWorkflowStatus;
 }
+
+export type PageWorkflowStatus = "in_progress" | "ready_for_implementation";
 
 /** Course-level default page that sits above the first lesson in the sidebar. */
 export function isHomePage(page: Page): boolean {

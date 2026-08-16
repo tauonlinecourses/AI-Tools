@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageLayout, Card, Spinner } from "@workspace/ui";
-import type { CourseViewMode, Page, PageType, Section, CourseTree, StatusRollup } from "../lib/types";
+import type {
+  CourseViewMode,
+  Page,
+  PageType,
+  PageWorkflowStatus,
+  Section,
+  CourseTree,
+  StatusRollup,
+} from "../lib/types";
 import { isHomePage, PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
 import { PageContent } from "./PageContent";
+import { SectionOverview } from "./SectionOverview";
 import { SortableList, type DragHandleProps } from "./SortableList";
 import {
+  CalendarIcon,
   ChevronDownIcon,
   DuplicateIcon,
+  FolderIcon,
   GripIcon,
   MoreVerticalIcon,
   PencilIcon,
@@ -29,6 +40,11 @@ function formatDate(iso: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+/** True when at least one page in the lesson is ready for implementers. */
+function sectionHasReadyPages(pages: Page[]): boolean {
+  return pages.some((page) => page.workflow_status === "ready_for_implementation");
 }
 
 function SidebarRowMenu({
@@ -168,12 +184,12 @@ export function CourseShell({ mode }: CourseShellProps) {
   }, [showRollups, tree]);
 
   const refreshPageTypes = useCallback(() => {
-    if (!showRollups || !tree) return;
+    if (!tree) return;
     api
       .getPageTypes(tree.pages.map((p) => p.id))
       .then(setPageTypes)
       .catch(() => undefined);
-  }, [showRollups, tree]);
+  }, [tree]);
 
   useEffect(() => {
     refreshRollups();
@@ -200,20 +216,73 @@ export function CourseShell({ mode }: CourseShellProps) {
     [tree]
   );
 
+  const selectedSection = useMemo(() => {
+    if (!tree) return null;
+    const requested = searchParams.get("section");
+    if (!requested) return null;
+    const found = tree.sections.find((s) => s.id === requested) ?? null;
+    if (!found) return null;
+    if (
+      mode === "implement" &&
+      !sectionHasReadyPages(pagesBySection.get(found.id) ?? [])
+    ) {
+      return null;
+    }
+    return found;
+  }, [tree, searchParams, mode, pagesBySection]);
+
   const selectedPage = useMemo(() => {
     if (!tree) return null;
+    // Valid section overview takes precedence over page selection.
+    if (selectedSection) return null;
     const requested = searchParams.get("page");
     if (requested) {
       const found = tree.pages.find((p) => p.id === requested);
-      if (found) return found;
+      if (found) {
+        return mode === "implement" &&
+          found.workflow_status === "in_progress"
+          ? null
+          : found;
+      }
     }
-    if (homePage) return homePage;
+    if (
+      homePage &&
+      (mode !== "implement" ||
+        homePage.workflow_status === "ready_for_implementation")
+    ) {
+      return homePage;
+    }
     for (const section of tree.sections) {
       const pages = pagesBySection.get(section.id) ?? [];
-      if (pages.length > 0) return pages[0];
+      const firstAvailable = pages.find(
+        (page) =>
+          mode !== "implement" ||
+          page.workflow_status === "ready_for_implementation"
+      );
+      if (firstAvailable) return firstAvailable;
     }
     return null;
-  }, [tree, pagesBySection, searchParams, homePage]);
+  }, [tree, pagesBySection, searchParams, homePage, selectedSection, mode]);
+
+  const blockedRequestedSection = useMemo(() => {
+    if (!tree || mode !== "implement") return null;
+    const requested = searchParams.get("section");
+    if (!requested) return null;
+    const section = tree.sections.find((candidate) => candidate.id === requested);
+    if (!section) return null;
+    return sectionHasReadyPages(pagesBySection.get(section.id) ?? [])
+      ? null
+      : section;
+  }, [tree, mode, searchParams, pagesBySection]);
+
+  const blockedRequestedPage = useMemo(() => {
+    if (!tree || mode !== "implement" || selectedSection || blockedRequestedSection)
+      return null;
+    const requested = searchParams.get("page");
+    if (!requested) return null;
+    const page = tree.pages.find((candidate) => candidate.id === requested);
+    return page?.workflow_status === "in_progress" ? page : null;
+  }, [tree, mode, selectedSection, blockedRequestedSection, searchParams]);
 
   const numbering = useMemo(() => {
     const map = new Map<string, string>();
@@ -236,8 +305,12 @@ export function CourseShell({ mode }: CourseShellProps) {
     for (const section of tree.sections) {
       list.push(...(pagesBySection.get(section.id) ?? []));
     }
-    return list;
-  }, [tree, homePage, pagesBySection]);
+    return mode === "implement"
+      ? list.filter(
+          (page) => page.workflow_status === "ready_for_implementation"
+        )
+      : list;
+  }, [tree, homePage, pagesBySection, mode]);
 
   const adjacentPages = useMemo(() => {
     if (!selectedPage) return { prev: null, next: null };
@@ -252,6 +325,17 @@ export function CourseShell({ mode }: CourseShellProps) {
   function selectPage(pageId: string) {
     setOpenMenu(null);
     setSearchParams({ page: pageId }, { replace: true });
+  }
+
+  function selectSection(sectionId: string) {
+    setOpenMenu(null);
+    setCollapsed((prev) => {
+      if (!prev.has(sectionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sectionId);
+      return next;
+    });
+    setSearchParams({ section: sectionId }, { replace: true });
   }
 
   /** Refresh sidebar "last updated" after nested content saves (API already bumps DB). */
@@ -430,7 +514,9 @@ export function CourseShell({ mode }: CourseShellProps) {
       .catch((e: Error) => setError(e.message));
   }
 
-  function handlePageFieldChange(fields: Partial<Pick<Page, "title" | "notes">>) {
+  function handlePageFieldChange(
+    fields: Partial<Pick<Page, "title" | "notes" | "workflow_status">>
+  ) {
     if (!selectedPage) return;
     setTree((prev) =>
       prev
@@ -438,6 +524,42 @@ export function CourseShell({ mode }: CourseShellProps) {
             ...prev,
             pages: prev.pages.map((p) =>
               p.id === selectedPage.id ? { ...p, ...fields } : p
+            ),
+          }
+        : prev
+    );
+  }
+
+  function handleSectionFieldChange(
+    fields: Partial<
+      Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+    >
+  ) {
+    if (!selectedSection) return;
+    setTree((prev) =>
+      prev
+        ? {
+            ...prev,
+            sections: prev.sections.map((s) =>
+              s.id === selectedSection.id ? { ...s, ...fields } : s
+            ),
+          }
+        : prev
+    );
+  }
+
+  function handleSectionPagesWorkflowStatusChange(
+    sectionId: string,
+    status: PageWorkflowStatus
+  ) {
+    setTree((prev) =>
+      prev
+        ? {
+            ...prev,
+            pages: prev.pages.map((page) =>
+              page.section_id === sectionId
+                ? { ...page, workflow_status: status }
+                : page
             ),
           }
         : prev
@@ -485,6 +607,8 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isSelected = selectedPage?.id === page.id;
     const isRenaming = renaming?.kind === "page" && renaming.id === page.id;
     const isHome = isHomePage(page);
+    const isUnavailableInImplement =
+      mode === "implement" && page.workflow_status === "in_progress";
     const pageNumber = numbering.get(page.id);
     const pageRollup = showRollups ? rollups?.perPage.get(page.id) : undefined;
     const isComplete =
@@ -495,14 +619,26 @@ export function CourseShell({ mode }: CourseShellProps) {
       showRollups && !isHome ? (pageTypes.get(page.id) ?? "page") : null;
     return (
       <div
-        className={`group flex items-center gap-1.5 mx-2 ${isHome ? "ps-2" : "ps-5"} pe-2 h-9 rounded-lg cursor-pointer text-base transition-colors duration-fast ${
+        className={`group flex items-center gap-1.5 mx-2 ${isHome ? "ps-2" : "ps-5"} pe-2 h-9 rounded-lg text-base transition-colors duration-fast ${
           isSelected
             ? "bg-[#0F6CBF] text-white font-medium"
             : isComplete
               ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-60"
               : "text-surface-600 hover:bg-white hover:text-surface-900"
+        } ${
+          isUnavailableInImplement
+            ? "opacity-40 cursor-not-allowed"
+            : "cursor-pointer"
         }`}
-        onClick={() => selectPage(page.id)}
+        onClick={() => {
+          if (!isUnavailableInImplement) selectPage(page.id);
+        }}
+        aria-disabled={isUnavailableInImplement}
+        title={
+          isUnavailableInImplement
+            ? "העמוד עדיין בעבודה ואינו זמין להטמעה"
+            : undefined
+        }
       >
         {editable && handle && (
           <button
@@ -597,41 +733,108 @@ export function CourseShell({ mode }: CourseShellProps) {
     const pages = pagesBySection.get(section.id) ?? [];
     const isCollapsed = collapsed.has(section.id);
     const isRenaming = renaming?.kind === "section" && renaming.id === section.id;
+    const isSelected = selectedSection?.id === section.id;
+    const isUnavailableInImplement =
+      mode === "implement" && !sectionHasReadyPages(pages);
+    const isEffectivelyCollapsed = isCollapsed || isUnavailableInImplement;
+    const hasOpenDate = !!section.opens_at?.trim();
+    const hasFolderLink = !!section.files_folder_url?.trim();
     return (
       <div className="flex flex-col">
-        <div className="group flex items-center gap-1.5 px-2 h-10 text-base font-semibold text-surface-900 hover:bg-white transition-colors duration-fast">
+        <div
+          className={`group flex items-center gap-1.5 mx-2 px-2 h-10 rounded-lg text-base font-semibold transition-colors duration-fast ${
+            isSelected
+              ? "bg-[#0F6CBF] text-white"
+              : "text-surface-900 hover:bg-white"
+          } ${
+            isUnavailableInImplement
+              ? "opacity-40 cursor-not-allowed"
+              : ""
+          }`}
+          aria-disabled={isUnavailableInImplement}
+          title={
+            isUnavailableInImplement
+              ? "השיעור עדיין בעבודה ואינו זמין להטמעה"
+              : undefined
+          }
+        >
           {editable && handle && (
             <button
               {...handle}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-surface-600 hover:text-surface-900 cursor-grab active:cursor-grabbing touch-none shrink-0"
+              className={`opacity-0 group-hover:opacity-100 p-0.5 cursor-grab active:cursor-grabbing touch-none shrink-0 ${
+                isSelected
+                  ? "text-white/90 hover:text-white"
+                  : "text-surface-600 hover:text-surface-900"
+              }`}
             >
               <GripIcon className="w-3.5 h-3.5" />
             </button>
           )}
           <button
-            className="p-0.5 text-surface-500 hover:text-surface-900 shrink-0"
-            onClick={() =>
+            type="button"
+            className={`p-0.5 shrink-0 ${
+              isSelected
+                ? "text-white/90 hover:text-white"
+                : isUnavailableInImplement
+                  ? "text-surface-500 cursor-not-allowed"
+                  : "text-surface-500 hover:text-surface-900"
+            }`}
+            disabled={isUnavailableInImplement}
+            aria-expanded={!isEffectivelyCollapsed}
+            aria-label={isEffectivelyCollapsed ? "הרחב שיעור" : "כווץ שיעור"}
+            onClick={() => {
+              if (isUnavailableInImplement) return;
               setCollapsed((prev) => {
                 const next = new Set(prev);
                 if (next.has(section.id)) next.delete(section.id);
                 else next.add(section.id);
                 return next;
-              })
-            }
+              });
+            }}
           >
             <ChevronDownIcon
-              className={`w-3.5 h-3.5 transition-transform duration-fast ${isCollapsed ? "rotate-90" : ""}`}
+              className={`w-3.5 h-3.5 transition-transform duration-fast ${isEffectivelyCollapsed ? "rotate-90" : ""}`}
             />
           </button>
           {isRenaming ? (
             renderRenameInput("section", section.id, section.title)
           ) : (
-            <span className="truncate flex-1">{section.title}</span>
+            <button
+              type="button"
+              className={`truncate flex-1 min-w-0 text-start ${
+                isUnavailableInImplement ? "cursor-not-allowed" : ""
+              }`}
+              disabled={isUnavailableInImplement}
+              onClick={() => {
+                if (!isUnavailableInImplement) selectSection(section.id);
+              }}
+            >
+              {section.title}
+            </button>
           )}
-          {showRollups && rollupLabel(rollups?.perSection.get(section.id))}
+          {(hasOpenDate || hasFolderLink) && (
+            <span
+              className={`flex items-center gap-1 shrink-0 ${
+                isSelected ? "text-white/85" : "text-surface-500"
+              }`}
+            >
+              {hasOpenDate && (
+                <span title="יש תאריך פתיחה" aria-label="יש תאריך פתיחה">
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                </span>
+              )}
+              {hasFolderLink && (
+                <span title="יש תיקיית קבצים" aria-label="יש תיקיית קבצים">
+                  <FolderIcon className="w-3.5 h-3.5" />
+                </span>
+              )}
+            </span>
+          )}
+          {showRollups && rollupLabel(rollups?.perSection.get(section.id), isSelected)}
           {editable && !isRenaming && (
             <SidebarRowMenu
               open={openMenu?.kind === "section" && openMenu.id === section.id}
+              selectedTone={isSelected}
               ariaLabel="אפשרויות שיעור"
               onToggle={() =>
                 setOpenMenu((prev) =>
@@ -663,7 +866,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           )}
         </div>
 
-        {!isCollapsed && (
+        {!isEffectivelyCollapsed && (
           <div className="flex flex-col">
             {editable ? (
               <SortableList
@@ -729,7 +932,11 @@ export function CourseShell({ mode }: CourseShellProps) {
                   <Link
                     key={seg.value}
                     to={`/courses/${courseId}/${seg.path}${
-                      selectedPage ? `?page=${selectedPage.id}` : ""
+                      selectedSection
+                        ? `?section=${selectedSection.id}`
+                        : selectedPage
+                          ? `?page=${selectedPage.id}`
+                          : ""
                     }`}
                     className={`px-2.5 py-1 transition-colors duration-fast ${
                       i > 0 ? "border-s border-surface-200" : ""
@@ -804,14 +1011,42 @@ export function CourseShell({ mode }: CourseShellProps) {
               </Card>
             </div>
           )}
-          {!error && tree !== null && selectedPage === null && (
+          {!error &&
+            tree !== null &&
+            selectedSection === null &&
+            selectedPage === null && (
             <div className="max-w-3xl mx-auto px-6 py-10 text-center">
               <p className="text-sm text-surface-500">
-                {editable
-                  ? "צרו שיעור כדי להתחיל לבנות את הקורס."
-                  : "אין עמודים בקורס הזה."}
+                {blockedRequestedSection
+                  ? `השיעור "${blockedRequestedSection.title}" עדיין בעבודה ואינו זמין בתצוגת ההטמעה.`
+                  : blockedRequestedPage
+                    ? `העמוד "${blockedRequestedPage.title}" עדיין בעבודה ואינו זמין בתצוגת ההטמעה.`
+                    : editable
+                      ? "צרו שיעור כדי להתחיל לבנות את הקורס."
+                      : mode === "implement"
+                        ? "אין עדיין עמודים שמוכנים להטמעה."
+                        : "אין עמודים בקורס הזה."}
               </p>
             </div>
+          )}
+          {!error && selectedSection !== null && (
+            <SectionOverview
+              key={selectedSection.id}
+              section={selectedSection}
+              mode={mode}
+              pages={pagesBySection.get(selectedSection.id) ?? []}
+              pageTypes={pageTypes}
+              numbering={numbering}
+              onSelectPage={selectPage}
+              onSectionChange={handleSectionFieldChange}
+              onPagesWorkflowStatusChange={(status) =>
+                handleSectionPagesWorkflowStatusChange(
+                  selectedSection.id,
+                  status
+                )
+              }
+              onContentChange={markCourseTouched}
+            />
           )}
           {!error && selectedPage !== null && (
             <PageContent
@@ -840,8 +1075,14 @@ export function CourseShell({ mode }: CourseShellProps) {
               }
               onNavigatePage={selectPage}
               onPageChange={handlePageFieldChange}
-              onStatusChange={refreshRollups}
-              onContentChange={markCourseTouched}
+              onStatusChange={() => {
+                refreshRollups();
+                refreshPageTypes();
+              }}
+              onContentChange={() => {
+                markCourseTouched();
+                refreshPageTypes();
+              }}
             />
           )}
         </div>

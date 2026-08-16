@@ -10,6 +10,7 @@ import type {
   ImplementationStatus,
   Page,
   PageComponent,
+  PageWorkflowStatus,
   PageType,
   Section,
   StatusRollup,
@@ -187,7 +188,9 @@ export async function addSection(
 
 export async function updateSection(
   id: string,
-  fields: Partial<Pick<Section, "title">>
+  fields: Partial<
+    Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+  >
 ): Promise<void> {
   const courseId = await courseIdFromSection(id);
   const { error } = await supabase.from("sections").update(fields).eq("id", id);
@@ -211,9 +214,10 @@ export async function reorderSections(orderedIds: string[]): Promise<void> {
 
 /**
  * Clone a lesson immediately after the source.
- * Title becomes `העתק של {source.title}`. Each page is copied with the same
- * title/order; component types/order are copied with empty props except banners
- * (full props kept). Page notes are not copied.
+ * Title becomes `העתק של {source.title}`. Overview fields (`opens_at`,
+ * `assignments_due_at`, `files_folder_url`) are copied. Each page is copied
+ * with the same title/order; component types/order are copied with empty props
+ * except banners (full props kept). Page notes are not copied.
  */
 export async function duplicateSection(
   sourceId: string
@@ -246,6 +250,9 @@ export async function duplicateSection(
       course_id: courseId,
       title: `העתק של ${source.title}`,
       position: siblingIds.length,
+      opens_at: source.opens_at ?? null,
+      assignments_due_at: source.assignments_due_at ?? null,
+      files_folder_url: source.files_folder_url ?? null,
     })
     .select()
     .single();
@@ -316,6 +323,7 @@ export async function ensureHomePage(courseId: string): Promise<Page> {
       section_id: null,
       title: "עמוד ראשי",
       position: 0,
+      workflow_status: "in_progress",
     })
     .select()
     .single();
@@ -343,7 +351,13 @@ export async function addPage(
   const courseId = await courseIdFromSection(sectionId);
   const { data, error } = await supabase
     .from("pages")
-    .insert({ section_id: sectionId, course_id: null, title, position })
+    .insert({
+      section_id: sectionId,
+      course_id: null,
+      title,
+      position,
+      workflow_status: "in_progress",
+    })
     .select()
     .single();
   if (error) fail("Adding page", error);
@@ -369,11 +383,25 @@ export async function addPage(
 
 export async function updatePage(
   id: string,
-  fields: Partial<Pick<Page, "title" | "notes">>
+  fields: Partial<Pick<Page, "title" | "notes" | "workflow_status">>
 ): Promise<void> {
   const courseId = await courseIdFromPage(id);
   const { error } = await supabase.from("pages").update(fields).eq("id", id);
   if (error) fail("Updating page", error);
+  await touchCourse(courseId);
+}
+
+/** Applies one authoring-readiness status to every page in a lesson. */
+export async function updateSectionPagesWorkflowStatus(
+  sectionId: string,
+  status: PageWorkflowStatus
+): Promise<void> {
+  const courseId = await courseIdFromSection(sectionId);
+  const { error } = await supabase
+    .from("pages")
+    .update({ workflow_status: status })
+    .eq("section_id", sectionId);
+  if (error) fail("Updating lesson page statuses", error);
   await touchCourse(courseId);
 }
 
@@ -461,6 +489,7 @@ async function insertClonedPage({
       title,
       position,
       notes: null,
+      workflow_status: "in_progress",
     })
     .select()
     .single();

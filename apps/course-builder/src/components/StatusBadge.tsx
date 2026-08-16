@@ -1,5 +1,5 @@
 import { Badge } from "@workspace/ui";
-import type { ImplementationStatus } from "../lib/types";
+import type { ImplementationStatus, PageWorkflowStatus } from "../lib/types";
 import { SwapIcon } from "./icons";
 
 const config: Record<
@@ -86,6 +86,79 @@ export function StatusBadge({
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-control cursor-pointer transition-colors duration-fast ${buttonClass}`}
       title="לחצו לשינוי סטטוס"
       aria-label={`סטטוס ${label} — לחצו לשינוי`}
+    >
+      {label}
+      <SwapIcon className="w-4 h-4" />
+    </button>
+  );
+}
+
+const workflowConfig: Record<
+  PageWorkflowStatus,
+  { label: string; buttonClass: string }
+> = {
+  in_progress: {
+    label: "בעבודה",
+    buttonClass:
+      "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100",
+  },
+  ready_for_implementation: {
+    label: "מוכן להטמעה",
+    buttonClass:
+      "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100",
+  },
+};
+
+/** Edit-mode control for the page's authoring readiness. */
+export function PageWorkflowStatusToggle({
+  status,
+  onClick,
+}: {
+  status: PageWorkflowStatus;
+  onClick: () => void;
+}) {
+  const { label, buttonClass } = workflowConfig[status];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-control cursor-pointer transition-colors duration-fast ${buttonClass}`}
+      title="לחצו לשינוי סטטוס העמוד"
+      aria-label={`סטטוס עמוד: ${label} — לחצו לשינוי`}
+    >
+      {label}
+      <SwapIcon className="w-4 h-4" />
+    </button>
+  );
+}
+
+/** Edit-mode control that applies authoring readiness to every page in a lesson. */
+export function LessonWorkflowStatusToggle({
+  status,
+  onClick,
+  disabled = false,
+}: {
+  status: PageWorkflowStatus;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const { label, buttonClass } = workflowConfig[status];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-control transition-colors duration-fast ${buttonClass} ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      }`}
+      title={
+        disabled
+          ? "אין עמודים בשיעור"
+          : "לחצו לשינוי סטטוס כל עמודי השיעור"
+      }
+      aria-label={`סטטוס שיעור: ${label} — לחצו לשינוי כל עמודי השיעור`}
     >
       {label}
       <SwapIcon className="w-4 h-4" />

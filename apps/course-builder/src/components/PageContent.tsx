@@ -5,6 +5,7 @@ import type {
   ComponentComment,
   ComponentType,
   CourseViewMode,
+  ImplementationStatus,
   Page,
   PageComponent,
   StatusRollup,
@@ -20,7 +21,13 @@ import { PageNotes } from "./PageNotes";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
-import { StatusBadge, nextStatus, statusBorderClass, statusHeaderClass } from "./StatusBadge";
+import {
+  PageWorkflowStatusToggle,
+  StatusBadge,
+  nextStatus,
+  statusBorderClass,
+  statusHeaderClass,
+} from "./StatusBadge";
 import {
   BannerIcon,
   ChevronLeftIcon,
@@ -173,8 +180,10 @@ interface PageContentProps {
   prevPage: AdjacentPageLink | null;
   nextPage: AdjacentPageLink | null;
   onNavigatePage: (pageId: string) => void;
-  /** Notify the shell that page title/notes changed (to refresh the sidebar). */
-  onPageChange: (fields: Partial<Pick<Page, "title" | "notes">>) => void;
+  /** Notify the shell that page metadata changed (to refresh the sidebar). */
+  onPageChange: (
+    fields: Partial<Pick<Page, "title" | "notes" | "workflow_status">>
+  ) => void;
   /** Notify the shell that implementation status may have changed (implement rollups). */
   onStatusChange: () => void;
   /** Notify the shell that nested content was saved (refresh course last-updated). */
@@ -212,6 +221,12 @@ export function PageContent({
   const timers = useRef(new Map<string, number>());
   const pendingProps = useRef(new Map<string, BlockProps>());
 
+  // The shell re-creates these callbacks on every render (including the ones
+  // caused by the save indicator), so they must stay out of the load effect's
+  // deps — otherwise any save would refetch the page and close open panels.
+  const flushDeps = useRef({ trackSave, endSave, onContentChange });
+  flushDeps.current = { trackSave, endSave, onContentChange };
+
   useEffect(() => {
     setComponents(null);
     setCommentsByComponent(new Map());
@@ -238,22 +253,25 @@ export function PageContent({
     const timersMap = timers.current;
     const pendingMap = pendingProps.current;
     return () => {
+      const flush = flushDeps.current;
       // Flush unsaved block edits when leaving the page.
       for (const [key, t] of timersMap) {
         window.clearTimeout(t);
-        endSave(key);
+        flush.endSave(key);
       }
       timersMap.clear();
       for (const [id, props] of pendingMap) {
-        trackSave(
-          api.updateComponentProps(id, props).then(() => {
-            onContentChange();
-          })
-        ).catch(() => undefined);
+        flush
+          .trackSave(
+            api.updateComponentProps(id, props).then(() => {
+              flush.onContentChange();
+            })
+          )
+          .catch(() => undefined);
       }
       pendingMap.clear();
     };
-  }, [page.id, trackSave, endSave, onContentChange]);
+  }, [page.id]);
 
   function scheduleSave(key: string, save: () => Promise<void>) {
     beginSave(key);
@@ -304,6 +322,21 @@ export function PageContent({
     });
   }
 
+  async function handleToggleWorkflowStatus() {
+    const previous = page.workflow_status;
+    const workflow_status =
+      previous === "in_progress" ? "ready_for_implementation" : "in_progress";
+    onPageChange({ workflow_status });
+    setError(null);
+    try {
+      await trackSave(api.updatePage(page.id, { workflow_status }));
+      onContentChange();
+    } catch (e) {
+      onPageChange({ workflow_status: previous });
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   function toggleHeaderField(componentId: string, field: HeaderField) {
     const key = `${componentId}:${field}`;
     setOpenHeaderField((current) => (current === key ? null : key));
@@ -327,8 +360,6 @@ export function PageContent({
         api.addComponent(page.id, type, components?.length ?? 0, defaultProps(type))
       );
       setComponents((prev) => [...(prev ?? []), created]);
-      if (type === "banner") setOpenHeaderField(`${created.id}:banner-url`);
-      if (type === "video") setOpenHeaderField(`${created.id}:video-url`);
       onContentChange();
       onStatusChange();
     } catch (e) {
@@ -370,8 +401,6 @@ export function PageContent({
         ].map((c, position) => ({ ...c, position }));
         return next;
       });
-      if (component.type === "banner") setOpenHeaderField(`${created.id}:banner-url`);
-      if (component.type === "video") setOpenHeaderField(`${created.id}:video-url`);
       onContentChange();
       onStatusChange();
     } catch (e) {
@@ -493,6 +522,33 @@ export function PageContent({
       setComponents((prev) =>
         prev ? prev.map((c) => (c.id === component.id ? updated : c)) : prev
       );
+      onStatusChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Aggregate page status: unanimous if all match; else least progressed. */
+  function pageAggregateStatus(list: PageComponent[]): ImplementationStatus {
+    if (list.length === 0) return "not_implemented";
+    const statuses = list.map(componentStatus);
+    if (statuses.every((s) => s === statuses[0])) return statuses[0];
+    if (statuses.includes("not_implemented")) return "not_implemented";
+    if (statuses.includes("needs_update")) return "needs_update";
+    return "implemented";
+  }
+
+  async function handleCyclePageStatus() {
+    if (!components || components.length === 0) return;
+    const target = nextStatus(pageAggregateStatus(components));
+    setError(null);
+    try {
+      const updated = await trackSave(
+        Promise.all(
+          components.map((c) => api.setComponentStatus(c.id, target))
+        )
+      );
+      setComponents(updated);
       onStatusChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -728,7 +784,19 @@ export function PageContent({
             className="flex-1 min-w-0 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
           />
         ) : (
-          <h1 className="min-w-0 truncate">{page.title}</h1>
+          <h1 className="flex-1 min-w-0 truncate">{page.title}</h1>
+        )}
+        {editable && (
+          <PageWorkflowStatusToggle
+            status={page.workflow_status}
+            onClick={handleToggleWorkflowStatus}
+          />
+        )}
+        {isImplement && components !== null && components.length > 0 && (
+          <StatusBadge
+            status={pageAggregateStatus(components)}
+            onClick={handleCyclePageStatus}
+          />
         )}
       </div>
       {isImplement && rollup && rollup.total_count > 0 && (

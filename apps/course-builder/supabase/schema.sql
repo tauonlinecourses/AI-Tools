@@ -23,6 +23,10 @@ create table sections (
   course_id uuid references courses(id) on delete cascade,
   title text not null,
   position int not null,
+  -- Lesson overview fields (nullable until set in edit mode)
+  opens_at date,                    -- תאריך פתיחה
+  assignments_due_at date,          -- תאריך אחרון להגשת מטלות/תרגילים
+  files_folder_url text,            -- לינק לתיקיית קבצים של השיעור
   created_at timestamptz default now()
 );
 
@@ -35,6 +39,8 @@ create table pages (
   title text not null,
   position int not null,
   notes text,
+  workflow_status text not null default 'in_progress'
+    check (workflow_status in ('in_progress', 'ready_for_implementation')),
   created_at timestamptz default now(),
   constraint pages_section_or_course check (
     (section_id is not null and course_id is null)

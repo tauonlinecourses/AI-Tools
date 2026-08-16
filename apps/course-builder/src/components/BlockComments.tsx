@@ -276,11 +276,6 @@ function CommentItem({
         <span className="text-[11px] text-surface-400 shrink-0">
           {formatCommentTime(comment.created_at)}
         </span>
-        {resolved && (
-          <span className="text-[11px] font-semibold text-surface-500 bg-surface-100 px-1.5 py-0.5 rounded">
-            נפתר
-          </span>
-        )}
         <button
           type="button"
           disabled={disabled}
