@@ -33,3 +33,17 @@
   ::-webkit-scrollbar-thumb { @apply bg-surface-300; }
   ::-webkit-scrollbar-thumb:hover { @apply bg-surface-400; }
 }
+
+@layer utilities {
+  /* Slightly rounded scrollbar thumb; same colors as the global scrollbar */
+  .scrollbar-rounded {
+    scrollbar-color: #d1d5db #f3f4f6; /* thumb track — Firefox (surface-300 / surface-100) */
+  }
+  .scrollbar-rounded::-webkit-scrollbar-thumb {
+    @apply bg-surface-300;
+    border-radius: 3px;
+  }
+  .scrollbar-rounded::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-400;
+  }
+}

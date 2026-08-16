@@ -20,6 +20,18 @@ export const ChevronDownIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) 
   </svg>
 );
 
+export const ChevronLeftIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+  </svg>
+);
+
+export const ChevronRightIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+  </svg>
+);
+
 export const TrashIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
@@ -41,6 +53,15 @@ export const GripIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Vertical three-dots overflow menu control. */
+export const MoreVerticalIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="5" r="1.75" />
+    <circle cx="12" cy="12" r="1.75" />
+    <circle cx="12" cy="19" r="1.75" />
+  </svg>
+);
+
 export const PencilIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
@@ -57,10 +78,34 @@ export const CheckIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Check mark inside a circle — resolve control for comments. */
+export const CheckCircleIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  </svg>
+);
+
 export const CopyIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+/** Page/document with a plus — duplicate (distinct from clipboard copy). */
+export const DuplicateIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M8 3.5h5.5L18 8v10.5A1.5 1.5 0 0116.5 20h-8A1.5 1.5 0 017 18.5v-13A1.5 1.5 0 018 3.5z"
+    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.5V8H18" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11.5v5M9.5 14h5" />
   </svg>
 );
 
@@ -86,6 +131,17 @@ export const PlayCircleIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =
 export const XIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+/** Speech-bubble comment icon (Word-style block comments). */
+export const CommentIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.078 48.078 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+    />
   </svg>
 );
 

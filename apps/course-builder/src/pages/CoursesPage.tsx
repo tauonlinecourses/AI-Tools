@@ -59,13 +59,14 @@ export function CoursesPage() {
       toolDescription="Author course structure and content for implementers"
       toolNameHe="פיתוח קורסים"
       toolDescriptionHe="פיתוח ובניית מסמכי הטמעה דינאמיים. תצוגת הטמעה עבור צוות ההטמעה"
+      toolTrail={[{ label: "כל הקורסים" }]}
     >
       <div className="fixed top-14 left-4 z-20 pointer-events-none">
         <SaveStatusIndicator />
       </div>
       <div dir="rtl" lang="he" className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight text-surface-900">הקורסים שלי</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-surface-900">כל הקורסים</h1>
           {!creating && (
             <Button size="md" leftIcon={<PlusIcon />} onClick={() => setCreating(true)}>
               קורס חדש

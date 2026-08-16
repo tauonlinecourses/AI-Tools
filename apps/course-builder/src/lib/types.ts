@@ -65,6 +65,7 @@ export interface NotesProps {
 }
 
 export interface BannerProps extends NotesProps {
+  /** Legacy custom name; UI always shows the derived default label instead. */
   title?: string;
   imageUrl?: string;
 }
@@ -73,6 +74,10 @@ export interface VideoProps extends NotesProps {
   /** Custom display name; empty → default `{page title} | סרטון מספר N`. */
   title?: string;
   url?: string;
+  /**
+   * Derived from `url` on edit (`detectVideoProvider`); not shown in the UI.
+   * Kept for stored jsonb / older rows.
+   */
   provider?: "youtube" | "panopto" | "other";
 }
 
@@ -137,3 +142,28 @@ export interface CourseListItem extends Course {
   sectionCount: number;
   pageCount: number;
 }
+
+/** View role that authored a block comment (no personal names — MVP has no auth). */
+export type CommentAuthorRole = CourseViewMode;
+
+export interface ComponentComment {
+  id: string;
+  component_id: string;
+  author_role: CommentAuthorRole;
+  body: string;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export const COMMENT_AUTHOR_LABEL: Record<CommentAuthorRole, string> = {
+  edit: "צוות פיתוח למידה",
+  implement: "צוות הטמעה",
+  review: "צוות מרצים",
+};
+
+/** Text color classes for comment author role labels. */
+export const COMMENT_AUTHOR_COLOR: Record<CommentAuthorRole, string> = {
+  edit: "text-[#0F6CBF]",
+  implement: "text-amber-700",
+  review: "text-emerald-700",
+};

@@ -32,6 +32,7 @@ Shared top nav on every tool:
 - **בית / Hub** link → `hubHref(locale)` (or override `hubUrl`)
 - Optional `toolName` / `toolDescription` (English)
 - Optional `toolNameHe` / `toolDescriptionHe` (shown when locale is `he`)
+- Optional `toolTrail` — extra `/`-separated crumbs after the tool name (`{ label, to? }`); linked crumbs use `renderTrailLink` when provided (e.g. react-router `Link`), otherwise a plain `<a href>`
 - Optional `locale` prop; otherwise auto from `resolveHubLocale()`
 - Header `dir` is RTL for Hebrew; logo uses logical `ms-auto` so it sits on the trailing edge
 - Content area is unchanged (tools own their own `dir` for page body)

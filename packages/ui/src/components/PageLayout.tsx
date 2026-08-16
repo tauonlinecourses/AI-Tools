@@ -17,6 +17,20 @@ interface PageLayoutProps {
   /** Hebrew tool description shown when hub locale is `he`. Falls back to `toolDescription`. */
   toolDescriptionHe?: string;
   /**
+   * Extra path segments after the tool name (e.g. All courses / Course title).
+   * Items with `to` render as links; others are plain current-page labels.
+   */
+  toolTrail?: Array<{ label: string; to?: string }>;
+  /**
+   * Custom in-app link for `toolTrail` items that have `to`
+   * (e.g. react-router `Link`). Defaults to a plain `<a href>`.
+   */
+  renderTrailLink?: (props: {
+    to: string;
+    className: string;
+    children: React.ReactNode;
+  }) => React.ReactNode;
+  /**
    * Force header locale. When omitted, uses `?lang=` then localStorage
    * (`ai-tools-hub-locale`), defaulting to Hebrew.
    */
@@ -48,6 +62,8 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   toolDescription,
   toolNameHe,
   toolDescriptionHe,
+  toolTrail,
+  renderTrailLink,
   locale: localeProp,
   hubUrl,
   padded = true,
@@ -91,9 +107,38 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
         {displayName && (
           <>
             <span className="mx-2 text-surface-300">/</span>
-            <span className="text-sm font-semibold text-surface-900">{displayName}</span>
+            <span
+              className={`text-sm text-surface-900 ${
+                toolTrail && toolTrail.length > 0 ? "" : "font-semibold"
+              }`}
+            >
+              {displayName}
+            </span>
           </>
         )}
+        {toolTrail?.map((crumb, index) => {
+          const crumbClass = crumb.to
+            ? "text-sm font-semibold text-surface-900 hover:text-surface-700 transition-colors duration-fast truncate max-w-[12rem] sm:max-w-[16rem]"
+            : "text-sm text-surface-900 truncate max-w-[12rem] sm:max-w-[20rem]";
+          return (
+            <React.Fragment key={`${crumb.label}-${index}`}>
+              <span className="mx-2 text-surface-300">/</span>
+              {crumb.to
+                ? (renderTrailLink?.({
+                    to: crumb.to,
+                    className: crumbClass,
+                    children: crumb.label,
+                  }) ?? (
+                    <a href={crumb.to} className={crumbClass}>
+                      {crumb.label}
+                    </a>
+                  ))
+                : (
+                  <span className={crumbClass}>{crumb.label}</span>
+                )}
+            </React.Fragment>
+          );
+        })}
         {displayDescription && (
           <span className="ms-3 text-xs text-surface-500 hidden sm:block truncate">
             {displayDescription}

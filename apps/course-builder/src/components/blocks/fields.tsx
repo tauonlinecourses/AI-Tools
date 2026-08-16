@@ -35,26 +35,6 @@ export function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>
   return <select {...props} className={inputClasses} />;
 }
 
-/** Edit-mode notes field shared by every block type. */
-export function NotesField({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange: (notes: string) => void;
-}) {
-  return (
-    <Field label="הערות">
-      <TextAreaField
-        rows={1}
-        value={value ?? ""}
-        placeholder="הערות להטמעה (יוצגו בתצוגת ההטמעה)"
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </Field>
-  );
-}
-
 /** Implement-mode notes display — only when non-empty; hidden in preview. */
 export function NotesDisplay({ notes }: { notes?: string }) {
   if (!notes?.trim()) return null;

@@ -9,9 +9,6 @@ interface Props {
   props: BlockProps;
   mode: CourseViewMode;
   onChange: (props: BlockProps) => void;
-  /** Video / banner: whether the settings panel above the placeholder is open. */
-  settingsOpen?: boolean;
-  onToggleSettings?: () => void;
   /** Video / banner: page title for default placeholder labels. */
   pageTitle?: string;
   /** Banner: page numbering (e.g. `1.1`) for the default name. */
@@ -28,8 +25,6 @@ export function BlockRenderer({
   props,
   mode,
   onChange,
-  settingsOpen,
-  onToggleSettings,
   pageTitle,
   pageNumbering,
   videoNumber,
@@ -42,8 +37,6 @@ export function BlockRenderer({
           props={props}
           mode={mode}
           onChange={onChange}
-          settingsOpen={settingsOpen}
-          onToggleSettings={onToggleSettings}
           pageTitle={pageTitle ?? ""}
           pageNumbering={pageNumbering ?? ""}
         />
@@ -54,8 +47,6 @@ export function BlockRenderer({
           props={props}
           mode={mode}
           onChange={onChange}
-          settingsOpen={settingsOpen}
-          onToggleSettings={onToggleSettings}
           pageTitle={pageTitle ?? ""}
           videoNumber={videoNumber ?? 1}
         />

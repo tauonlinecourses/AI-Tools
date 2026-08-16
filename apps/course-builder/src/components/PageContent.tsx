@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
+  ComponentComment,
   ComponentType,
   CourseViewMode,
   Page,
@@ -14,14 +15,21 @@ import { writeClipboard } from "../lib/clipboard";
 import { useSaveStatus } from "../lib/saveStatus";
 import { htmlToPlainText, resolveTextHtml, sanitizeTextHtml } from "../lib/textHtml";
 import { SortableList } from "./SortableList";
+import { BlockComments } from "./BlockComments";
+import { PageNotes } from "./PageNotes";
 import { BlockRenderer } from "./blocks/BlockRenderer";
-import { NotesDisplay } from "./blocks/fields";
+import { NotesDisplay, TextField } from "./blocks/fields";
+import { detectVideoProvider } from "../lib/videoEmbed";
 import { StatusBadge, nextStatus, statusBorderClass, statusHeaderClass } from "./StatusBadge";
 import {
   BannerIcon,
-  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CopyIcon,
+  DuplicateIcon,
   GripIcon,
+  LinkIcon,
+  PencilIcon,
   PlusIcon,
   QuestionIcon,
   TextIcon,
@@ -29,7 +37,82 @@ import {
   VideoIcon,
 } from "./icons";
 
+/** Sentinel for the open page-notes panel (mutually exclusive with block threads). */
+const PAGE_NOTES_OPEN_ID = "__page_notes__";
+
 type ClipboardPayload = { html?: string; plain: string };
+type HeaderField = "banner-url" | "video-title" | "video-url";
+
+function HeaderFieldPopover({
+  open,
+  label,
+  title,
+  icon,
+  onToggle,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  label: string;
+  title: string;
+  icon: React.ReactNode;
+  onToggle: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onClose();
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        className={`p-1.5 transition-colors duration-fast ${
+          open
+            ? "bg-surface-900 text-white"
+            : "text-surface-500 hover:bg-surface-200 hover:text-surface-900"
+        }`}
+        title={title}
+        aria-label={title}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        {icon}
+      </button>
+      {open && (
+        <div
+          className="absolute top-full start-0 z-50 mt-2 w-72 border border-surface-200 bg-white p-3 shadow-lg"
+          role="dialog"
+          aria-label={label}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <span className="mb-1.5 block text-sm font-semibold text-surface-700">
+            {label}
+          </span>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Clipboard payload for the implement-mode header copy button (by block type). */
 function headerCopyPayload(component: PageComponent): ClipboardPayload {
@@ -61,7 +144,7 @@ function defaultProps(type: ComponentType): BlockProps {
     case "banner":
       return { title: "" };
     case "video":
-      return { url: "", provider: "youtube" };
+      return { url: "" };
     case "text":
       return { html: "" };
     case "question":
@@ -76,11 +159,20 @@ function defaultProps(type: ComponentType): BlockProps {
   }
 }
 
+interface AdjacentPageLink {
+  id: string;
+  title: string;
+  numbering: string;
+}
+
 interface PageContentProps {
   page: Page;
   numbering: string;
   mode: CourseViewMode;
   rollup?: StatusRollup;
+  prevPage: AdjacentPageLink | null;
+  nextPage: AdjacentPageLink | null;
+  onNavigatePage: (pageId: string) => void;
   /** Notify the shell that page title/notes changed (to refresh the sidebar). */
   onPageChange: (fields: Partial<Pick<Page, "title" | "notes">>) => void;
   /** Notify the shell that implementation status may have changed (implement rollups). */
@@ -94,6 +186,9 @@ export function PageContent({
   numbering,
   mode,
   rollup,
+  prevPage,
+  nextPage,
+  onNavigatePage,
   onPageChange,
   onStatusChange,
   onContentChange,
@@ -104,9 +199,14 @@ export function PageContent({
   const isReview = mode === "review";
 
   const [components, setComponents] = useState<PageComponent[] | null>(null);
+  const [commentsByComponent, setCommentsByComponent] = useState<
+    Map<string, ComponentComment[]>
+  >(new Map());
+  /** At most one open comment thread at a time. */
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Video (and similar) blocks: which component cards have their settings panel open. */
-  const [openSettings, setOpenSettings] = useState<Set<string>>(new Set());
+  /** At most one field popover in a block header is open. */
+  const [openHeaderField, setOpenHeaderField] = useState<string | null>(null);
 
   // Debounced persistence for block props and page fields.
   const timers = useRef(new Map<string, number>());
@@ -114,11 +214,25 @@ export function PageContent({
 
   useEffect(() => {
     setComponents(null);
+    setCommentsByComponent(new Map());
+    setOpenCommentId(null);
     setError(null);
-    setOpenSettings(new Set());
+    setOpenHeaderField(null);
     api
       .listComponents(page.id)
       .then(setComponents)
+      .catch((e: Error) => setError(e.message));
+    api
+      .listCommentsForPage(page.id)
+      .then((rows) => {
+        const map = new Map<string, ComponentComment[]>();
+        for (const row of rows) {
+          const list = map.get(row.component_id) ?? [];
+          list.push(row);
+          map.set(row.component_id, list);
+        }
+        setCommentsByComponent(map);
+      })
       .catch((e: Error) => setError(e.message));
 
     const timersMap = timers.current;
@@ -190,13 +304,9 @@ export function PageContent({
     });
   }
 
-  function toggleSettings(id: string) {
-    setOpenSettings((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function toggleHeaderField(componentId: string, field: HeaderField) {
+    const key = `${componentId}:${field}`;
+    setOpenHeaderField((current) => (current === key ? null : key));
   }
 
   /** 1-based ordinal of each video among video components on this page (current order). */
@@ -217,9 +327,8 @@ export function PageContent({
         api.addComponent(page.id, type, components?.length ?? 0, defaultProps(type))
       );
       setComponents((prev) => [...(prev ?? []), created]);
-      if (type === "video" || type === "banner") {
-        setOpenSettings((prev) => new Set(prev).add(created.id));
-      }
+      if (type === "banner") setOpenHeaderField(`${created.id}:banner-url`);
+      if (type === "video") setOpenHeaderField(`${created.id}:video-url`);
       onContentChange();
       onStatusChange();
     } catch (e) {
@@ -233,11 +342,116 @@ export function PageContent({
     try {
       await trackSave(api.deleteComponent(id));
       setComponents((prev) => prev?.filter((c) => c.id !== id) ?? prev);
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      if (openCommentId === id) setOpenCommentId(null);
       onContentChange();
       onStatusChange();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function handleDuplicate(component: PageComponent) {
+    setError(null);
+    try {
+      const created = await trackSave(api.duplicateComponent(component.id));
+      setComponents((prev) => {
+        if (!prev) return [created];
+        const idx = prev.findIndex((c) => c.id === component.id);
+        if (idx < 0) return [...prev, created];
+        const next = [
+          ...prev.slice(0, idx + 1),
+          created,
+          ...prev.slice(idx + 1),
+        ].map((c, position) => ({ ...c, position }));
+        return next;
+      });
+      if (component.type === "banner") setOpenHeaderField(`${created.id}:banner-url`);
+      if (component.type === "video") setOpenHeaderField(`${created.id}:video-url`);
+      onContentChange();
+      onStatusChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleAddComment(componentId: string, body: string) {
+    setError(null);
+    try {
+      const created = await trackSave(api.addComment(componentId, mode, body));
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        const list = [...(next.get(componentId) ?? []), created];
+        next.set(componentId, list);
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleSetCommentResolved(commentId: string, resolved: boolean) {
+    setError(null);
+    try {
+      const updated = await trackSave(api.setCommentResolved(commentId, resolved));
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        const list = next.get(updated.component_id);
+        if (!list) return prev;
+        next.set(
+          updated.component_id,
+          list.map((c) => (c.id === updated.id ? updated : c))
+        );
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleDeleteComment(componentId: string, commentId: string) {
+    setError(null);
+    try {
+      await trackSave(api.deleteComment(commentId));
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        const list = next.get(componentId);
+        if (!list) return prev;
+        next.set(
+          componentId,
+          list.filter((c) => c.id !== commentId)
+        );
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  function wrapWithComments(componentId: string, block: React.ReactNode) {
+    return (
+      <BlockComments
+        componentId={componentId}
+        comments={commentsByComponent.get(componentId) ?? []}
+        mode={mode}
+        open={openCommentId === componentId}
+        onToggle={() =>
+          setOpenCommentId((prev) => (prev === componentId ? null : componentId))
+        }
+        onAdd={(body) => handleAddComment(componentId, body)}
+        onSetResolved={handleSetCommentResolved}
+        onDelete={(commentId) => handleDeleteComment(componentId, commentId)}
+      >
+        {block}
+      </BlockComments>
+    );
   }
 
   function handleReorder(next: PageComponent[]) {
@@ -286,15 +500,12 @@ export function PageContent({
   }
 
   function renderBlock(component: PageComponent) {
-    const settingsOpen = openSettings.has(component.id);
     return (
       <BlockRenderer
         type={component.type}
         props={component.props}
         mode={mode}
         onChange={(props) => handlePropsChange(component.id, props)}
-        settingsOpen={settingsOpen}
-        onToggleSettings={() => toggleSettings(component.id)}
         pageTitle={page.title}
         pageNumbering={numbering}
         videoNumber={videoNumberById.get(component.id)}
@@ -307,13 +518,9 @@ export function PageContent({
     );
   }
 
-  /** Polished preview: no card chrome — just stacked blocks. */
+  /** Polished preview: stacked blocks with comment gutter (no type header). */
   function renderPreviewBlock(component: PageComponent) {
-    return (
-      <div key={component.id} className="mb-6">
-        {renderBlock(component)}
-      </div>
-    );
+    return wrapWithComments(component.id, renderBlock(component));
   }
 
   function renderComponentCard(
@@ -325,14 +532,16 @@ export function PageContent({
     const isVideo = component.type === "video";
     const isBanner = component.type === "banner";
     const flushBody = isVideo || isBanner;
-    const settingsOpen = openSettings.has(component.id);
-    const headerTogglesSettings = editable && (isVideo || isBanner);
+    const fieldIsOpen = (field: HeaderField) =>
+      openHeaderField === `${component.id}:${field}`;
+    const closeHeaderField = () => setOpenHeaderField(null);
 
-    return (
+    return wrapWithComments(
+      component.id,
       <Card
         padding="none"
         border={false}
-        className={`mb-3 border-2 transition-colors duration-fast ${
+        className={`border-2 transition-colors duration-fast ${
           isImplement ? statusBorderClass(status) : "border-surface-200"
         }`}
       >
@@ -341,17 +550,7 @@ export function PageContent({
             editable
               ? "border-surface-200 bg-[#F8F9FA]"
               : statusHeaderClass(status)
-          } ${headerTogglesSettings ? "cursor-pointer select-none" : ""}`}
-          onClick={headerTogglesSettings ? () => toggleSettings(component.id) : undefined}
-          role={headerTogglesSettings ? "button" : undefined}
-          aria-expanded={headerTogglesSettings ? settingsOpen : undefined}
-          title={
-            headerTogglesSettings
-              ? isVideo
-                ? "לחצו לפתיחת הגדרות הוידאו"
-                : "לחצו לפתיחת הגדרות הבאנר"
-              : undefined
-          }
+          }`}
         >
           {editable && handle && (
             <button
@@ -371,12 +570,80 @@ export function PageContent({
             {meta.icon}
             {meta.label}
           </span>
-          {headerTogglesSettings && (
-            <ChevronDownIcon
-              className={`w-3.5 h-3.5 text-surface-400 transition-transform duration-fast ${
-                settingsOpen ? "rotate-180" : ""
-              }`}
-            />
+          {editable && (isBanner || isVideo) && (
+            <span className="text-surface-300 select-none" aria-hidden>
+              |
+            </span>
+          )}
+          {editable && isBanner && (
+            <HeaderFieldPopover
+              open={fieldIsOpen("banner-url")}
+              label="קישור לתמונה"
+              title="עריכת קישור לתמונה"
+              icon={<LinkIcon className="w-4 h-4" />}
+              onToggle={() => toggleHeaderField(component.id, "banner-url")}
+              onClose={closeHeaderField}
+            >
+              <TextField
+                dir="ltr"
+                autoFocus
+                value={component.props.imageUrl ?? ""}
+                placeholder="https://..."
+                onChange={(event) =>
+                  handlePropsChange(component.id, {
+                    ...component.props,
+                    imageUrl: event.target.value,
+                  })
+                }
+              />
+            </HeaderFieldPopover>
+          )}
+          {editable && isVideo && (
+            <div className="flex items-center gap-1">
+              <HeaderFieldPopover
+                open={fieldIsOpen("video-title")}
+                label="שם הסרטון"
+                title="עריכת שם הסרטון"
+                icon={<PencilIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "video-title")}
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  autoFocus
+                  value={component.props.title ?? ""}
+                  placeholder={`${page.title.trim() || "ללא כותרת"} | סרטון`}
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      title: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("video-url")}
+                label="קישור לוידאו"
+                title="עריכת קישור לוידאו"
+                icon={<LinkIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "video-url")}
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.url ?? ""}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  onChange={(event) => {
+                    const url = event.target.value;
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      url,
+                      provider: detectVideoProvider(url),
+                    });
+                  }}
+                />
+              </HeaderFieldPopover>
+            </div>
           )}
           <span className="ms-auto flex items-center gap-2">
             {isImplement && (
@@ -399,16 +666,32 @@ export function PageContent({
               </button>
             )}
             {editable && (
-              <button
-                className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast"
-                title="מחק רכיב"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(component.id);
-                }}
-              >
-                <TrashIcon />
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+                  title="שכפל רכיב"
+                  aria-label="שכפל רכיב"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDuplicate(component);
+                  }}
+                >
+                  <DuplicateIcon className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast"
+                  title="מחק רכיב"
+                  aria-label="מחק רכיב"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(component.id);
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              </>
             )}
           </span>
         </div>
@@ -426,51 +709,58 @@ export function PageContent({
     );
   }
 
-  return (
-    <div className="flex flex-col max-w-3xl w-full mx-auto px-6 py-6">
-      {/* Page header — same `1.1 | title` pattern as the sidebar (home page: title only) */}
-      <div className="flex flex-col gap-1 mb-4">
-        <div className="flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-surface-900">
-          {numbering ? (
-            <>
-              <span className="shrink-0">{numbering}</span>
-              <span className="shrink-0" aria-hidden>
-                |
-              </span>
-            </>
-          ) : null}
-          {editable ? (
-            <input
-              value={page.title}
-              placeholder="כותרת העמוד"
-              onChange={(e) => handleTitleChange(e.target.value)}
-              className="flex-1 min-w-0 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
-            />
-          ) : (
-            <h1 className="min-w-0 truncate">{page.title}</h1>
-          )}
-        </div>
-        {isImplement && rollup && rollup.total_count > 0 && (
-          <span className="text-sm text-surface-500">
-            {rollup.implemented_count}/{rollup.total_count} רכיבים הוטמעו
-            {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} עברו שינוי`}
-          </span>
+  const pageHeader = (
+    <div className={`flex flex-col gap-1 ${editable ? "" : "mb-4"}`}>
+      <div className="flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-surface-900">
+        {numbering ? (
+          <>
+            <span className="shrink-0">{numbering}</span>
+            <span className="shrink-0" aria-hidden>
+              |
+            </span>
+          </>
+        ) : null}
+        {editable ? (
+          <input
+            value={page.title}
+            placeholder="כותרת העמוד"
+            onChange={(e) => handleTitleChange(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
+          />
+        ) : (
+          <h1 className="min-w-0 truncate">{page.title}</h1>
         )}
       </div>
-
-      {/* Notes for implementers — edit + implement only */}
-      {editable && (
-        <div className="flex flex-col gap-1.5 mb-6">
-          <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
-          <textarea
-            rows={1}
-            value={page.notes ?? ""}
-            placeholder="הערות חופשיות על העמוד (יוצגו גם בתצוגת ההטמעה)"
-            onChange={(e) => handleNotesChange(e.target.value)}
-            className="w-full px-3 py-2 text-base leading-6 bg-surface-50 border border-surface-200 text-surface-900 placeholder:text-surface-400 outline-none transition-colors duration-fast resize-y"
-          />
-        </div>
+      {isImplement && rollup && rollup.total_count > 0 && (
+        <span className="text-sm text-surface-500">
+          {rollup.implemented_count}/{rollup.total_count} רכיבים הוטמעו
+          {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} עברו שינוי`}
+        </span>
       )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col max-w-3xl w-full mx-auto ps-12 pe-6 py-6">
+      {/* Page header — edit: notes icon in the same gutter as block comments */}
+      {editable ? (
+        <PageNotes
+          notes={page.notes ?? ""}
+          open={openCommentId === PAGE_NOTES_OPEN_ID}
+          onToggle={() =>
+            setOpenCommentId((prev) =>
+              prev === PAGE_NOTES_OPEN_ID ? null : PAGE_NOTES_OPEN_ID
+            )
+          }
+          onChange={handleNotesChange}
+        >
+          {pageHeader}
+        </PageNotes>
+      ) : (
+        pageHeader
+      )}
+
+      {/* Notes for implementers — implement only (edit uses PageNotes panel) */}
       {isImplement && page.notes?.trim() && (
         <div className="flex flex-col gap-1.5 mb-6">
           <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
@@ -509,7 +799,9 @@ export function PageContent({
               renderItem={(component, handle) => renderComponentCard(component, handle)}
             />
           ) : isReview ? (
-            components.map((component) => renderPreviewBlock(component))
+            components.map((component) => (
+              <div key={component.id}>{renderPreviewBlock(component)}</div>
+            ))
           ) : (
             components.map((component) => (
               <div key={component.id}>{renderComponentCard(component)}</div>
@@ -538,6 +830,49 @@ export function PageContent({
             </div>
           )}
         </>
+      )}
+
+      {(prevPage || nextPage) && (
+        <nav
+          className="flex items-start justify-between gap-6 mt-10 pt-6 border-t border-surface-200"
+          aria-label="ניווט בין עמודים"
+        >
+          {/* Previous — start side (visual right in RTL) */}
+          {prevPage ? (
+            <button
+              type="button"
+              onClick={() => onNavigatePage(prevPage.id)}
+              className="flex items-center gap-1.5 min-w-0 max-w-[45%] text-start text-base text-[#0F6CBF] hover:underline"
+            >
+              <ChevronRightIcon className="w-4 h-4 shrink-0" />
+              <span className="min-w-0 truncate">
+                {prevPage.numbering
+                  ? `${prevPage.numbering} | ${prevPage.title}`
+                  : prevPage.title}
+              </span>
+            </button>
+          ) : (
+            <span />
+          )}
+
+          {/* Next — end side (visual left in RTL) */}
+          {nextPage ? (
+            <button
+              type="button"
+              onClick={() => onNavigatePage(nextPage.id)}
+              className="flex items-center gap-1.5 min-w-0 max-w-[45%] text-end text-base text-[#0F6CBF] hover:underline ms-auto"
+            >
+              <span className="min-w-0 truncate">
+                {nextPage.numbering
+                  ? `${nextPage.numbering} | ${nextPage.title}`
+                  : nextPage.title}
+              </span>
+              <ChevronLeftIcon className="w-4 h-4 shrink-0" />
+            </button>
+          ) : (
+            <span />
+          )}
+        </nav>
       )}
     </div>
   );

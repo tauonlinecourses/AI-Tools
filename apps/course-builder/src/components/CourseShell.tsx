@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageLayout, Card, Spinner } from "@workspace/ui";
 import type { CourseViewMode, Page, PageType, Section, CourseTree, StatusRollup } from "../lib/types";
@@ -6,7 +6,15 @@ import { isHomePage, PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
 import { PageContent } from "./PageContent";
 import { SortableList, type DragHandleProps } from "./SortableList";
-import { ChevronDownIcon, GripIcon, PencilIcon, PlusIcon, TrashIcon } from "./icons";
+import {
+  ChevronDownIcon,
+  DuplicateIcon,
+  GripIcon,
+  MoreVerticalIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+} from "./icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
 
 interface CourseShellProps {
@@ -23,6 +31,103 @@ function formatDate(iso: string): string {
   });
 }
 
+function SidebarRowMenu({
+  open,
+  selectedTone = false,
+  ariaLabel,
+  onToggle,
+  onClose,
+  items,
+}: {
+  open: boolean;
+  /** When true, use white-on-blue tones (selected page row). */
+  selectedTone?: boolean;
+  ariaLabel: string;
+  onToggle: () => void;
+  onClose: () => void;
+  items: Array<{
+    label: string;
+    icon: React.ReactNode;
+    danger?: boolean;
+    onClick: () => void;
+  }>;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onClose();
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div
+      ref={rootRef}
+      className={`ms-auto relative shrink-0 ${
+        open ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+      }`}
+    >
+      <button
+        type="button"
+        className={`p-1 ${
+          open || selectedTone
+            ? selectedTone
+              ? "text-white/90 hover:text-white"
+              : "text-surface-800"
+            : "text-surface-600 hover:text-surface-900"
+        }`}
+        title={ariaLabel}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <MoreVerticalIcon className="w-4 h-4" />
+      </button>
+      {open && (
+        <div
+          className="absolute top-full end-0 z-50 mt-1 min-w-[9.5rem] border border-surface-200 bg-white py-1 shadow-md"
+          role="menu"
+          aria-label={ariaLabel}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-start ${
+                item.danger
+                  ? "text-danger hover:bg-red-50"
+                  : "text-surface-700 hover:bg-surface-100"
+              }`}
+              onClick={() => {
+                onClose();
+                item.onClick();
+              }}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CourseShell({ mode }: CourseShellProps) {
   const { courseId } = useParams<{ courseId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +139,9 @@ export function CourseShell({ mode }: CourseShellProps) {
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<Renaming>(null);
+  const [openMenu, setOpenMenu] = useState<
+    { kind: "page" | "section"; id: string } | null
+  >(null);
   const [rollups, setRollups] = useState<{
     perPage: Map<string, StatusRollup>;
     perSection: Map<string, StatusRollup>;
@@ -120,7 +228,29 @@ export function CourseShell({ mode }: CourseShellProps) {
     return map;
   }, [tree, pagesBySection]);
 
+  /** Sidebar order: home, then each section's pages. */
+  const orderedPages = useMemo(() => {
+    if (!tree) return [] as Page[];
+    const list: Page[] = [];
+    if (homePage) list.push(homePage);
+    for (const section of tree.sections) {
+      list.push(...(pagesBySection.get(section.id) ?? []));
+    }
+    return list;
+  }, [tree, homePage, pagesBySection]);
+
+  const adjacentPages = useMemo(() => {
+    if (!selectedPage) return { prev: null, next: null };
+    const idx = orderedPages.findIndex((p) => p.id === selectedPage.id);
+    if (idx < 0) return { prev: null, next: null };
+    return {
+      prev: idx > 0 ? orderedPages[idx - 1] : null,
+      next: idx < orderedPages.length - 1 ? orderedPages[idx + 1] : null,
+    };
+  }, [orderedPages, selectedPage]);
+
   function selectPage(pageId: string) {
+    setOpenMenu(null);
     setSearchParams({ page: pageId }, { replace: true });
   }
 
@@ -195,6 +325,38 @@ export function CourseShell({ mode }: CourseShellProps) {
     }
   }
 
+  async function handleDuplicateSection(section: Section) {
+    try {
+      const { section: created, pages } = await trackSave(
+        api.duplicateSection(section.id)
+      );
+      setTree((prev) => {
+        if (!prev) return prev;
+        const sorted = [...prev.sections].sort((a, b) => a.position - b.position);
+        const idx = sorted.findIndex((s) => s.id === section.id);
+        const nextSections = [
+          ...sorted.slice(0, idx + 1),
+          created,
+          ...sorted.slice(idx + 1),
+        ].map((s, position) => ({ ...s, position }));
+        return {
+          ...prev,
+          sections: nextSections,
+          pages: [...prev.pages, ...pages],
+        };
+      });
+      markCourseTouched();
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        next.delete(created.id);
+        return next;
+      });
+      if (pages[0]) selectPage(pages[0].id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   function handleReorderSections(next: Section[]) {
     setTree((prev) => (prev ? { ...prev, sections: next } : prev));
     trackSave(api.reorderSections(next.map((s) => s.id)))
@@ -227,6 +389,31 @@ export function CourseShell({ mode }: CourseShellProps) {
       );
       markCourseTouched();
       if (searchParams.get("page") === page.id) setSearchParams({}, { replace: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleDuplicatePage(page: Page) {
+    if (isHomePage(page)) return;
+    try {
+      const created = await trackSave(api.duplicatePage(page.id));
+      setTree((prev) => {
+        if (!prev) return prev;
+        const siblings = prev.pages
+          .filter((p) => p.section_id === page.section_id)
+          .sort((a, b) => a.position - b.position);
+        const others = prev.pages.filter((p) => p.section_id !== page.section_id);
+        const idx = siblings.findIndex((p) => p.id === page.id);
+        const nextSiblings = [
+          ...siblings.slice(0, idx + 1),
+          created,
+          ...siblings.slice(idx + 1),
+        ].map((p, position) => ({ ...p, position }));
+        return { ...prev, pages: [...others, ...nextSiblings] };
+      });
+      markCourseTouched();
+      selectPage(created.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -322,12 +509,12 @@ export function CourseShell({ mode }: CourseShellProps) {
             {...handle}
             className={`opacity-0 group-hover:opacity-100 p-0.5 cursor-grab active:cursor-grabbing touch-none shrink-0 ${
               isSelected
-                ? "text-white/70 hover:text-white"
-                : "text-surface-400 hover:text-surface-900"
+                ? "text-white/90 hover:text-white"
+                : "text-surface-600 hover:text-surface-900"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <GripIcon className="w-3 h-3" />
+            <GripIcon className="w-3.5 h-3.5" />
           </button>
         )}
         {pageType && (
@@ -366,38 +553,41 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}
         {editable && !isRenaming && (
-          <span className="ms-auto hidden group-hover:flex items-center shrink-0">
-            <button
-              className={`p-1 ${
-                isSelected
-                  ? "text-white/70 hover:text-white"
-                  : "text-surface-400 hover:text-surface-900"
-              }`}
-              title="שנה שם"
-              onClick={(e) => {
-                e.stopPropagation();
-                setRenaming({ kind: "page", id: page.id });
-              }}
-            >
-              <PencilIcon className="w-3 h-3" />
-            </button>
-            {!isHome && (
-              <button
-                className={`p-1 ${
-                  isSelected
-                    ? "text-white/70 hover:text-white"
-                    : "text-surface-400 hover:text-danger"
-                }`}
-                title="מחק עמוד"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeletePage(page);
-                }}
-              >
-                <TrashIcon className="w-3 h-3" />
-              </button>
-            )}
-          </span>
+          <SidebarRowMenu
+            open={openMenu?.kind === "page" && openMenu.id === page.id}
+            selectedTone={isSelected}
+            ariaLabel="אפשרויות עמוד"
+            onToggle={() =>
+              setOpenMenu((prev) =>
+                prev?.kind === "page" && prev.id === page.id
+                  ? null
+                  : { kind: "page", id: page.id }
+              )
+            }
+            onClose={() => setOpenMenu(null)}
+            items={[
+              {
+                label: "שנה שם",
+                icon: <PencilIcon className="w-3.5 h-3.5 text-surface-500" />,
+                onClick: () => setRenaming({ kind: "page", id: page.id }),
+              },
+              ...(!isHome
+                ? [
+                    {
+                      label: "שכפל עמוד",
+                      icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
+                      onClick: () => handleDuplicatePage(page),
+                    },
+                    {
+                      label: "מחק עמוד",
+                      icon: <TrashIcon className="w-3.5 h-3.5" />,
+                      danger: true,
+                      onClick: () => handleDeletePage(page),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         )}
       </div>
     );
@@ -413,9 +603,9 @@ export function CourseShell({ mode }: CourseShellProps) {
           {editable && handle && (
             <button
               {...handle}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-surface-400 hover:text-surface-900 cursor-grab active:cursor-grabbing touch-none shrink-0"
+              className="opacity-0 group-hover:opacity-100 p-0.5 text-surface-600 hover:text-surface-900 cursor-grab active:cursor-grabbing touch-none shrink-0"
             >
-              <GripIcon className="w-3 h-3" />
+              <GripIcon className="w-3.5 h-3.5" />
             </button>
           )}
           <button
@@ -440,22 +630,36 @@ export function CourseShell({ mode }: CourseShellProps) {
           )}
           {showRollups && rollupLabel(rollups?.perSection.get(section.id))}
           {editable && !isRenaming && (
-            <span className="ms-auto hidden group-hover:flex items-center shrink-0">
-              <button
-                className="p-1 text-surface-400 hover:text-surface-900"
-                title="שנה שם"
-                onClick={() => setRenaming({ kind: "section", id: section.id })}
-              >
-                <PencilIcon className="w-3 h-3" />
-              </button>
-              <button
-                className="p-1 text-surface-400 hover:text-danger"
-                title="מחק שיעור"
-                onClick={() => handleDeleteSection(section)}
-              >
-                <TrashIcon className="w-3 h-3" />
-              </button>
-            </span>
+            <SidebarRowMenu
+              open={openMenu?.kind === "section" && openMenu.id === section.id}
+              ariaLabel="אפשרויות שיעור"
+              onToggle={() =>
+                setOpenMenu((prev) =>
+                  prev?.kind === "section" && prev.id === section.id
+                    ? null
+                    : { kind: "section", id: section.id }
+                )
+              }
+              onClose={() => setOpenMenu(null)}
+              items={[
+                {
+                  label: "שנה שם",
+                  icon: <PencilIcon className="w-3.5 h-3.5 text-surface-500" />,
+                  onClick: () => setRenaming({ kind: "section", id: section.id }),
+                },
+                {
+                  label: "שכפל שיעור",
+                  icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
+                  onClick: () => handleDuplicateSection(section),
+                },
+                {
+                  label: "מחק שיעור",
+                  icon: <TrashIcon className="w-3.5 h-3.5" />,
+                  danger: true,
+                  onClick: () => handleDeleteSection(section),
+                },
+              ]}
+            />
           )}
         </div>
 
@@ -478,7 +682,7 @@ export function CourseShell({ mode }: CourseShellProps) {
                 {/* Match page-row grip slot so + aligns with page numbers */}
                 <span className="w-4 shrink-0" aria-hidden />
                 <PlusIcon className="w-3 h-3" />
-                הוסף עמוד
+                עמוד חדש
               </button>
             )}
           </div>
@@ -493,6 +697,15 @@ export function CourseShell({ mode }: CourseShellProps) {
     <PageLayout
       toolName="Course Builder"
       toolNameHe="פיתוח קורסים"
+      toolTrail={[
+        { label: "כל הקורסים", to: "/" },
+        { label: tree?.course.title?.trim() || "..." },
+      ]}
+      renderTrailLink={({ to, className, children }) => (
+        <Link to={to} className={className}>
+          {children}
+        </Link>
+      )}
       maxWidth="full"
       padded={false}
     >
@@ -500,18 +713,11 @@ export function CourseShell({ mode }: CourseShellProps) {
         {/* Sidebar — fixed pane; own scrollbar when nav overflows */}
         <aside className="w-80 shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
           <div className="p-4 border-b border-surface-200 flex flex-col gap-2">
-            {/* Title + last updated (right) + mode toggle (top-left in RTL) */}
+            {/* Title (right) + mode toggle (top-left in RTL) */}
             <div className="flex items-start justify-between gap-2">
-              <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <span className="text-xl font-semibold text-surface-900 leading-snug">
-                  {tree?.course.title ?? "..."}
-                </span>
-                {tree?.course.updated_at && (
-                  <span className="text-sm text-surface-500">
-                    עודכן ב{formatDate(tree.course.updated_at)}
-                  </span>
-                )}
-              </div>
+              <span className="text-xl font-semibold text-surface-900 leading-snug min-w-0 flex-1">
+                {tree?.course.title ?? "..."}
+              </span>
               <div className="flex border border-surface-200 rounded-control overflow-hidden shrink-0 text-xs font-semibold">
                 {(
                   [
@@ -538,15 +744,14 @@ export function CourseShell({ mode }: CourseShellProps) {
                 ))}
               </div>
             </div>
-            <Link
-              to="/"
-              className="text-sm text-surface-500 hover:text-surface-900 transition-colors duration-fast self-start"
-            >
-              חזרה לכל הקורסים
-            </Link>
+            {tree?.course.updated_at && (
+              <span className="block w-full text-sm text-surface-500">
+                עודכן לאחרונה ב{formatDate(tree.course.updated_at)}
+              </span>
+            )}
           </div>
 
-          <nav className="flex-1 overflow-y-auto py-2">
+          <nav className="scrollbar-rounded flex-1 overflow-y-auto py-2">
             {tree === null && !error && (
               <div className="flex items-center gap-2 px-4 py-2 text-base text-surface-600">
                 <Spinner size="sm" />
@@ -581,7 +786,7 @@ export function CourseShell({ mode }: CourseShellProps) {
                 {/* Match section-row grip slot (chevron not reserved — sits slightly right of titles) */}
                 <span className="w-4 shrink-0" aria-hidden />
                 <PlusIcon className="w-3.5 h-3.5" />
-                הוסף שיעור
+                שיעור חדש
               </button>
             )}
           </nav>
@@ -615,6 +820,25 @@ export function CourseShell({ mode }: CourseShellProps) {
               numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
               rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
+              prevPage={
+                adjacentPages.prev
+                  ? {
+                      id: adjacentPages.prev.id,
+                      title: adjacentPages.prev.title,
+                      numbering: numbering.get(adjacentPages.prev.id) ?? "",
+                    }
+                  : null
+              }
+              nextPage={
+                adjacentPages.next
+                  ? {
+                      id: adjacentPages.next.id,
+                      title: adjacentPages.next.title,
+                      numbering: numbering.get(adjacentPages.next.id) ?? "",
+                    }
+                  : null
+              }
+              onNavigatePage={selectPage}
               onPageChange={handlePageFieldChange}
               onStatusChange={refreshRollups}
               onContentChange={markCourseTouched}

@@ -53,6 +53,17 @@ create table components (
   updated_at timestamptz default now()
 );
 
+-- Per-block Word-style comments (one chronological thread per component).
+-- author_role mirrors CourseViewMode. Does not bump components.updated_at.
+create table component_comments (
+  id uuid primary key default gen_random_uuid(),
+  component_id uuid not null references components(id) on delete cascade,
+  author_role text not null check (author_role in ('edit', 'implement', 'review')),
+  body text not null,
+  resolved_at timestamptz,                -- null = open
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- INDEXES (foreign keys aren't auto-indexed in Postgres)
 -- ============================================================
@@ -62,6 +73,7 @@ create index idx_pages_section_id on pages(section_id);
 create index idx_pages_course_id on pages(course_id);
 create unique index pages_one_home_per_course on pages(course_id) where section_id is null;
 create index idx_components_page_id on components(page_id);
+create index idx_component_comments_component_id on component_comments(component_id);
 
 -- ============================================================
 -- AUTO-UPDATE updated_at

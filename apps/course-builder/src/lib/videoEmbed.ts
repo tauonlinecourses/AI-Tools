@@ -1,26 +1,35 @@
 import type { VideoProps } from "./types";
 
+/** Infer platform from the URL (YouTube / Panopto / other). */
+export function detectVideoProvider(url: string | undefined): NonNullable<VideoProps["provider"]> {
+  const raw = url?.trim();
+  if (!raw) return "other";
+
+  if (extractYouTubeId(raw)) return "youtube";
+
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, "").toLowerCase();
+    if (host === "panopto.com" || host.endsWith(".panopto.com")) return "panopto";
+  } catch {
+    // fall through
+  }
+
+  return "other";
+}
+
 /** Resolve an iframe-friendly embed URL, or null if we should keep the placeholder. */
-export function resolveVideoEmbedSrc(
-  url: string | undefined,
-  provider: VideoProps["provider"]
-): string | null {
+export function resolveVideoEmbedSrc(url: string | undefined): string | null {
   const raw = url?.trim();
   if (!raw) return null;
 
-  const kind = provider ?? "youtube";
+  const kind = detectVideoProvider(raw);
 
   if (kind === "youtube") {
     const id = extractYouTubeId(raw);
     return id ? `https://www.youtube.com/embed/${id}` : null;
   }
 
-  if (kind === "panopto") {
-    // Panopto Viewer.aspx / Embed.aspx links often work as iframe src as-is.
-    return raw;
-  }
-
-  // other — try embedding the URL directly
+  // Panopto Viewer.aspx / Embed.aspx links and unknown hosts: use URL as iframe src.
   return raw;
 }
 

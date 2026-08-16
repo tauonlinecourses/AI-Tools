@@ -1,15 +1,11 @@
 import type { CourseViewMode, VideoProps } from "../../lib/types";
 import { resolveVideoEmbedSrc } from "../../lib/videoEmbed";
-import { ChevronDownIcon, PlayCircleIcon } from "../icons";
-import { Field, NotesField, SelectField, TextField } from "./fields";
+import { PlayCircleIcon } from "../icons";
 
 interface Props {
   props: VideoProps;
   mode: CourseViewMode;
   onChange: (props: VideoProps) => void;
-  /** Edit mode: whether the settings panel above the placeholder is open. */
-  settingsOpen?: boolean;
-  onToggleSettings?: () => void;
   /** Page title used for the default placeholder label. */
   pageTitle: string;
   /** 1-based index among video components on this page (by current order). */
@@ -23,16 +19,11 @@ function defaultVideoLabel(pageTitle: string, videoNumber: number): string {
 function VideoPlaceholder({
   label,
   url,
-  settingsOpen = false,
-  onChevronClick,
 }: {
   label: string;
   url?: string;
-  settingsOpen?: boolean;
-  onChevronClick?: () => void;
 }) {
   const href = url?.trim() || undefined;
-  const showStrip = Boolean(onChevronClick);
 
   const body = (
     <>
@@ -44,34 +35,11 @@ function VideoPlaceholder({
     </>
   );
 
-  const bodyClass = `absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 ${
-    showStrip ? "pt-7" : ""
-  }`;
+  const bodyClass =
+    "absolute inset-0 flex flex-col items-center justify-center gap-6 px-6";
 
   return (
     <div className="relative aspect-video w-full bg-black overflow-hidden select-none">
-      {showStrip && (
-        <div className="absolute top-0 inset-x-0 h-7 bg-[#2c2c2c] flex justify-center z-10">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onChevronClick?.();
-            }}
-            className="absolute -bottom-3.5 w-11 h-7 rounded-b-full bg-[#2c2c2c] flex items-center justify-center text-white"
-            title="הגדרות וידאו"
-            aria-label="פתח או סגור הגדרות וידאו"
-            aria-expanded={settingsOpen}
-          >
-            <ChevronDownIcon
-              className={`w-3.5 h-3.5 transition-transform duration-fast ${
-                settingsOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-        </div>
-      )}
-
       {href ? (
         <a
           href={href}
@@ -104,58 +72,9 @@ function VideoEmbed({ src, title }: { src: string; title: string }) {
   );
 }
 
-function SettingsFields({
-  props,
-  onChange,
-  defaultLabel,
-}: {
-  props: VideoProps;
-  onChange: (props: VideoProps) => void;
-  defaultLabel: string;
-}) {
-  return (
-    <div className="flex flex-col gap-3 p-4 border-b border-surface-200">
-      <Field label="שם הסרטון">
-        <TextField
-          value={props.title ?? ""}
-          placeholder={defaultLabel}
-          onChange={(e) => onChange({ ...props, title: e.target.value })}
-        />
-      </Field>
-      <Field label="קישור לוידאו">
-        <TextField
-          dir="ltr"
-          value={props.url ?? ""}
-          placeholder="https://www.youtube.com/watch?v=..."
-          onChange={(e) => onChange({ ...props, url: e.target.value })}
-        />
-      </Field>
-      <Field label="פלטפורמה">
-        <SelectField
-          value={props.provider ?? "youtube"}
-          onChange={(e) =>
-            onChange({ ...props, provider: e.target.value as VideoProps["provider"] })
-          }
-        >
-          <option value="youtube">YouTube</option>
-          <option value="panopto">Panopto</option>
-          <option value="other">אחר</option>
-        </SelectField>
-      </Field>
-      <NotesField
-        value={props.notes}
-        onChange={(notes) => onChange({ ...props, notes })}
-      />
-    </div>
-  );
-}
-
 export function VideoBlock({
   props,
   mode,
-  onChange,
-  settingsOpen = false,
-  onToggleSettings,
   pageTitle,
   videoNumber,
 }: Props) {
@@ -164,7 +83,7 @@ export function VideoBlock({
   const editable = mode === "edit";
 
   if (mode === "review") {
-    const embedSrc = resolveVideoEmbedSrc(props.url, props.provider);
+    const embedSrc = resolveVideoEmbedSrc(props.url);
     if (embedSrc) {
       return <VideoEmbed src={embedSrc} title={label} />;
     }
@@ -175,17 +94,5 @@ export function VideoBlock({
     return <VideoPlaceholder label={label} url={props.url} />;
   }
 
-  return (
-    <div className="flex flex-col">
-      {settingsOpen && (
-        <SettingsFields props={props} onChange={onChange} defaultLabel={defaultLabel} />
-      )}
-      <VideoPlaceholder
-        label={label}
-        url={props.url}
-        settingsOpen={settingsOpen}
-        onChevronClick={onToggleSettings}
-      />
-    </div>
-  );
+  return <VideoPlaceholder label={label} url={props.url} />;
 }
