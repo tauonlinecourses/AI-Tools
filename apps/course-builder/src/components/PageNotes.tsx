@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { CommentIcon, XIcon } from "./icons";
 
 /** Small corner badge when page notes are non-empty. */
@@ -28,11 +29,23 @@ export function PageNotes({
   onChange,
   children,
 }: PageNotesProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const hasNotes = !!notes.trim();
   const iconOpacity = hasNotes
     ? "opacity-100"
     : "opacity-25 hover:opacity-60";
   const iconTitle = hasNotes ? "הערות להטמעה" : "הוסף הערות להטמעה";
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) onToggle();
+    }
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+    };
+  }, [open, onToggle]);
 
   return (
     <div className={`relative mb-4 ${open ? "z-40" : "z-0"}`}>
@@ -57,6 +70,7 @@ export function PageNotes({
 
       {open && (
         <div
+          ref={panelRef}
           className="absolute top-0 left-full ml-1.5 z-30 w-64 bg-white border border-surface-200 shadow-md rounded-lg flex flex-col max-h-[min(28rem,70vh)] pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           role="dialog"

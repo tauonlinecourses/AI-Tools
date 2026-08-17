@@ -52,7 +52,7 @@ interface BlockCommentsProps {
  * Comment icon outside the block (visual right) + Word-style closable thread panel.
  * The block stays full-width of the page column. When closed, the icon sits in the
  * start gutter; when open, the panel aligns to the block top and the icon moves
- * into the panel header.
+ * into the panel header. Clicking outside the open panel closes it.
  */
 export function BlockComments({
   comments,
@@ -67,6 +67,7 @@ export function BlockComments({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const unresolved = unresolvedCount(comments);
   const hasAny = comments.length > 0;
 
@@ -92,6 +93,17 @@ export function BlockComments({
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [open, comments.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) onToggle();
+    }
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+    };
+  }, [open, onToggle]);
 
   async function handleAdd() {
     const body = draft.trim();
@@ -153,6 +165,7 @@ export function BlockComments({
       {/* Open: panel from block top; comment icon lives in the header */}
       {open && (
         <div
+          ref={panelRef}
           className="absolute top-0 left-full ml-1.5 z-30 w-64 bg-white border border-surface-200 shadow-md rounded-lg flex flex-col max-h-[min(28rem,70vh)] pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
