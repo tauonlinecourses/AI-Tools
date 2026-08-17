@@ -47,6 +47,14 @@ function sectionHasReadyPages(pages: Page[]): boolean {
   return pages.some((page) => page.workflow_status === "ready_for_implementation");
 }
 
+/** Lesson is ready only when it has pages and every page is ready. */
+function sectionWorkflowStatus(pages: Page[]): PageWorkflowStatus {
+  return pages.length > 0 &&
+    pages.every((page) => page.workflow_status === "ready_for_implementation")
+    ? "ready_for_implementation"
+    : "in_progress";
+}
+
 function SidebarRowMenu({
   open,
   selectedTone = false,
@@ -617,6 +625,14 @@ export function CourseShell({ mode }: CourseShellProps) {
       pageRollup.implemented_count === pageRollup.total_count;
     const pageType =
       showRollups && !isHome ? (pageTypes.get(page.id) ?? "page") : null;
+    const workflowSwatchClass =
+      page.workflow_status === "ready_for_implementation"
+        ? "bg-emerald-400/40"
+        : "bg-amber-400/40";
+    const workflowLabel =
+      page.workflow_status === "ready_for_implementation"
+        ? "מוכן להטמעה"
+        : "בעבודה";
     return (
       <div
         className={`group flex items-center gap-1.5 mx-2 ${isHome ? "ps-2" : "ps-5"} pe-2 h-9 rounded-lg text-base transition-colors duration-fast ${
@@ -652,6 +668,13 @@ export function CourseShell({ mode }: CourseShellProps) {
           >
             <GripIcon className="w-3.5 h-3.5" />
           </button>
+        )}
+        {editable && (
+          <span
+            className={`shrink-0 w-2.5 h-2.5 rounded-sm ${workflowSwatchClass}`}
+            title={workflowLabel}
+            aria-label={workflowLabel}
+          />
         )}
         {pageType && (
           <img
@@ -739,6 +762,15 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isEffectivelyCollapsed = isCollapsed || isUnavailableInImplement;
     const hasOpenDate = !!section.opens_at?.trim();
     const hasFolderLink = !!section.files_folder_url?.trim();
+    const lessonWorkflow = sectionWorkflowStatus(pages);
+    const lessonWorkflowSwatchClass =
+      lessonWorkflow === "ready_for_implementation"
+        ? "bg-emerald-400/40"
+        : "bg-amber-400/40";
+    const lessonWorkflowLabel =
+      lessonWorkflow === "ready_for_implementation"
+        ? "מוכן להטמעה"
+        : "בעבודה";
     return (
       <div className="flex flex-col">
         <div
@@ -769,6 +801,13 @@ export function CourseShell({ mode }: CourseShellProps) {
             >
               <GripIcon className="w-3.5 h-3.5" />
             </button>
+          )}
+          {editable && (
+            <span
+              className={`shrink-0 w-2.5 h-2.5 rounded-sm ${lessonWorkflowSwatchClass}`}
+              title={lessonWorkflowLabel}
+              aria-label={lessonWorkflowLabel}
+            />
           )}
           <button
             type="button"
