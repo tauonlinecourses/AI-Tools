@@ -530,6 +530,8 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
           { id: crypto.randomUUID(), text: "" },
         ],
       };
+    case "image":
+      return { imageUrl: "", fileUrl: "" };
   }
 }
 
@@ -581,6 +583,23 @@ export async function updateComponentProps(
     .select()
     .single();
   if (error) fail("Updating component", error);
+  await touchCourse(courseId);
+  return data;
+}
+
+export async function updateComponentType(
+  id: string,
+  type: ComponentType,
+  props: BlockProps
+): Promise<PageComponent> {
+  const courseId = await courseIdFromComponent(id);
+  const { data, error } = await supabase
+    .from("components")
+    .update({ type, props })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) fail("Updating component type", error);
   await touchCourse(courseId);
   return data;
 }

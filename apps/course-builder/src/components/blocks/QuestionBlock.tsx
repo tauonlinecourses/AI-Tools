@@ -1,5 +1,5 @@
 import { useId } from "react";
-import type { CourseViewMode, QuestionOption, QuestionProps } from "../../lib/types";
+import type { CourseViewMode, QuestionOption, QuestionProps, QuestionType } from "../../lib/types";
 import { CheckIcon, CopyIcon, PlusIcon, XIcon } from "../icons";
 import { Field, TextField } from "./fields";
 
@@ -15,10 +15,24 @@ function newOption(): QuestionOption {
   return { id: crypto.randomUUID(), text: "" };
 }
 
+const YES_NO_OPTIONS: QuestionOption[] = [
+  { id: "__correct", text: "נכון" },
+  { id: "__incorrect", text: "לא נכון" },
+];
+
 export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
   const radioGroup = useId();
-  const options = props.options ?? [];
+  const questionType: QuestionType = props.questionType ?? "single_choice";
+  const isYesNo = questionType === "yes_no";
+  const isMultiple = questionType === "multiple_choice";
+  const options = isYesNo ? YES_NO_OPTIONS : (props.options ?? []);
   const editable = mode === "edit";
+
+  const correctIds: Set<string> = new Set(
+    isMultiple
+      ? (props.correctOptionId?.split(",").filter(Boolean) ?? [])
+      : props.correctOptionId ? [props.correctOptionId] : []
+  );
 
   if (!editable) {
     return (
@@ -41,7 +55,7 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
         </div>
         <div className="flex flex-col gap-1.5">
           {options.map((opt) => {
-            const correct = opt.id === props.correctOptionId;
+            const correct = correctIds.has(opt.id);
             return (
               <div
                 key={opt.id}
@@ -80,16 +94,30 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
   function updateOption(id: string, text: string) {
     onChange({
       ...props,
-      options: options.map((o) => (o.id === id ? { ...o, text } : o)),
+      options: (props.options ?? []).map((o) => (o.id === id ? { ...o, text } : o)),
     });
   }
 
   function removeOption(id: string) {
+    const newCorrect = isMultiple
+      ? [...correctIds].filter((cid) => cid !== id).join(",") || undefined
+      : props.correctOptionId === id ? undefined : props.correctOptionId;
     onChange({
       ...props,
-      options: options.filter((o) => o.id !== id),
-      correctOptionId: props.correctOptionId === id ? undefined : props.correctOptionId,
+      options: (props.options ?? []).filter((o) => o.id !== id),
+      correctOptionId: newCorrect,
     });
+  }
+
+  function toggleCorrect(id: string) {
+    if (isMultiple) {
+      const next = new Set(correctIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      onChange({ ...props, correctOptionId: [...next].join(",") || undefined });
+    } else {
+      onChange({ ...props, correctOptionId: id });
+    }
   }
 
   return (
@@ -104,39 +132,47 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
 
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-semibold text-surface-700">
-          אפשרויות (סמנו את התשובה הנכונה)
+          {isYesNo ? "תשובה נכונה" : isMultiple ? "אפשרויות (סמנו את התשובות הנכונות)" : "אפשרויות (סמנו את התשובה הנכונה)"}
         </span>
         {options.map((opt) => (
           <div key={opt.id} className="flex items-center gap-2">
             <input
-              type="radio"
+              type={isMultiple ? "checkbox" : "radio"}
               name={radioGroup}
               className="accent-black shrink-0"
-              checked={props.correctOptionId === opt.id}
-              onChange={() => onChange({ ...props, correctOptionId: opt.id })}
+              checked={correctIds.has(opt.id)}
+              onChange={() => toggleCorrect(opt.id)}
               title="תשובה נכונה"
             />
-            <TextField
-              value={opt.text}
-              placeholder="טקסט האפשרות"
-              onChange={(e) => updateOption(opt.id, e.target.value)}
-            />
-            <button
-              className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast shrink-0"
-              title="הסר אפשרות"
-              onClick={() => removeOption(opt.id)}
-            >
-              <XIcon className="w-3.5 h-3.5" />
-            </button>
+            {isYesNo ? (
+              <span className="flex-1 text-sm text-surface-700">{opt.text}</span>
+            ) : (
+              <TextField
+                value={opt.text}
+                placeholder="טקסט האפשרות"
+                onChange={(e) => updateOption(opt.id, e.target.value)}
+              />
+            )}
+            {!isYesNo && (
+              <button
+                className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast shrink-0"
+                title="הסר אפשרות"
+                onClick={() => removeOption(opt.id)}
+              >
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         ))}
-        <button
-          className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-surface-600 hover:text-surface-900 transition-colors duration-fast py-1"
-          onClick={() => onChange({ ...props, options: [...options, newOption()] })}
-        >
-          <PlusIcon className="w-3.5 h-3.5" />
-          הוסף אפשרות
-        </button>
+        {!isYesNo && (
+          <button
+            className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-surface-600 hover:text-surface-900 transition-colors duration-fast py-1"
+            onClick={() => onChange({ ...props, options: [...(props.options ?? []), newOption()] })}
+          >
+            <PlusIcon className="w-3.5 h-3.5" />
+            הוסף אפשרות
+          </button>
+        )}
       </div>
     </div>
   );

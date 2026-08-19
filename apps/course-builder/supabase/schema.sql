@@ -91,7 +91,8 @@ begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql
+set search_path = public;
 
 create trigger courses_updated_at
 before update on courses
@@ -106,6 +107,7 @@ for each row execute function set_updated_at();
 create or replace function mark_component_implemented(component_id uuid)
 returns components
 language plpgsql
+set search_path = public
 as $$
 declare
   row components;
@@ -125,7 +127,8 @@ $$;
 -- IMPLEMENTATION STATUS VIEWS
 -- ============================================================
 
-create view component_status as
+create view component_status
+with (security_invoker = true) as
 select
   id,
   page_id,
@@ -136,7 +139,8 @@ select
   end as status
 from components;
 
-create view page_status as
+create view page_status
+with (security_invoker = true) as
 select
   p.id as page_id,
   count(*) filter (where cs.status = 'implemented') as implemented_count,
@@ -147,7 +151,8 @@ from pages p
 left join component_status cs on cs.page_id = p.id
 group by p.id;
 
-create view section_status as
+create view section_status
+with (security_invoker = true) as
 select
   s.id as section_id,
   coalesce(sum(ps.implemented_count), 0) as implemented_count,
@@ -159,5 +164,36 @@ left join pages p on p.section_id = s.id
 left join page_status ps on ps.page_id = p.id
 group by s.id;
 
--- No RLS in this MVP (internal tool, no auth). Before sharing a public URL,
--- protect the deployment (Vercel protection / password gate) or add RLS.
+-- ============================================================
+-- RLS (option B — open policies until auth is added)
+-- ============================================================
+-- RLS is enabled so the Data API no longer treats these tables as
+-- "RLS disabled". Policies still allow full CRUD for `anon` /
+-- `authenticated`, matching the no-login SPA. Tighten to
+-- authenticated-only when adding users (see migrations/006_enable_rls.sql).
+
+alter table courses enable row level security;
+alter table sections enable row level security;
+alter table pages enable row level security;
+alter table components enable row level security;
+alter table component_comments enable row level security;
+
+create policy "anon_authenticated_all" on courses
+  for all to anon, authenticated
+  using (true) with check (true);
+
+create policy "anon_authenticated_all" on sections
+  for all to anon, authenticated
+  using (true) with check (true);
+
+create policy "anon_authenticated_all" on pages
+  for all to anon, authenticated
+  using (true) with check (true);
+
+create policy "anon_authenticated_all" on components
+  for all to anon, authenticated
+  using (true) with check (true);
+
+create policy "anon_authenticated_all" on component_comments
+  for all to anon, authenticated
+  using (true) with check (true);

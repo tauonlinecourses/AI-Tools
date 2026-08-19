@@ -39,29 +39,40 @@ export function isHomePage(page: Page): boolean {
   return page.section_id === null;
 }
 
-export type ComponentType = "banner" | "video" | "text" | "question";
+export type ComponentType = "banner" | "video" | "interactive_video" | "text" | "question" | "image" | "notes_board" | "word_cloud";
+
+/** Activity component types — only one kind allowed per page. */
+export const ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set(["question", "notes_board", "word_cloud"]);
+
+/** Component types that are always pinned to the bottom of the page. */
+export const PINNED_BOTTOM_TYPES: ReadonlySet<ComponentType> = new Set(["notes_board", "word_cloud"]);
 
 /**
  * Moodle/edX activity shape implied by a page's blocks.
- * Today: any question → h5p; otherwise a normal page (text/banner/video/empty).
- * Extra logos in `public/` (task, forum, notes-board, dictionary) await future block types.
+ * Each activity type gets its own logo and label.
  */
-export type PageType = "page" | "h5p";
+export type PageType = "page" | "h5p" | "notes_board" | "word_cloud";
 
 export const PAGE_TYPE_LOGO: Record<PageType, string> = {
   page: "/page-logo.svg",
   h5p: "/h5p-logo.svg",
+  notes_board: "/notes-board-logo.svg",
+  word_cloud: "/cloud-words-logo.svg",
 };
 
 export const PAGE_TYPE_LABEL: Record<PageType, string> = {
   page: "עמוד",
   h5p: "H5P",
+  notes_board: "לוח פתקים",
+  word_cloud: "ענן מילים",
 };
 
 /** Derive implementer page type from the component types on that page. */
 export function derivePageType(types: Iterable<ComponentType>): PageType {
   for (const t of types) {
-    if (t === "question") return "h5p";
+    if (t === "notes_board") return "notes_board";
+    if (t === "word_cloud") return "word_cloud";
+    if (t === "question" || t === "interactive_video") return "h5p";
   }
   return "page";
 }
@@ -91,6 +102,11 @@ export interface VideoProps extends NotesProps {
   provider?: "youtube" | "panopto" | "other";
 }
 
+export interface InteractiveVideoProps extends VideoProps {
+  /** Embedded questions for interactive video. */
+  questions?: QuestionProps[];
+}
+
 export interface TextProps {
   /** Sanitized rich-text HTML from the TipTap editor. */
   html?: string;
@@ -103,14 +119,46 @@ export interface QuestionOption {
   text: string;
 }
 
+export type QuestionType = "single_choice" | "multiple_choice" | "yes_no";
+
+export const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
+  single_choice: "שאלת חד-ברירה",
+  multiple_choice: "שאלת רב-ברירה",
+  yes_no: "שאלת נכון/לא נכון",
+};
+
 export interface QuestionProps extends NotesProps {
-  questionType?: "single_choice";
+  questionType?: QuestionType;
   prompt?: string;
   options?: QuestionOption[];
   correctOptionId?: string;
+  /** Timestamp (MM:SS) when this question appears in an interactive video. */
+  timestamp?: string;
 }
 
-export type BlockProps = BannerProps & VideoProps & TextProps & QuestionProps;
+export interface NotesBoardColumn {
+  id: string;
+  title: string;
+  items: string[];
+}
+
+export interface NotesBoardProps extends NotesProps {
+  description?: string;
+  columns?: NotesBoardColumn[];
+}
+
+export interface WordCloudProps extends NotesProps {
+  centerWord?: string;
+}
+
+export interface ImageProps extends NotesProps {
+  /** URL of the image to display in the placeholder. */
+  imageUrl?: string;
+  /** URL opened when the thumbnail image is clicked. */
+  fileUrl?: string;
+}
+
+export type BlockProps = BannerProps & VideoProps & InteractiveVideoProps & TextProps & QuestionProps & ImageProps & NotesBoardProps & WordCloudProps;
 
 export interface PageComponent {
   id: string;

@@ -10,6 +10,7 @@ import { PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
 import { useSaveStatus } from "../lib/saveStatus";
 import { ChevronDownIcon, EyeOffIcon } from "./icons";
+import { LessonFilesButton } from "./LessonFilesButton";
 import { LessonWorkflowStatusToggle } from "./StatusBadge";
 
 const SAVE_DEBOUNCE_MS = 700;
@@ -207,7 +208,9 @@ export function SectionOverview({
           </>
         ) : (
           <>
-            {folderUrl && (
+            {folderUrl && isImplement ? (
+              <LessonFilesButton url={folderUrl} />
+            ) : folderUrl ? (
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold text-surface-700">
                   לינק לתיקיית קבצים של השיעור
@@ -222,7 +225,7 @@ export function SectionOverview({
                   {folderUrl}
                 </a>
               </div>
-            )}
+            ) : null}
             {opensLabel && (
               <ReadRow label="תאריך פתיחה" value={opensLabel} />
             )}

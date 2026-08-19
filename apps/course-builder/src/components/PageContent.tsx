@@ -10,7 +10,8 @@ import type {
   PageComponent,
   StatusRollup,
 } from "../lib/types";
-import { componentStatus } from "../lib/types";
+import { componentStatus, ACTIVITY_TYPES, PINNED_BOTTOM_TYPES, derivePageType, PAGE_TYPE_LOGO, QUESTION_TYPE_LABEL } from "../lib/types";
+import type { QuestionType } from "../lib/types";
 import * as api from "../lib/api";
 import { writeClipboard } from "../lib/clipboard";
 import { useSaveStatus } from "../lib/saveStatus";
@@ -38,17 +39,21 @@ import {
   LinkIcon,
   PencilIcon,
   PlusIcon,
+  NotesBoardIcon,
+  WordCloudIcon,
   QuestionIcon,
   TextIcon,
+  ThumbnailIcon,
   TrashIcon,
   VideoIcon,
 } from "./icons";
+import { LessonFilesButton } from "./LessonFilesButton";
 
 /** Sentinel for the open page-notes panel (mutually exclusive with block threads). */
 const PAGE_NOTES_OPEN_ID = "__page_notes__";
 
 type ClipboardPayload = { html?: string; plain: string };
-type HeaderField = "banner-url" | "video-title" | "video-url";
+type HeaderField = "banner-url" | "video-title" | "video-url" | "image-image-url" | "image-file-url";
 
 function HeaderFieldPopover({
   open,
@@ -131,9 +136,16 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
     case "banner":
       return { plain: component.props.imageUrl ?? "" };
     case "video":
+    case "interactive_video":
       return { plain: component.props.url ?? "" };
     case "question":
       return { plain: component.props.prompt ?? "" };
+    case "image":
+      return { plain: component.props.fileUrl ?? "" };
+    case "notes_board":
+      return { plain: component.props.description ?? "" };
+    case "word_cloud":
+      return { plain: component.props.centerWord ?? "" };
   }
 }
 
@@ -142,8 +154,12 @@ const SAVE_DEBOUNCE_MS = 700;
 const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> = {
   banner: { label: "באנר", icon: <BannerIcon /> },
   video: { label: "וידאו", icon: <VideoIcon /> },
+  interactive_video: { label: "וידאו אינטרקטיבי", icon: <VideoIcon /> },
   text: { label: "טקסט", icon: <TextIcon /> },
   question: { label: "שאלה", icon: <QuestionIcon /> },
+  image: { label: "תמונה", icon: <ThumbnailIcon /> },
+  notes_board: { label: "לוח פתקים", icon: <NotesBoardIcon /> },
+  word_cloud: { label: "ענן מילים", icon: <WordCloudIcon /> },
 };
 
 function defaultProps(type: ComponentType): BlockProps {
@@ -152,6 +168,8 @@ function defaultProps(type: ComponentType): BlockProps {
       return { title: "" };
     case "video":
       return { url: "" };
+    case "interactive_video":
+      return { url: "", questions: [{ questionType: "single_choice", prompt: "", options: [{ id: crypto.randomUUID(), text: "" }, { id: crypto.randomUUID(), text: "" }] }] };
     case "text":
       return { html: "" };
     case "question":
@@ -161,6 +179,19 @@ function defaultProps(type: ComponentType): BlockProps {
         options: [
           { id: crypto.randomUUID(), text: "" },
           { id: crypto.randomUUID(), text: "" },
+        ],
+      };
+    case "image":
+      return { imageUrl: "", fileUrl: "" };
+    case "word_cloud":
+      return { centerWord: "" };
+    case "notes_board":
+      return {
+        description: "",
+        columns: [
+          { id: crypto.randomUUID(), title: "", items: [] },
+          { id: crypto.randomUUID(), title: "", items: [] },
+          { id: crypto.randomUUID(), title: "", items: [] },
         ],
       };
   }
@@ -176,6 +207,8 @@ interface PageContentProps {
   page: Page;
   numbering: string;
   mode: CourseViewMode;
+  /** Lesson files folder URL for implement-mode header button (lesson pages only). */
+  lessonFilesFolderUrl?: string | null;
   rollup?: StatusRollup;
   prevPage: AdjacentPageLink | null;
   nextPage: AdjacentPageLink | null;
@@ -194,6 +227,7 @@ export function PageContent({
   page,
   numbering,
   mode,
+  lessonFilesFolderUrl,
   rollup,
   prevPage,
   nextPage,
@@ -306,6 +340,25 @@ export function PageContent({
     });
   }
 
+  function handleVideoTypeChange(component: PageComponent, newType: ComponentType) {
+    if (component.type === newType) return;
+    const newProps: BlockProps = { ...component.props };
+    if (newType === "interactive_video" && !newProps.questions) {
+      newProps.questions = [{ questionType: "single_choice", prompt: "", options: [{ id: crypto.randomUUID(), text: "" }, { id: crypto.randomUUID(), text: "" }] }];
+    }
+    setComponents((prev) =>
+      prev ? prev.map((c) => (c.id === component.id ? { ...c, type: newType, props: newProps } : c)) : prev
+    );
+    scheduleSave(`component:${component.id}`, async () => {
+      const updated = await api.updateComponentType(component.id, newType, newProps);
+      setComponents((prev) =>
+        prev ? prev.map((c) => (c.id === component.id ? { ...c, updated_at: updated.updated_at } : c)) : prev
+      );
+      onContentChange();
+      onStatusChange();
+    });
+  }
+
   function handleTitleChange(title: string) {
     onPageChange({ title });
     scheduleSave(`page-title:${page.id}`, async () => {
@@ -348,7 +401,7 @@ export function PageContent({
     if (!components) return map;
     let n = 0;
     for (const c of components) {
-      if (c.type === "video") map.set(c.id, ++n);
+      if (c.type === "video" || c.type === "interactive_video") map.set(c.id, ++n);
     }
     return map;
   })();
@@ -356,10 +409,42 @@ export function PageContent({
   async function handleAdd(type: ComponentType) {
     setError(null);
     try {
+      const list = components ?? [];
+
+      if (ACTIVITY_TYPES.has(type)) {
+        const existingActivity = list.find(
+          (c) => ACTIVITY_TYPES.has(c.type) && c.type !== type
+        );
+        if (existingActivity) {
+          const existingLabel = typeMeta[existingActivity.type]?.label ?? existingActivity.type;
+          const newLabel = typeMeta[type]?.label ?? type;
+          window.alert(
+            `לא ניתן להוסיף "${newLabel}" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
+          );
+          return;
+        }
+      }
+
+      const isPinned = PINNED_BOTTOM_TYPES.has(type);
+      let insertIdx: number;
+      if (isPinned) {
+        insertIdx = list.length;
+      } else {
+        const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+        insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+      }
       const created = await trackSave(
-        api.addComponent(page.id, type, components?.length ?? 0, defaultProps(type))
+        api.addComponent(page.id, type, insertIdx, defaultProps(type))
       );
-      setComponents((prev) => [...(prev ?? []), created]);
+      const next = [
+        ...list.slice(0, insertIdx),
+        created,
+        ...list.slice(insertIdx),
+      ].map((c, position) => ({ ...c, position }));
+      setComponents(next);
+      if (insertIdx < list.length) {
+        await trackSave(api.reorderComponents(next.map((c) => c.id)));
+      }
       onContentChange();
       onStatusChange();
     } catch (e) {
@@ -566,7 +651,7 @@ export function PageContent({
         pageNumbering={numbering}
         videoNumber={videoNumberById.get(component.id)}
         onCopyOption={
-          isImplement && component.type === "question"
+          isImplement && (component.type === "question" || component.type === "interactive_video")
             ? (text) => handleCopyAndMark(component.id, text)
             : undefined
         }
@@ -583,11 +668,13 @@ export function PageContent({
     component: PageComponent,
     handle?: React.HTMLAttributes<HTMLElement> & { ref: (el: HTMLElement | null) => void }
   ) {
-    const meta = typeMeta[component.type];
+    const meta = typeMeta[component.type] ?? typeMeta.image;
     const status = componentStatus(component);
-    const isVideo = component.type === "video";
+    const isPinned = PINNED_BOTTOM_TYPES.has(component.type);
+    const isVideo = component.type === "video" || component.type === "interactive_video";
     const isBanner = component.type === "banner";
-    const flushBody = isVideo || isBanner;
+    const isImage = component.type === "image";
+    const flushBody = isVideo || isBanner || isImage;
     const fieldIsOpen = (field: HeaderField) =>
       openHeaderField === `${component.id}:${field}`;
     const closeHeaderField = () => setOpenHeaderField(null);
@@ -608,7 +695,7 @@ export function PageContent({
               : statusHeaderClass(status)
           }`}
         >
-          {editable && handle && (
+          {editable && handle && !isPinned && (
             <button
               {...handle}
               className="p-1 text-surface-400 hover:text-surface-900 cursor-grab active:cursor-grabbing touch-none"
@@ -624,9 +711,54 @@ export function PageContent({
             }`}
           >
             {meta.icon}
-            {meta.label}
+            {editable && component.type === "question" ? (
+              <select
+                className="bg-transparent outline-none cursor-pointer text-sm font-semibold text-surface-700"
+                value={component.props.questionType ?? "single_choice"}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  handlePropsChange(component.id, {
+                    ...component.props,
+                    questionType: e.target.value as QuestionType,
+                  });
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(Object.entries(QUESTION_TYPE_LABEL) as [QuestionType, string][]).map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  )
+                )}
+              </select>
+            ) : component.type === "question" ? (
+              QUESTION_TYPE_LABEL[(component.props.questionType as QuestionType) ?? "single_choice"]
+            ) : editable && isVideo ? (
+              <select
+                className="bg-transparent outline-none cursor-pointer text-sm font-semibold text-surface-700"
+                value={component.type}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  handleVideoTypeChange(component, e.target.value as ComponentType);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="video">וידאו</option>
+                <option value="interactive_video">וידאו אינטרקטיבי</option>
+              </select>
+            ) : isVideo ? (
+              meta.label
+            ) : (
+              meta.label
+            )}
           </span>
-          {editable && (isBanner || isVideo) && (
+          {isPinned && (
+            <span className="text-[10px] font-semibold text-surface-400 bg-surface-100 px-1.5 py-0.5 rounded">
+              רכיב זה מוצמד לתחתית העמוד
+            </span>
+          )}
+          {editable && (isBanner || isVideo || isImage) && (
             <span className="text-surface-300 select-none" aria-hidden>
               |
             </span>
@@ -701,6 +833,52 @@ export function PageContent({
               </HeaderFieldPopover>
             </div>
           )}
+          {editable && isImage && (
+            <div className="flex items-center gap-1">
+              <HeaderFieldPopover
+                open={fieldIsOpen("image-image-url")}
+                label="קישור לתמונה"
+                title="עריכת קישור לתמונה"
+                icon={<ThumbnailIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "image-image-url")}
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.imageUrl ?? ""}
+                  placeholder="https://... (כתובת תמונה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      imageUrl: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("image-file-url")}
+                label="קישור לקובץ"
+                title="עריכת קישור לקובץ"
+                icon={<LinkIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "image-file-url")}
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.fileUrl ?? ""}
+                  placeholder="https://... (קובץ שייפתח בלחיצה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      fileUrl: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+            </div>
+          )}
           <span className="ms-auto flex items-center gap-2">
             {isImplement && (
               <StatusBadge
@@ -723,18 +901,20 @@ export function PageContent({
             )}
             {editable && (
               <>
-                <button
-                  type="button"
-                  className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
-                  title="שכפל רכיב"
-                  aria-label="שכפל רכיב"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDuplicate(component);
-                  }}
-                >
-                  <DuplicateIcon className="w-5 h-5" />
-                </button>
+                {!isPinned && (
+                  <button
+                    type="button"
+                    className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+                    title="שכפל רכיב"
+                    aria-label="שכפל רכיב"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDuplicate(component);
+                    }}
+                  >
+                    <DuplicateIcon className="w-5 h-5" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast"
@@ -768,6 +948,13 @@ export function PageContent({
   const pageHeader = (
     <div className={`flex flex-col gap-1 ${editable ? "" : "mb-4"}`}>
       <div className="flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-surface-900">
+        {isImplement && components !== null && (
+          <img
+            src={PAGE_TYPE_LOGO[derivePageType(components.map((c) => c.type))]}
+            alt=""
+            className="w-7 h-7 shrink-0"
+          />
+        )}
         {numbering ? (
           <>
             <span className="shrink-0">{numbering}</span>
@@ -791,6 +978,9 @@ export function PageContent({
             status={page.workflow_status}
             onClick={handleToggleWorkflowStatus}
           />
+        )}
+        {isImplement && lessonFilesFolderUrl?.trim() && (
+          <LessonFilesButton url={lessonFilesFolderUrl} compact />
         )}
         {isImplement && components !== null && components.length > 0 && (
           <StatusBadge
@@ -861,11 +1051,21 @@ export function PageContent({
           )}
 
           {editable ? (
-            <SortableList
-              items={components}
-              onReorder={handleReorder}
-              renderItem={(component, handle) => renderComponentCard(component, handle)}
-            />
+            <>
+              <SortableList
+                items={components.filter((c) => !PINNED_BOTTOM_TYPES.has(c.type))}
+                onReorder={(reordered) => {
+                  const pinned = components.filter((c) => PINNED_BOTTOM_TYPES.has(c.type));
+                  handleReorder([...reordered, ...pinned]);
+                }}
+                renderItem={(component, handle) => renderComponentCard(component, handle)}
+              />
+              {components
+                .filter((c) => PINNED_BOTTOM_TYPES.has(c.type))
+                .map((component) => (
+                  <div key={component.id}>{renderComponentCard(component)}</div>
+                ))}
+            </>
           ) : isReview ? (
             components.map((component) => (
               <div key={component.id}>{renderPreviewBlock(component)}</div>
@@ -882,18 +1082,39 @@ export function PageContent({
                 <PlusIcon className="w-3.5 h-3.5" />
                 הוסף רכיב
               </span>
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(typeMeta) as ComponentType[]).map((type) => (
-                  <Button
-                    key={type}
-                    size="sm"
-                    variant="secondary"
-                    leftIcon={typeMeta[type].icon}
-                    onClick={() => handleAdd(type)}
-                  >
-                    {typeMeta[type].label}
-                  </Button>
-                ))}
+              <div className="flex flex-col gap-3">
+                <div>
+                  <span className="text-xs font-semibold text-surface-400 mb-1.5 block">רכיבים מרכזיים</span>
+                  <div className="flex flex-wrap gap-2">
+                    {(["banner", "video", "text", "image"] as ComponentType[]).map((type) => (
+                      <Button
+                        key={type}
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={typeMeta[type].icon}
+                        onClick={() => handleAdd(type)}
+                      >
+                        {typeMeta[type].label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-surface-400 mb-1.5 block">פעילויות</span>
+                  <div className="flex flex-wrap gap-2">
+                    {(["question", "notes_board", "word_cloud"] as ComponentType[]).map((type) => (
+                      <Button
+                        key={type}
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={typeMeta[type].icon}
+                        onClick={() => handleAdd(type)}
+                      >
+                        {typeMeta[type].label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}

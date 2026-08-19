@@ -19,9 +19,11 @@ interface TreeProps {
   manifest: MbzManifest;
   selectedCmid: string | null;
   homeSelected: boolean;
+  selectedOverviewType?: string | null;
   decodingSectionId: string | null;
   onSelectHome: () => void;
   onSelectActivity: (cmid: string) => void;
+  onSelectOverviewType?: (type: string) => void;
   onExpandSection: (sectionId: string) => void;
   onAnalyzeFull: () => void;
   analyzingFull?: boolean;
@@ -38,9 +40,11 @@ export function Tree({
   manifest,
   selectedCmid,
   homeSelected,
+  selectedOverviewType,
   decodingSectionId,
   onSelectHome,
   onSelectActivity,
+  onSelectOverviewType,
   onExpandSection,
   onAnalyzeFull,
   analyzingFull,
@@ -308,7 +312,13 @@ export function Tree({
             Structure overview
           </button>
           {overviewOpen && (
-            <StructureOverview stats={structureStatsFromManifest(manifest)} compact />
+            <StructureOverview
+              stats={structureStatsFromManifest(manifest)}
+              compact
+              selectedType={selectedOverviewType}
+              onSelectType={onSelectOverviewType}
+              selectableTypes={["resource"]}
+            />
           )}
           <button
             type="button"

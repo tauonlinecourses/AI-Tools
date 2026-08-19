@@ -4,6 +4,7 @@ import { Spinner } from "@workspace/ui";
 import { Tree } from "../components/explorer/Tree";
 import { ContentViewer } from "../components/explorer/ContentViewer";
 import { HomeStructureTree } from "../components/explorer/HomeStructureTree";
+import { ResourceListView } from "../components/explorer/ResourceListView";
 import type { MbzManifest } from "../lib/mbz-parser";
 import {
   loadSession,
@@ -15,12 +16,16 @@ import {
 import { hydrateHtmlBlobs } from "../lib/hydrateBlobs";
 
 export function ExplorerPage() {
+  type ExplorerSelection =
+    | { kind: "home" }
+    | { kind: "activity"; cmid: string }
+    | { kind: "overviewType"; type: string };
+
   const { sha1 } = useParams<{ sha1: string }>();
   const [session, setSession] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  /** null = home (structure tree); otherwise selected activity cmid */
-  const [selectedCmid, setSelectedCmid] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ExplorerSelection>({ kind: "home" });
   const [decodingSectionId, setDecodingSectionId] = useState<string | null>(null);
   const [analyzingFull, setAnalyzingFull] = useState(false);
 
@@ -39,7 +44,7 @@ export function ExplorerPage() {
         } else {
           setSession(s);
           // Land on home structure overview (not first activity).
-          setSelectedCmid(null);
+          setSelection({ kind: "home" });
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -53,12 +58,20 @@ export function ExplorerPage() {
   }, [sha1]);
 
   const activity = useMemo(() => {
-    if (!session || !selectedCmid) return null;
-    return session.manifest.activities.find((a) => a.cmid === selectedCmid) ?? null;
-  }, [session, selectedCmid]);
+    if (!session || selection.kind !== "activity") return null;
+    return session.manifest.activities.find((a) => a.cmid === selection.cmid) ?? null;
+  }, [session, selection]);
+
+  const selectedCmid = selection.kind === "activity" ? selection.cmid : null;
+  const selectedOverviewType = selection.kind === "overviewType" ? selection.type : null;
 
   const applyManifest = useCallback((manifest: MbzManifest) => {
     setSession((prev) => (prev ? { ...prev, manifest } : prev));
+  }, []);
+
+  const handleOverviewTypeSelect = useCallback((type: string) => {
+    if (type !== "resource") return;
+    setSelection({ kind: "overviewType", type });
   }, []);
 
   async function onExpandSection(sectionId: string) {
@@ -108,20 +121,29 @@ export function ExplorerPage() {
         key={session.manifest.sourceFile.sha1}
         manifest={session.manifest}
         selectedCmid={selectedCmid}
-        homeSelected={selectedCmid === null}
+        homeSelected={selection.kind === "home"}
+        selectedOverviewType={selectedOverviewType}
         decodingSectionId={decodingSectionId}
-        onSelectHome={() => setSelectedCmid(null)}
-        onSelectActivity={setSelectedCmid}
+        onSelectHome={() => setSelection({ kind: "home" })}
+        onSelectActivity={(cmid) => setSelection({ kind: "activity", cmid })}
+        onSelectOverviewType={handleOverviewTypeSelect}
         onExpandSection={onExpandSection}
         onAnalyzeFull={onAnalyzeFull}
         analyzingFull={analyzingFull}
       />
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-white">
-        {selectedCmid === null ? (
+        {selection.kind === "home" ? (
           <HomeStructureTree
             manifest={session.manifest}
-            onSelectActivity={setSelectedCmid}
+            onSelectActivity={(cmid) => setSelection({ kind: "activity", cmid })}
             onExpandSection={onExpandSection}
+            selectedOverviewType={selectedOverviewType}
+            onSelectOverviewType={handleOverviewTypeSelect}
+          />
+        ) : selection.kind === "overviewType" && selection.type === "resource" ? (
+          <ResourceListView
+            manifest={session.manifest}
+            onSelectActivity={(cmid) => setSelection({ kind: "activity", cmid })}
           />
         ) : (
           <ContentViewer

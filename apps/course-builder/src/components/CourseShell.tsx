@@ -272,6 +272,12 @@ export function CourseShell({ mode }: CourseShellProps) {
     return null;
   }, [tree, pagesBySection, searchParams, homePage, selectedSection, mode]);
 
+  const selectedPageLessonFilesUrl = useMemo(() => {
+    if (!selectedPage?.section_id || !tree) return null;
+    const section = tree.sections.find((s) => s.id === selectedPage.section_id);
+    return section?.files_folder_url ?? null;
+  }, [selectedPage, tree]);
+
   const blockedRequestedSection = useMemo(() => {
     if (!tree || mode !== "implement") return null;
     const requested = searchParams.get("section");
@@ -1093,6 +1099,7 @@ export function CourseShell({ mode }: CourseShellProps) {
               page={selectedPage}
               numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
+              lessonFilesFolderUrl={selectedPageLessonFilesUrl}
               rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
               prevPage={
                 adjacentPages.prev

@@ -203,6 +203,7 @@ Matches Course Builder chrome (LTR English): fixed `w-80` pane `bg-[#F8F9FA]`, i
 
 - **Header:** `.mbz` filename as title (`text-xl`), Moodle course fullname as muted subtitle, “Back to dashboard”, collapsible Structure Overview, **Analyze full course**
 - Dashboard list titles use the `.mbz` filename; Moodle fullname stays in the meta line
+- In the sidebar Structure Overview, the `resource` activity chip is clickable and opens a resource list view in the main pane
 - **Nav:** **Home** row first (selected when no activity is open) → top-level sections only (`delegatedBy` sections hidden) with chevron collapse; subsection activities render as nested folders inside the parent section; other activities as inset pills with a type icon (when mapped) + name. Logos in `public/`: `page` → `page-logo.svg`, `hvp` → `h5p-logo.svg`, `forum` → `forum-icon.svg`, `assign` → `task-logo.svg`, `glossary` → `dictunary-logo.svg`, `board` → `notes-board-logo.svg` (`activityTypeIcon.ts`). Unmapped types keep the text `type | name` prefix (`hvp` displayed as `h5p` if ever shown as text; `label` → name only, no icon). Monochrome icons invert to white on the selected blue pill; H5P logo does not.
 - Selected activity: `rounded-lg bg-[#0F6CBF]` white text (same pill as Course Builder); Home uses the same selected pill when the structure home is showing
 - Pending sections/activities muted; expand pending section or subsection folder → `decodeSection` on the relevant section (spinner)
@@ -215,11 +216,17 @@ Matches Course Builder chrome (LTR English): fixed `w-80` pane `bg-[#F8F9FA]`, i
 
 **Home** (`HomeStructureTree.tsx`): folder-tree overview of the backup.
 - Header: “Course structure” + compact Structure Overview stats
+- The compact overview keeps the `resource` chip clickable here as well, matching the sidebar behavior
 - Tree: `.mbz` root folder → top-level section folders → activities; subsection activities are nested folders with their delegated activities inside
 - Same sans-serif `text-base` as the sidebar (not monospace) so Hebrew section/activity names match
 - Root backup folder open at start; all section folders collapsed until expanded; subsection folders collapsed until expanded
 - Sections expandable; child count per section/subsection folder; undecoded items use muted text (no “pending” label)
 - Click an activity → select it and show the content viewer (same as sidebar click)
+
+**Resource list view** (`ResourceListView.tsx`):
+- Opens when the user clicks the `resource` block in either compact Structure Overview
+- Lists all `resource` activities with section name, cmid, decode status, grading flag, referenced file count, unresolved link count, and raw XML path
+- Clicking a resource card opens the regular content viewer for that activity
 
 **Content viewer** (when an activity is selected):
 - Tabs: Rendered / Raw XML / Metadata

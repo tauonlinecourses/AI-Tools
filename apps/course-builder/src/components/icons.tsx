@@ -175,6 +175,16 @@ export const QuestionIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => 
   </svg>
 );
 
+export const ThumbnailIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
+    />
+  </svg>
+);
+
 export const LinkIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path
@@ -202,6 +212,20 @@ export const LockIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
       strokeLinejoin="round"
       d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
     />
+  </svg>
+);
+
+export const WordCloudIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" d="M3 15h4M7 11h5M14 11h4M5 7h6M13 7h6M8 19h8M2 15h0M20 11h0" />
+  </svg>
+);
+
+export const NotesBoardIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="3" y="3" width="18" height="18" rx="1" />
+    <path strokeLinecap="round" d="M9 3v18M15 3v18" />
+    <path strokeLinecap="round" d="M3 9h18" />
   </svg>
 );
 

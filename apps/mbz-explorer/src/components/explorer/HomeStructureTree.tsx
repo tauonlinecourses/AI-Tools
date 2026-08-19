@@ -17,6 +17,8 @@ interface HomeStructureTreeProps {
   manifest: MbzManifest;
   onSelectActivity: (cmid: string) => void;
   onExpandSection: (sectionId: string) => void;
+  onSelectOverviewType?: (type: string) => void;
+  selectedOverviewType?: string | null;
 }
 
 function activityTypeLabel(type: string): string | null {
@@ -29,6 +31,8 @@ export function HomeStructureTree({
   manifest,
   onSelectActivity,
   onExpandSection,
+  onSelectOverviewType,
+  selectedOverviewType,
 }: HomeStructureTreeProps) {
   const topLevelSections = useMemo(() => getTopLevelSections(manifest), [manifest]);
 
@@ -202,7 +206,13 @@ export function HomeStructureTree({
           Folder tree of sections and activities. Click a file to open it.
         </p>
         <div className="mt-3">
-          <StructureOverview stats={structureStatsFromManifest(manifest)} compact />
+          <StructureOverview
+            stats={structureStatsFromManifest(manifest)}
+            compact
+            selectedType={selectedOverviewType}
+            onSelectType={onSelectOverviewType}
+            selectableTypes={["resource"]}
+          />
         </div>
       </div>
 

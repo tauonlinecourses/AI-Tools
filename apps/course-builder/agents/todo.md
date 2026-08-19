@@ -26,7 +26,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 ## Security & deploy
 
 - [ ] Auth (or at least protect the app before a public URL)
-- [ ] Supabase RLS — anon key currently has full read/write
+- [x] Supabase RLS enabled on all public tables — open `anon`/`authenticated` policies so the no-login SPA still works (`006_enable_rls.sql`). Tighten to authenticated-only when adding users.
 - [ ] Confirm Vercel deployment protection if sharing externally
 
 ---
