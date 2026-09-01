@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { CourseViewMode, QuestionOption, QuestionProps, QuestionType } from "../../lib/types";
 import { CheckIcon, CopyIcon, PlusIcon, XIcon } from "../icons";
 import { Field, TextField } from "./fields";
@@ -20,13 +20,64 @@ const YES_NO_OPTIONS: QuestionOption[] = [
   { id: "__incorrect", text: "לא נכון" },
 ];
 
+const COPIED_FEEDBACK_MS = 2000;
+
+function QuestionCopyButton({
+  copied,
+  onCopy,
+  title,
+}: {
+  copied: boolean;
+  onCopy: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="relative flex items-center justify-center shrink-0 w-11 h-5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+      title={title}
+      aria-label={copied ? "הועתק" : title}
+      onClick={onCopy}
+    >
+      <CopyIcon
+        className={`w-3.5 h-3.5 transition-opacity duration-fast ${copied ? "opacity-0" : "opacity-100"}`}
+      />
+      <span
+        className={`absolute inset-0 flex items-center justify-center text-[10px] leading-none text-surface-400 transition-opacity duration-fast pointer-events-none ${copied ? "opacity-100" : "opacity-0"}`}
+        aria-hidden={!copied}
+      >
+        הועתק
+      </span>
+    </button>
+  );
+}
+
 export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
   const radioGroup = useId();
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copiedTimer = useRef<number | null>(null);
   const questionType: QuestionType = props.questionType ?? "single_choice";
   const isYesNo = questionType === "yes_no";
   const isMultiple = questionType === "multiple_choice";
   const options = isYesNo ? YES_NO_OPTIONS : (props.options ?? []);
   const editable = mode === "edit";
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  function showCopiedFeedback(key: string) {
+    setCopiedKey(key);
+    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopiedKey(null), COPIED_FEEDBACK_MS);
+  }
+
+  function handleCopy(key: string, text: string) {
+    onCopyOption?.(text);
+    showCopiedFeedback(key);
+  }
 
   const correctIds: Set<string> = new Set(
     isMultiple
@@ -42,15 +93,11 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
             {props.prompt || <span className="font-normal text-surface-400">ללא שאלה</span>}
           </p>
           {onCopyOption && (
-            <button
-              type="button"
-              className="p-1 text-surface-400 hover:text-surface-900 transition-colors duration-fast shrink-0"
+            <QuestionCopyButton
+              copied={copiedKey === "prompt"}
               title="העתק שאלה"
-              aria-label="העתק שאלה"
-              onClick={() => onCopyOption(props.prompt ?? "")}
-            >
-              <CopyIcon className="w-3.5 h-3.5" />
-            </button>
+              onCopy={() => handleCopy("prompt", props.prompt ?? "")}
+            />
           )}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -70,15 +117,11 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
                   {opt.text || <span className="text-surface-400">אפשרות ריקה</span>}
                 </span>
                 {onCopyOption && (
-                  <button
-                    type="button"
-                    className="p-1 text-surface-400 hover:text-surface-900 transition-colors duration-fast shrink-0"
+                  <QuestionCopyButton
+                    copied={copiedKey === opt.id}
                     title="העתק אפשרות"
-                    aria-label="העתק אפשרות"
-                    onClick={() => onCopyOption(opt.text ?? "")}
-                  >
-                    <CopyIcon className="w-3.5 h-3.5" />
-                  </button>
+                    onCopy={() => handleCopy(opt.id, opt.text ?? "")}
+                  />
                 )}
               </div>
             );
