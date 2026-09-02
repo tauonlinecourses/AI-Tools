@@ -55,6 +55,10 @@ export const toolCopy: Record<
     name:        "ניתוח קבצי MBZ",
     description: "ניתוח והצגת מבנה ותוכן של קורסי מודל באמצעות קבצי MBZ",
   },
+  "tau-support": {
+    name:        "תמיכת אוניברסיטת תל אביב",
+    description: "עוזר תמיכה מבוסס בינה מלאכותית לסגל ולסטודנטים באוניברסיטת תל אביב",
+  },
 };
 
 export function localizeCategory(locale: Locale, category: string): string {

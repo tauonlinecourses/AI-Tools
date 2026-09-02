@@ -59,6 +59,16 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Tech",
   },
+  {
+    id:          "tau-support",
+    name:        "TAU Support",
+    description: "AI-powered support assistant for TAU staff and students.",
+    url:         "https://ai-tools-tau-support.vercel.app",
+    devUrl:      "http://localhost:5178",
+    icon:        "search",
+    status:      "beta",
+    category:    "Education",
+  },
   // ── Example entries (fill in real URLs after deploying) ─────────────
   // {
   //   id:          "tool-auth",
