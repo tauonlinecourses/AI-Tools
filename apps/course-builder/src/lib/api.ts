@@ -519,6 +519,20 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
       return { ...c.props };
     case "video":
       return { url: "" };
+    case "interactive_video":
+      return {
+        url: "",
+        questions: [
+          {
+            questionType: "single_choice",
+            prompt: "",
+            options: [
+              { id: crypto.randomUUID(), text: "" },
+              { id: crypto.randomUUID(), text: "" },
+            ],
+          },
+        ],
+      };
     case "text":
       return { html: "" };
     case "question":
@@ -532,6 +546,17 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
       };
     case "image":
       return { imageUrl: "", fileUrl: "" };
+    case "notes_board":
+      return {
+        description: "",
+        columns: [
+          { id: crypto.randomUUID(), title: "", items: [] },
+          { id: crypto.randomUUID(), title: "", items: [] },
+          { id: crypto.randomUUID(), title: "", items: [] },
+        ],
+      };
+    case "word_cloud":
+      return { centerWord: "" };
   }
 }
 
