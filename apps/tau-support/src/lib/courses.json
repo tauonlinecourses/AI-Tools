@@ -1,0 +1,20 @@
+[
+  {
+    "id": "course-v1:TAU+ACD_TAU_cs101x+2019_3",
+    "name": "First steps in CS and Python",
+    "nameHe": "צעדים ראשונים במדעי המחשב ותכנות בפייתון",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+TAUonline_sandbox+2019_1",
+    "name": "TAU Online Sandbox",
+    "nameHe": "ארגז חול",
+    "forumCategory": ""
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP5_Brain_most_wonderful_machine_HE+2022_1",
+    "name": "The Brain — The Most Wonderful Machine of All",
+    "nameHe": "המוח — המכונה המופלאה מכולן",
+    "forumCategory": "פורום בעיות טכניות"
+  }
+]

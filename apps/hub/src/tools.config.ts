@@ -65,7 +65,7 @@ export const tools: Tool[] = [
     description: "AI-powered support assistant for TAU staff and students.",
     url:         "https://ai-tools-tau-support.vercel.app",
     devUrl:      "http://localhost:5178",
-    icon:        "search",
+    icon:        "page-question",
     status:      "beta",
     category:    "Education",
   },
