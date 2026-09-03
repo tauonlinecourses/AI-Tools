@@ -2,7 +2,7 @@ export function EmptySelection() {
   return (
     <div
       dir="rtl"
-      className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 bg-[#F5F6F8] px-6 text-center"
+      className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 bg-[#E8E8EA] px-6 text-center"
     >
       <svg
         width="120"

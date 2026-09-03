@@ -8,7 +8,6 @@ export type CourseCacheEntry =
   | {
       status: "ready";
       unansweredCount: number;
-      totalLoaded: number;
       newCount?: number;
       lastCheckedAt?: string | null;
     }
@@ -20,7 +19,6 @@ interface CourseSidebarProps {
   selectedId: string | null;
   cache: Record<string, CourseCacheEntry>;
   inboxNewCount: number;
-  inboxTotalCount: number;
   onSelectInbox: () => void;
   onSelect: (courseId: string) => void;
 }
@@ -56,7 +54,6 @@ export function CourseSidebar({
   selectedId,
   cache,
   inboxNewCount,
-  inboxTotalCount,
   onSelectInbox,
   onSelect,
 }: CourseSidebarProps) {
@@ -65,15 +62,15 @@ export function CourseSidebar({
   return (
     <aside
       dir="rtl"
-      className="flex w-full shrink-0 flex-col border-surface-200 bg-white md:w-[34%] md:border-e"
+      className="relative z-10 flex w-full shrink-0 flex-col border-surface-200 bg-white md:w-[34%] md:border-e md:shadow-[-3px_0_4px_-2px_rgba(0,0,0,0.12)]"
     >
       <ul className="min-h-0 flex-1 overflow-y-auto">
-        <li className="border-b border-surface-100">
+        <li className="border-b border-surface-200">
           <button
             type="button"
             onClick={onSelectInbox}
             className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${
-              inboxSelected ? "bg-blue-50" : "bg-white hover:bg-surface-50"
+              inboxSelected ? "bg-blue-50" : "bg-transparent hover:bg-black/[0.04]"
             }`}
           >
             <span
@@ -88,13 +85,10 @@ export function CourseSidebar({
                 </span>
               ) : null}
             </span>
-            <span className="mt-0.5 flex items-center justify-between gap-2 text-xs text-surface-500">
+            <span className="mt-0.5 flex items-center gap-2 text-xs text-surface-500">
               <span className="flex items-center gap-1">
                 <MessageIcon className="text-surface-400" />
                 <span>כל הקורסים</span>
-              </span>
-              <span className="text-surface-400">
-                {inboxTotalCount} שרשורים שמורים
               </span>
             </span>
           </button>
@@ -107,12 +101,12 @@ export function CourseSidebar({
           const lastCheckedLabel = formatLastCheckedAt(entry?.lastCheckedAt);
 
           return (
-            <li key={course.id} className="border-b border-surface-100">
+            <li key={course.id} className="border-b border-surface-200">
               <button
                 type="button"
                 onClick={() => onSelect(course.id)}
                 className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${
-                  selected ? "bg-blue-50" : "bg-white hover:bg-surface-50"
+                  selected ? "bg-blue-50" : "bg-transparent hover:bg-black/[0.04]"
                 }`}
               >
                 <span className="flex items-start justify-between gap-2">
@@ -153,20 +147,7 @@ export function CourseSidebar({
                     </span>
                   </span>
                 </span>
-                {course.nameHe && course.name !== course.nameHe ? (
-                  <span className="truncate text-xs text-surface-500">
-                    {course.name}
-                  </span>
-                ) : null}
-                <span className="truncate text-[11px] text-surface-400">
-                  {course.forumCategory}
-                </span>
-                {entry?.status === "ready" ? (
-                  <span className="text-xs text-surface-400">
-                    {entry.totalLoaded} הודעות
-                  </span>
-                ) : null}
-                <span className="text-[11px] text-surface-400">
+                <span className="text-xs text-surface-400">
                   מעודכן לתאריך:{" "}
                   {lastCheckedLabel ?? (
                     <span className="text-surface-300">—</span>

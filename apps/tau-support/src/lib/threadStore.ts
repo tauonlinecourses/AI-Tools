@@ -24,6 +24,11 @@ export interface StoredThreadEntry {
   isNew: boolean;
   /** True when an existing thread got newer activity (cleared with isNew). */
   isUpdated: boolean;
+  /**
+   * Local override: staff reply is not required. Cleared automatically when
+   * the thread gets newer activity / a higher comment_count on the next poll.
+   */
+  noAnswerNeeded?: boolean;
 }
 
 export interface CourseThreadBucket {
@@ -180,6 +185,7 @@ export function mergeCoursePoll(
         seenAt: seed ? now : null,
         isNew: !seed,
         isUpdated: false,
+        noAnswerNeeded: false,
       };
       continue;
     }
@@ -212,6 +218,8 @@ export function mergeCoursePoll(
       seenAt: seed ? existing.seenAt ?? now : null,
       isNew: false,
       isUpdated: !seed,
+      // New activity may need staff attention again.
+      noAnswerNeeded: false,
     };
   }
 
@@ -260,6 +268,44 @@ export function markThreadSeen(
             isNew: false,
             isUpdated: false,
             seenAt: now,
+          },
+        },
+      },
+    },
+  };
+}
+
+export function setThreadNoAnswerNeeded(
+  store: ThreadStore,
+  courseId: string,
+  threadId: string,
+  noAnswerNeeded: boolean
+): ThreadStore {
+  const bucket = getCourseBucket(store, courseId);
+  const entry = bucket.threads[threadId];
+  if (!entry || Boolean(entry.noAnswerNeeded) === noAnswerNeeded) {
+    return store;
+  }
+
+  return {
+    ...store,
+    courses: {
+      ...store.courses,
+      [courseId]: {
+        ...bucket,
+        threads: {
+          ...bucket.threads,
+          [threadId]: {
+            ...entry,
+            noAnswerNeeded,
+            // Marking as handled also clears the unread flags.
+            ...(noAnswerNeeded
+              ? {
+                  isNew: false,
+                  isUpdated: false,
+                  seenAt: entry.seenAt ?? new Date().toISOString(),
+                }
+              : {}),
           },
         },
       },

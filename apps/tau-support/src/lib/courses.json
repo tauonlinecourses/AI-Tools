@@ -16,5 +16,47 @@
     "name": "The Brain — The Most Wonderful Machine of All",
     "nameHe": "המוח — המכונה המופלאה מכולן",
     "forumCategory": "פורום בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP2_JusticeEvolution_HE+2022_1",
+    "name": "Economic Growth and Distributive Justice",
+    "nameHe": "צמיחה כלכלית וצדק חלוקתי",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP2_IntroductionToPsychology101_HE+2022_1",
+    "name": "Introduction to Psychology 101",
+    "nameHe": "מבוא לפסיכולוגיה",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP2_Plants101PA_HE+2022_1",
+    "name": "Understanding Plants — Part 1: What Does a Plant Know?",
+    "nameHe": "להבין צמחים - חלק 1: צמח מה הוא יודע?",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP2_Plants101PB_HE+2022_1",
+    "name": "Understanding Plants — Part 2: Biological Foundations of the Plant",
+    "nameHe": "להבין צמחים חלק 2: יסודות ביולוגיים של הצמח",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP1_HowToBeatViruses_HE+2022_1",
+    "name": "Viruses — How Do We Beat Them? Cells, Viruses and Vaccines",
+    "nameHe": "וירוסים, איך מנצחים אותם? תאים, וירוסים וחיסונים",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP4_DataStructures_HE+2022_1",
+    "name": "Data Structures",
+    "nameHe": "מבני נתונים",
+    "forumCategory": "בעיות טכניות"
+  },
+  {
+    "id": "course-v1:TAU+ACD_RFP2_IntroductionToChemistry101_HE+2022_1",
+    "name": "What Is the World Made Of: Introduction to General Chemistry",
+    "nameHe": "ממה מורכב העולם: מבוא לכימיה כללית",
+    "forumCategory": "בעיות טכניות"
   }
 ]

@@ -1,4 +1,5 @@
 import type { ForumComment, ForumThread } from "./types";
+import type { StoredThreadEntry } from "./threadStore";
 
 const STAFF_LABEL_PATTERNS = [
   /\bstaff\b/i,
@@ -41,10 +42,15 @@ function hasStaffReply(thread: ForumThread): boolean {
  * with no replies has comment_count === 1 (not 0).
  *
  * Unanswered = student/non-staff OP with no replies (count <= 1), or replies
- * loaded with no staff/TA reply. Staff/TA-authored threads never need an answer.
+ * loaded with no staff/TA reply — unless locally marked `noAnswerNeeded`.
+ * Staff/TA-authored threads never need an answer.
  * If replies exist but failed to load, returns false (unknown — do not count).
  */
-export function threadNeedsAnswer(thread: ForumThread): boolean {
+export function threadNeedsAnswer(
+  thread: ForumThread,
+  noAnswerNeeded = false
+): boolean {
+  if (noAnswerNeeded) return false;
   if (isStaffAuthor(thread.author_label)) return false;
 
   const count = thread.comment_count ?? 0;
@@ -60,6 +66,10 @@ export function threadNeedsAnswer(thread: ForumThread): boolean {
   return !hasStaffReply(thread);
 }
 
-export function countUnanswered(threads: ForumThread[]): number {
-  return threads.filter(threadNeedsAnswer).length;
+export function entryNeedsAnswer(entry: StoredThreadEntry): boolean {
+  return threadNeedsAnswer(entry.thread, Boolean(entry.noAnswerNeeded));
+}
+
+export function countUnanswered(entries: StoredThreadEntry[]): number {
+  return entries.filter(entryNeedsAnswer).length;
 }

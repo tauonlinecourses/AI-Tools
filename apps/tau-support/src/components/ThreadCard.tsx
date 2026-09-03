@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, Button } from "@workspace/ui";
 import { ForumBody } from "./ForumBody";
 import { FORUM_RTL_CLASS } from "../lib/forumBody";
@@ -31,8 +30,8 @@ function CommentBlock({
   const nest =
     depth > 0 ? "mr-4 mt-3 border-r-2 pr-3 text-right" : "mt-3 text-right";
   const box = isStaff
-    ? "rounded-md border border-amber-200 bg-amber-50/70 p-3 ring-1 ring-amber-100"
-    : "rounded-md border border-surface-100 bg-white p-3";
+    ? "rounded-control overflow-hidden border border-amber-200 bg-amber-50/70 p-3 ring-1 ring-amber-100"
+    : "rounded-control overflow-hidden border border-surface-100 bg-white p-3";
 
   return (
     <div dir="rtl" className={`${nest} ${box} ${FORUM_RTL_CLASS}`}>
@@ -68,7 +67,9 @@ export function ThreadCard({
   courseLabel,
   isNew,
   isUpdated,
+  noAnswerNeeded = false,
   onOpen,
+  onToggleNoAnswerNeeded,
 }: {
   thread: ForumThread;
   courseId: string;
@@ -78,11 +79,13 @@ export function ThreadCard({
   courseLabel?: string;
   isNew?: boolean;
   isUpdated?: boolean;
+  noAnswerNeeded?: boolean;
   onOpen?: () => void;
+  onToggleNoAnswerNeeded?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const comments = thread.comments ?? [];
-  const needsAnswer = threadNeedsAnswer(thread);
+  const needsAnswer = threadNeedsAnswer(thread, noAnswerNeeded);
+  const wouldNeedAnswerWithoutOverride = threadNeedsAnswer(thread, false);
   const isStaffThread = isStaffAuthor(thread.author_label);
   const forumUrl = buildForumThreadUrl(
     forumUiOrigin,
@@ -96,15 +99,17 @@ export function ThreadCard({
   }
 
   const cardTone = needsAnswer
-    ? "!bg-red-50/70 border-red-300 shadow-sm ring-1 ring-red-200"
+    ? "!bg-red-50/70 border-red-300 ring-1 ring-red-200"
     : isStaffThread
-      ? "!bg-amber-50/70 border-amber-300 shadow-sm ring-1 ring-amber-200"
-      : isNew || isUpdated
-        ? "!bg-blue-50/50 border-blue-200 shadow-sm ring-1 ring-blue-100"
-        : "!bg-white border-surface-200";
+      ? "!bg-amber-50/70 border-amber-300 ring-1 ring-amber-200"
+      : noAnswerNeeded
+        ? "!bg-emerald-50/50 border-emerald-200 ring-1 ring-emerald-100"
+        : isNew || isUpdated
+          ? "!bg-blue-50/50 border-blue-200 ring-1 ring-blue-100"
+          : "!bg-white border-surface-200";
 
   return (
-    <Card className={cardTone}>
+    <Card className={`rounded-control overflow-hidden shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] ${cardTone}`}>
       <div
         dir="rtl"
         className={`flex flex-col gap-2 text-right ${FORUM_RTL_CLASS}`}
@@ -146,6 +151,11 @@ export function ThreadCard({
                   צוות
                 </span>
               ) : null}
+              {noAnswerNeeded ? (
+                <span className="rounded-full bg-emerald-200/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
+                  אין צורך במענה
+                </span>
+              ) : null}
               {needsAnswer ? (
                 <span className="rounded-full bg-red-200/80 px-2 py-0.5 text-[11px] font-semibold text-red-900">
                   ללא מענה
@@ -173,18 +183,20 @@ export function ThreadCard({
               </span>
             </div>
           </a>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleOpen();
-              setExpanded((v) => !v);
-            }}
-          >
-            {expanded ? "Hide raw" : "Raw JSON"}
-          </Button>
+          {wouldNeedAnswerWithoutOverride && onToggleNoAnswerNeeded ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleOpen();
+                onToggleNoAnswerNeeded();
+              }}
+            >
+              {noAnswerNeeded ? "בטל סימון" : "אין צורך במענה"}
+            </Button>
+          ) : null}
         </div>
 
         <ForumBody
@@ -210,15 +222,6 @@ export function ThreadCard({
                 }, but none were returned.`}
           </p>
         ) : null}
-
-        {expanded && (
-          <pre
-            dir="ltr"
-            className="overflow-x-auto whitespace-pre-wrap border border-surface-200 bg-surface-50 p-3 text-left text-xs"
-          >
-            {JSON.stringify(thread, null, 2)}
-          </pre>
-        )}
       </div>
     </Card>
   );

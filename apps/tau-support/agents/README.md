@@ -71,7 +71,8 @@ platform.
   add courses and set each course’s technical-help forum name.
 - `../src/lib/courses.ts` — Thin helpers that load `courses.json`.
 - `../src/lib/threadStore.ts` — Browser `localStorage` inbox (`tau-support-thread-store-v1`):
-  per-course `lastCheckedAt` watermark, thread map, merge/upsert, retention cap.
+  per-course `lastCheckedAt` watermark, thread map, merge/upsert, retention cap,
+  and per-thread `noAnswerNeeded` override (cleared on newer poll activity).
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
   optional `since`, `knownThreads`, `maxPages`. Returns threads that need upsert
   (seed: top page; incremental: newer than watermark only).
@@ -83,18 +84,27 @@ platform.
 The tau-support page is a **centered max-width hub** (not full-bleed) with an
 RTL split layout inspired by the campus IL forum list:
 
-- **Right sidebar:** **פיד של כל הקורסים** (global inbox) plus all courses from
+- **Right sidebar:** white course list with a tight left-edge
+  drop shadow; **פיד של כל הקורסים** (global inbox) plus all courses from
   `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**).
   Add courses by editing that JSON file. Each course’s technical-help forum
   name (`forumCategory`, matching the campus IL URL after `/category/`) can
-  differ per course and is shown on the row. Inbox and course rows show
-  **חדש** counts from the local store. No separate sidebar header line above
-  the list.
-- **Main pane:** empty state until inbox/course is selected; then stored
+  differ per course and is used when polling (not shown on the sidebar row).
+  Inbox and course rows show **חדש** counts from the local store. No separate
+  sidebar header line above the list.
+- **Main pane:** soft light grey thread area (`#E8E8EA`); empty state until
+  inbox/course is selected; then stored
   threads (survives reload). Global inbox is a flat list across courses.
-  The main-column header shows compact counts (`N שרשורים שמורים · N ללא מענה ·
-  N תגובות חדשות מפעם שעברה`) and, temporarily, the last-run request/cookies
-  stats line under that.
+  In **פיד של כל הקורסים**, a header toggle filters **הכל** vs **ללא מענה**
+  (same unanswered rules as course rows / cards). Thread cards use
+  `rounded-control` and a small downward drop shadow.
+- **Course header** sits only above the left thread pane (not over the
+  sidebar). The right sidebar starts below that header row. Header has a
+  right-edge border and a drop shadow under the bar. The outer hub box also
+  uses a page-level drop shadow. Header shows compact counts
+  (`N שרשורים שמורים · N ללא מענה · N תגובות חדשות מפעם שעברה`) — inbox
+  includes the unanswered count too — and,
+  temporarily, the last-run request/cookies stats line under that.
 - **Toolbar:** **בדוק הכל** is temporarily disabled. Per-course **Refresh**
   polls only the selected course. Existing cards stay visible while syncing.
   Each course row in the sidebar shows **מעודכן לתאריך** from that course’s
@@ -142,6 +152,7 @@ A thread is treated as **ללא מענה** when:
 
 - the thread author is **not** staff/TA (same `author_label` patterns as
   replies: Staff, Community TA, Moderator, צוות / מרצה / מתרגל, …), **and**
+- it is **not** locally marked **אין צורך במענה**, **and**
 - either:
   - `comment_count <= 1` (Open edX counts the original post, so **1** means no
     replies yet; 0 is also treated as unanswered), **or**
@@ -155,6 +166,13 @@ notice is omitted.
 Unanswered threads get a red highlight and a **ללא מענה** badge to the
 **left** of the title in the main list; the sidebar badge is the count of such
 threads in the last fetch for that course.
+
+On threads that would otherwise be unanswered, the card’s action button is
+**אין צורך במענה** (replaces the old Raw JSON toggle). Clicking it stores
+`noAnswerNeeded` on the local inbox entry, clears **ללא מענה** / unread flags,
+and shows an emerald **אין צורך במענה** badge. **בטל סימון** undoes it.
+On the next poll, if that thread’s `last_activity_at` or `comment_count`
+advances, the override is cleared so the thread can show as unanswered again.
 
 Staff/TA replies (same `author_label` patterns) get an amber highlight and a
 **צוות** badge next to the author line in the reply tree. Staff/TA-authored

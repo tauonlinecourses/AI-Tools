@@ -20,11 +20,14 @@ import {
   markThreadSeen,
   mergeCoursePoll,
   saveThreadStore,
+  setThreadNoAnswerNeeded,
   sortedEntriesForCourse,
   type ThreadStore,
 } from "./lib/threadStore";
-import { countUnanswered } from "./lib/unanswered";
+import { countUnanswered, entryNeedsAnswer } from "./lib/unanswered";
 import type { ForumThreadsResponse } from "./lib/types";
+
+type InboxFilter = "all" | "unanswered";
 
 const SESSION_STORAGE_KEY = "tau-support-use-cookies";
 const CSRF_STORAGE_KEY = "tau-support-csrf-token";
@@ -148,6 +151,7 @@ export default function App() {
   const [checkAllStats, setCheckAllStats] = useState<
     ForumThreadsResponse["requestStats"] | null
   >(null);
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
 
   const threadStoreRef = useRef(threadStore);
   threadStoreRef.current = threadStore;
@@ -332,6 +336,22 @@ export default function App() {
     });
   }, []);
 
+  const handleToggleNoAnswerNeeded = useCallback(
+    (courseId: string, threadId: string, currentlyMarked: boolean) => {
+      setThreadStore((prev) => {
+        const next = setThreadNoAnswerNeeded(
+          prev,
+          courseId,
+          threadId,
+          !currentlyMarked
+        );
+        threadStoreRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
+
   function handleAuthChange(patch: Partial<AuthSettingsValues>) {
     setAuth((prev) => ({ ...prev, ...patch }));
   }
@@ -360,8 +380,7 @@ export default function App() {
     } else if (entries.length > 0) {
       sidebarCache[course.id] = {
         status: "ready",
-        unansweredCount: countUnanswered(entries.map((e) => e.thread)),
-        totalLoaded: entries.length,
+        unansweredCount: countUnanswered(entries),
         newCount: countNewForCourse(threadStore, course.id),
         lastCheckedAt,
       };
@@ -380,6 +399,14 @@ export default function App() {
     () => listGlobalInbox(threadStore),
     [threadStore]
   );
+  const inboxUnansweredCount = useMemo(
+    () => countUnanswered(inboxItems.map(({ entry }) => entry)),
+    [inboxItems]
+  );
+  const filteredInboxItems = useMemo(() => {
+    if (inboxFilter !== "unanswered") return inboxItems;
+    return inboxItems.filter(({ entry }) => entryNeedsAnswer(entry));
+  }, [inboxFilter, inboxItems]);
   const inboxNewCount = countNewAcrossStore(threadStore);
 
   const selectedCourseId =
@@ -400,7 +427,7 @@ export default function App() {
   const isSyncingSelected =
     checkingAll || selectedSync?.status === "syncing";
   const selectedUnansweredCount = selectedCourseId
-    ? countUnanswered(selectedEntries.map((entry) => entry.thread))
+    ? countUnanswered(selectedEntries)
     : 0;
   const selectedNewCount = selectedCourseId
     ? countNewForCourse(threadStore, selectedCourseId)
@@ -417,7 +444,7 @@ export default function App() {
       toolNameHe="תמיכה טכנית - קמפוס IL"
       toolDescriptionHe="ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm">
+      <div className="mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
         <AuthSettings
           values={auth}
           onChange={handleAuthChange}
@@ -427,20 +454,15 @@ export default function App() {
 
         <div
           dir="rtl"
-          className="flex min-h-[560px] flex-col md:h-[calc(100vh-11rem)] md:min-h-[480px] md:flex-row"
+          className="flex min-h-[560px] flex-col md:h-[calc(100vh-11rem)] md:min-h-[480px]"
         >
-          <CourseSidebar
-            courses={COURSES}
-            selectedId={selectedId}
-            cache={sidebarCache}
-            inboxNewCount={inboxNewCount}
-            inboxTotalCount={inboxItems.length}
-            onSelectInbox={handleSelectInbox}
-            onSelect={handleSelectCourse}
-          />
-
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-[#F5F6F8] md:border-t-0">
-            <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-surface-200 bg-white px-4 py-2.5">
+          <div className="relative z-20 flex shrink-0">
+            {/* Matches sidebar width so the course header sits only above the threads pane. */}
+            <div
+              className="hidden shrink-0 border-b border-surface-200 bg-white md:block md:w-[34%]"
+              aria-hidden
+            />
+            <div className="relative z-20 flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3 border-b border-r border-surface-200 bg-white px-4 py-2.5 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)]">
               <div className="min-w-0 flex-1 text-right">
                 {selectedId ? (
                   <>
@@ -457,9 +479,18 @@ export default function App() {
                         dir="rtl"
                       >
                         <span className="font-semibold text-surface-900">
-                          {inboxItems.length}
+                          {inboxFilter === "unanswered"
+                            ? filteredInboxItems.length
+                            : inboxItems.length}
                         </span>{" "}
-                        שרשורים שמורים
+                        {inboxFilter === "unanswered"
+                          ? "שרשורים ללא מענה"
+                          : "שרשורים שמורים"}
+                        {" · "}
+                        <span className="font-semibold text-red-800">
+                          {inboxUnansweredCount}
+                        </span>{" "}
+                        ללא מענה
                         {" · "}
                         <span className="font-semibold text-blue-800">
                           {inboxNewCount}
@@ -511,6 +542,39 @@ export default function App() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {showingInbox ? (
+                  <div
+                    className="flex items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
+                    role="group"
+                    aria-label="סינון פיד"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setInboxFilter("all")}
+                      className={`px-2.5 py-1.5 transition-colors ${
+                        inboxFilter === "all"
+                          ? "bg-white font-semibold text-surface-900 shadow-sm"
+                          : "text-surface-600 hover:text-surface-900"
+                      }`}
+                    >
+                      הכל
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInboxFilter("unanswered")}
+                      className={`border-r border-surface-200 px-2.5 py-1.5 transition-colors ${
+                        inboxFilter === "unanswered"
+                          ? "bg-white font-semibold text-red-800 shadow-sm"
+                          : "text-surface-600 hover:text-surface-900"
+                      }`}
+                    >
+                      ללא מענה
+                      {inboxUnansweredCount > 0
+                        ? ` (${inboxUnansweredCount})`
+                        : ""}
+                    </button>
+                  </div>
+                ) : null}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -536,82 +600,94 @@ export default function App() {
                 ) : null}
               </div>
             </div>
+          </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {!selectedId ? (
-                <EmptySelection />
-              ) : showingInbox ? (
-                <div className="flex flex-col gap-3 p-4">
-                  {checkAllError ? (
-                    <div
-                      className={`rounded-md border p-3 text-sm ${
-                        isCaptchaError(checkAllError)
-                          ? "border-amber-400 bg-amber-50 text-amber-900"
-                          : "border-danger bg-red-50 text-danger"
-                      }`}
-                    >
-                      {checkAllError}
-                    </div>
-                  ) : null}
+          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+            <CourseSidebar
+              courses={COURSES}
+              selectedId={selectedId}
+              cache={sidebarCache}
+              inboxNewCount={inboxNewCount}
+              onSelectInbox={handleSelectInbox}
+              onSelect={handleSelectCourse}
+            />
 
-                  {inboxItems.length === 0 ? (
-                    <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
-                      הפיד ריק. לחצו על{" "}
-                      <span className="font-semibold">בדוק הכל</span> כדי למשוך
-                      שרשורים מכל הקורסים (הריצה הראשונה שומרת בלי תגי ״חדש״).
-                    </div>
-                  ) : (
-                    inboxItems.map(({ courseId, entry }) => {
-                      const bucket = getCourseBucket(threadStore, courseId);
-                      return (
-                        <ThreadCard
-                          key={`${courseId}:${entry.thread.id}`}
-                          thread={entry.thread}
-                          courseId={courseId}
-                          courseLabel={courseDisplayName(courseId)}
-                          forumUiOrigin={
-                            bucket.forumUiOrigin ?? "https://app.campus.gov.il"
-                          }
-                          categoryName={
-                            bucket.categoryName ??
-                            findCourseById(courseId)?.forumCategory
-                          }
-                          isNew={entry.isNew}
-                          isUpdated={entry.isUpdated}
-                          onOpen={() =>
-                            handleMarkSeen(courseId, entry.thread.id)
-                          }
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              ) : selectedEntries.length === 0 &&
-                selectedSync?.status === "syncing" ? (
-                <div className="flex h-full min-h-[280px] items-center justify-center gap-2 text-sm text-surface-600">
-                  <Spinner size="sm" />
-                  {auth.useCookies
-                    ? "Fetching forum threads…"
-                    : "Logging in and fetching forum threads…"}
-                </div>
-              ) : selectedEntries.length === 0 &&
-                selectedSync?.status === "error" ? (
-                <div className="p-4">
-                  <div
-                    className={`rounded-md border p-4 text-sm ${
-                      isCaptchaError(selectedSync.message)
-                        ? "border-amber-400 bg-amber-50 text-amber-900"
-                        : "border-danger bg-red-50 text-danger"
-                    }`}
-                  >
-                    {selectedSync.message}
+            <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-[#E8E8EA] md:border-t-0">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {!selectedId ? (
+                  <EmptySelection />
+                ) : showingInbox ? (
+                  <div className="flex flex-col gap-3 p-4">
+                    {checkAllError ? (
+                      <div
+                        className={`rounded-md border p-3 text-sm ${
+                          isCaptchaError(checkAllError)
+                            ? "border-amber-400 bg-amber-50 text-amber-900"
+                            : "border-danger bg-red-50 text-danger"
+                        }`}
+                      >
+                        {checkAllError}
+                      </div>
+                    ) : null}
+
+                    {inboxItems.length === 0 ? (
+                      <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
+                        הפיד ריק. לחצו על{" "}
+                        <span className="font-semibold">בדוק הכל</span> כדי
+                        למשוך שרשורים מכל הקורסים (הריצה הראשונה שומרת בלי תגי
+                        ״חדש״).
+                      </div>
+                    ) : filteredInboxItems.length === 0 ? (
+                      <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
+                        אין שרשורים ללא מענה בפיד.
+                      </div>
+                    ) : (
+                      filteredInboxItems.map(({ courseId, entry }) => {
+                        const bucket = getCourseBucket(threadStore, courseId);
+                        return (
+                          <ThreadCard
+                            key={`${courseId}:${entry.thread.id}`}
+                            thread={entry.thread}
+                            courseId={courseId}
+                            courseLabel={courseDisplayName(courseId)}
+                            forumUiOrigin={
+                              bucket.forumUiOrigin ?? "https://app.campus.gov.il"
+                            }
+                            categoryName={
+                              bucket.categoryName ??
+                              findCourseById(courseId)?.forumCategory
+                            }
+                            isNew={entry.isNew}
+                            isUpdated={entry.isUpdated}
+                            noAnswerNeeded={Boolean(entry.noAnswerNeeded)}
+                            onOpen={() =>
+                              handleMarkSeen(courseId, entry.thread.id)
+                            }
+                            onToggleNoAnswerNeeded={() =>
+                              handleToggleNoAnswerNeeded(
+                                courseId,
+                                entry.thread.id,
+                                Boolean(entry.noAnswerNeeded)
+                              )
+                            }
+                          />
+                        );
+                      })
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3 p-4">
-                  {selectedSync?.status === "error" ? (
+                ) : selectedEntries.length === 0 &&
+                  selectedSync?.status === "syncing" ? (
+                  <div className="flex h-full min-h-[280px] items-center justify-center gap-2 text-sm text-surface-600">
+                    <Spinner size="sm" />
+                    {auth.useCookies
+                      ? "Fetching forum threads…"
+                      : "Logging in and fetching forum threads…"}
+                  </div>
+                ) : selectedEntries.length === 0 &&
+                  selectedSync?.status === "error" ? (
+                  <div className="p-4">
                     <div
-                      className={`rounded-md border p-3 text-sm ${
+                      className={`rounded-md border p-4 text-sm ${
                         isCaptchaError(selectedSync.message)
                           ? "border-amber-400 bg-amber-50 text-amber-900"
                           : "border-danger bg-red-50 text-danger"
@@ -619,38 +695,60 @@ export default function App() {
                     >
                       {selectedSync.message}
                     </div>
-                  ) : null}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 p-4">
+                    {selectedSync?.status === "error" ? (
+                      <div
+                        className={`rounded-md border p-3 text-sm ${
+                          isCaptchaError(selectedSync.message)
+                            ? "border-amber-400 bg-amber-50 text-amber-900"
+                            : "border-danger bg-red-50 text-danger"
+                        }`}
+                      >
+                        {selectedSync.message}
+                      </div>
+                    ) : null}
 
-                  {selectedEntries.length === 0 ? (
-                    <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
-                      אין שרשורים שמורים לקורס זה. לחצו Refresh או בדוק הכל.
-                    </div>
-                  ) : (
-                    selectedEntries.map((entry) => (
-                      <ThreadCard
-                        key={entry.thread.id}
-                        thread={entry.thread}
-                        courseId={selectedCourseId!}
-                        forumUiOrigin={
-                          selectedBucket?.forumUiOrigin ??
-                          "https://app.campus.gov.il"
-                        }
-                        categoryName={
-                          selectedBucket?.categoryName ??
-                          selectedCourse?.forumCategory
-                        }
-                        isNew={entry.isNew}
-                        isUpdated={entry.isUpdated}
-                        onOpen={() =>
-                          handleMarkSeen(selectedCourseId!, entry.thread.id)
-                        }
-                      />
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </main>
+                    {selectedEntries.length === 0 ? (
+                      <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
+                        אין שרשורים שמורים לקורס זה. לחצו Refresh או בדוק הכל.
+                      </div>
+                    ) : (
+                      selectedEntries.map((entry) => (
+                        <ThreadCard
+                          key={entry.thread.id}
+                          thread={entry.thread}
+                          courseId={selectedCourseId!}
+                          forumUiOrigin={
+                            selectedBucket?.forumUiOrigin ??
+                            "https://app.campus.gov.il"
+                          }
+                          categoryName={
+                            selectedBucket?.categoryName ??
+                            selectedCourse?.forumCategory
+                          }
+                          isNew={entry.isNew}
+                          isUpdated={entry.isUpdated}
+                          noAnswerNeeded={Boolean(entry.noAnswerNeeded)}
+                          onOpen={() =>
+                            handleMarkSeen(selectedCourseId!, entry.thread.id)
+                          }
+                          onToggleNoAnswerNeeded={() =>
+                            handleToggleNoAnswerNeeded(
+                              selectedCourseId!,
+                              entry.thread.id,
+                              Boolean(entry.noAnswerNeeded)
+                            )
+                          }
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </main>
+          </div>
         </div>
       </div>
     </PageLayout>
