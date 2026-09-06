@@ -1,5 +1,6 @@
 import { Card, Button } from "@workspace/ui";
 import { ForumBody } from "./ForumBody";
+import { sanitizeCommentForest } from "../lib/commentTree";
 import { FORUM_RTL_CLASS } from "../lib/forumBody";
 import { buildForumThreadUrl } from "../lib/forumUrls";
 import { isStaffAuthor, threadNeedsAnswer } from "../lib/unanswered";
@@ -83,7 +84,7 @@ export function ThreadCard({
   onOpen?: () => void;
   onToggleNoAnswerNeeded?: () => void;
 }) {
-  const comments = thread.comments ?? [];
+  const comments = sanitizeCommentForest(thread.comments);
   const needsAnswer = threadNeedsAnswer(thread, noAnswerNeeded);
   const wouldNeedAnswerWithoutOverride = threadNeedsAnswer(thread, false);
   const isStaffThread = isStaffAuthor(thread.author_label);
@@ -132,7 +133,7 @@ export function ThreadCard({
               <h3
                 dir="rtl"
                 lang="he"
-                className="min-w-0 text-right text-sm font-semibold text-surface-900 group-hover:text-blue-700 group-hover:underline"
+                className="min-w-0 text-right text-base font-semibold text-surface-900 group-hover:text-blue-700 group-hover:underline"
               >
                 {thread.title || "(untitled thread)"}
               </h3>

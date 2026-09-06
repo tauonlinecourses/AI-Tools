@@ -1,4 +1,5 @@
-import { Input } from "@workspace/ui";
+import { useEffect } from "react";
+import { Input, Button } from "@workspace/ui";
 
 export interface AuthSettingsValues {
   threadCount: string;
@@ -11,34 +12,80 @@ export interface AuthSettingsValues {
 interface AuthSettingsProps {
   values: AuthSettingsValues;
   onChange: (patch: Partial<AuthSettingsValues>) => void;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
+  open: boolean;
+  onClose: () => void;
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
 }
 
 export function AuthSettings({
   values,
   onChange,
-  collapsed,
-  onToggleCollapsed,
+  open,
+  onClose,
 }: AuthSettingsProps) {
-  return (
-    <div className="border-b border-surface-200 bg-white px-3 py-2" dir="ltr">
-      <button
-        type="button"
-        onClick={onToggleCollapsed}
-        className="flex w-full items-center justify-between gap-2 text-left text-xs font-medium text-surface-700 hover:text-surface-900"
-      >
-        <span>
-          Settings
-          {values.useCookies ? " · browser cookies" : " · env login"}
-          {` · ${values.threadCount || "3"} threads`}
-          {" · forum per course in courses.json"}
-        </span>
-        <span className="text-surface-400">{collapsed ? "Show" : "Hide"}</span>
-      </button>
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
 
-      {!collapsed ? (
-        <div className="mt-3 flex flex-col gap-3 pb-1">
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
+      onClick={onClose}
+    >
+      <div
+        className="relative my-8 w-full max-w-lg rounded-lg border border-surface-200 bg-white shadow-xl"
+        dir="ltr"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-surface-900">Settings</h2>
+            <p className="mt-0.5 text-xs text-surface-500">
+              {values.useCookies ? "Browser cookies" : "Env login"}
+              {` · ${values.threadCount || "3"} threads`}
+              {" · forum per course in courses.json"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className="rounded-control p-1 text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-900"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 px-4 py-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
               label="Threads to load"
@@ -96,7 +143,13 @@ export function AuthSettings({
             </div>
           ) : null}
         </div>
-      ) : null}
+
+        <div className="flex justify-end border-t border-surface-200 px-4 py-3">
+          <Button variant="primary" size="sm" onClick={onClose}>
+            Done
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

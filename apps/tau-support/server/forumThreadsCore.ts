@@ -968,6 +968,27 @@ function normalizeTopicName(name: string): string {
   return name.trim().normalize("NFC");
 }
 
+/** Tried after the course’s configured `forumCategory` if that name is missing. */
+const DEFAULT_CATEGORY_FALLBACKS = [
+  "פורום בעיות טכניות",
+  "בעיות טכניות",
+] as const;
+
+/** Primary name first, then common Campus IL technical-help aliases (deduped). */
+function categoryNameCandidates(primary: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of [primary, ...DEFAULT_CATEGORY_FALLBACKS]) {
+    const trimmed = name.trim();
+    if (!trimmed) continue;
+    const key = normalizeTopicName(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 function topicIdsFromThreadListUrl(url: string): string[] {
   try {
     return new URL(url).searchParams.getAll("topic_id");
@@ -1070,16 +1091,20 @@ async function resolveTopicIds(
   }
 
   const groups = await fetchCourseTopicGroups(apiOrigin, courseId, auth);
-  const topicIds = findTopicIdsByCategoryName(groups, categoryName);
+  const candidates = categoryNameCandidates(categoryName);
 
-  if (topicIds.length === 0) {
-    throw new ForumThreadsError(
-      `No forum category named "${categoryName}" was found in this course. Check spelling or leave the category empty to search all forums.`,
-      404
-    );
+  for (const candidate of candidates) {
+    const topicIds = findTopicIdsByCategoryName(groups, candidate);
+    if (topicIds.length > 0) {
+      return { categoryName: candidate, topicIds };
+    }
   }
 
-  return { categoryName, topicIds };
+  const tried = candidates.map((name) => `"${name}"`).join(", ");
+  throw new ForumThreadsError(
+    `No forum category named ${tried} was found in this course. Check spelling or leave the category empty to search all forums.`,
+    404
+  );
 }
 
 function buildThreadsUrl(
@@ -1289,6 +1314,11 @@ function buildCommentForest(flat: ForumComment[]): ForumComment[] {
 
   for (const item of byId.values()) {
     const parentId = item.parent_id;
+    // Self-parent cycles show up as "message inside message" in the UI.
+    if (parentId && parentId === item.id) {
+      roots.push(item);
+      continue;
+    }
     if (parentId && byId.has(parentId)) {
       const parent = byId.get(parentId)!;
       parent.children = parent.children ?? [];
@@ -1320,20 +1350,76 @@ async function fetchChildComments(
     page_size: "100",
   });
   const url = `${apiOrigin}/api/discussion/v1/comments/?${params.toString()}`;
-  return fetchPaginatedResults<ForumComment>(url, auth, apiOrigin);
+  const results = await fetchPaginatedResults<ForumComment>(url, auth, apiOrigin);
+  // Campus IL sometimes echoes the parent (or unrelated siblings) back in this
+  // list. Drop the parent itself and anything that claims a different parent;
+  // allow missing parent_id (some payloads omit it when comment_id was given).
+  return results.filter((item) => {
+    if (!item || item.id === parentCommentId) return false;
+    if (item.parent_id && item.parent_id !== parentCommentId) return false;
+    return true;
+  });
+}
+
+/**
+ * Open edX discussions are only two levels deep (response → comment), so any
+ * recursion beyond a small depth means the API is echoing comments back to us.
+ * Cap depth AND the number of child-comment fetches per thread so a single
+ * misbehaving thread can never fan out into an unbounded request chain that
+ * makes the whole poll appear to hang forever.
+ *
+ * Child *fetches* only run at depth 0 (top-level responses). Fetching children
+ * of a nested comment is what triggers Campus IL to echo the parent and create
+ * the "same message inside itself" trees.
+ */
+const MAX_COMMENT_DEPTH = 4;
+const MAX_CHILD_FETCHES_PER_THREAD = 60;
+
+interface CommentHydrationBudget {
+  remainingFetches: number;
+}
+
+/**
+ * Stable fingerprint of a comment's visible content, used to detect the API
+ * echoing an ancestor comment back inside its own child list (which would
+ * otherwise render the same reply nested inside itself over and over).
+ */
+function commentSignature(comment: ForumComment): string {
+  const author = (comment.author_label ?? comment.author ?? "").trim();
+  const body = (comment.raw_body ?? comment.rendered_body ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${author}\u0000${body}`;
 }
 
 async function hydrateCommentTree(
   apiOrigin: string,
   auth: LmsAuth,
   threadId: string,
-  comment: ForumComment
+  comment: ForumComment,
+  budget: CommentHydrationBudget,
+  depth = 0,
+  // Ids + content signatures of every ancestor on the path to this comment.
+  ancestorIds: Set<string> = new Set(),
+  ancestorSignatures: Set<string> = new Set()
 ): Promise<ForumComment> {
+  if (depth >= MAX_COMMENT_DEPTH) {
+    return { ...comment, children: [] };
+  }
+
   let children = comment.children ?? [];
 
-  // Campus IL requires thread_id for nested replies. Only fetch when the API
-  // indicates nested comments exist and they were not already returned flat.
-  if (children.length === 0 && (comment.child_count ?? 0) > 0) {
+  // Campus IL requires thread_id for nested replies. Only fetch for top-level
+  // responses (depth 0): Open edX discussions are response → comment only, so
+  // fetching children of a comment is where the API starts echoing parents and
+  // produces "same message nested inside itself" trees.
+  if (
+    children.length === 0 &&
+    (comment.child_count ?? 0) > 0 &&
+    depth === 0 &&
+    budget.remainingFetches > 0
+  ) {
+    budget.remainingFetches -= 1;
     try {
       children = await fetchChildComments(
         apiOrigin,
@@ -1347,12 +1433,40 @@ async function hydrateCommentTree(
     }
   }
 
+  // Path from the root down to (and including) this comment. Any child that
+  // matches something already on this path is an API echo, not a real reply,
+  // so we drop it to avoid rendering the same message nested inside itself.
+  const pathIds = new Set(ancestorIds);
+  pathIds.add(comment.id);
+  const pathSignatures = new Set(ancestorSignatures);
+  pathSignatures.add(commentSignature(comment));
+
+  const seenIds = new Set<string>();
+  const filteredChildren = children.filter((child) => {
+    if (!child) return false;
+    if (pathIds.has(child.id)) return false;
+    if (pathSignatures.has(commentSignature(child))) return false;
+    // De-dupe siblings that share an id within this level.
+    if (seenIds.has(child.id)) return false;
+    seenIds.add(child.id);
+    return true;
+  });
+
   const normalized = sortComments(
-    children.map((child) => normalizeComment({ ...child, children: [] }))
+    filteredChildren.map((child) => normalizeComment({ ...child, children: [] }))
   );
   const hydratedChildren = await Promise.all(
     normalized.map((child) =>
-      hydrateCommentTree(apiOrigin, auth, threadId, child)
+      hydrateCommentTree(
+        apiOrigin,
+        auth,
+        threadId,
+        child,
+        budget,
+        depth + 1,
+        pathIds,
+        pathSignatures
+      )
     )
   );
 
@@ -1437,9 +1551,13 @@ async function fetchThreadComments(
 
   const forest = buildCommentForest([...indexCommentsById(flat).values()]);
 
+  const budget: CommentHydrationBudget = {
+    remainingFetches: MAX_CHILD_FETCHES_PER_THREAD,
+  };
+
   return Promise.all(
     forest.map((response) =>
-      hydrateCommentTree(apiOrigin, auth, thread.id, response)
+      hydrateCommentTree(apiOrigin, auth, thread.id, response, budget)
     )
   );
 }

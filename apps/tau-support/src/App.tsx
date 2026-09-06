@@ -7,8 +7,30 @@ import {
   type CourseCacheEntry,
 } from "./components/CourseSidebar";
 import { EmptySelection } from "./components/EmptySelection";
+import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
 import { fetchForumThreads } from "./lib/api";
+import {
+  CHECK_ALL_GAP_MS,
+  checkAllCourseList,
+  checkAllStopMessage,
+  classifyCheckAllStop,
+  clearCheckAllCursor,
+  formatElapsedHe,
+  hasIncompleteCheckAll,
+  isBrowserOffline,
+  isCaptchaError,
+  loadCheckAllCursor,
+  refreshCheckAllLock,
+  releaseCheckAllLock,
+  saveCheckAllCursor,
+  tryAcquireCheckAllLock,
+  waitCheckAllGap,
+  type CheckAllCursor,
+  type CheckAllProgress,
+  type CheckAllStopKind,
+  type CheckAllSummary,
+} from "./lib/checkAllRun";
 import { COURSES, findCourseById } from "./lib/courses";
 import {
   countNewAcrossStore,
@@ -33,7 +55,6 @@ const SESSION_STORAGE_KEY = "tau-support-use-cookies";
 const CSRF_STORAGE_KEY = "tau-support-csrf-token";
 const JWT_PAYLOAD_STORAGE_KEY = "tau-support-jwt-payload";
 const JWT_SIGNATURE_STORAGE_KEY = "tau-support-jwt-signature";
-const SETTINGS_COLLAPSED_KEY = "tau-support-settings-collapsed";
 
 type SyncStatus =
   | { status: "idle" }
@@ -53,7 +74,6 @@ function readStoredAuth() {
       csrfToken: sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "",
       jwtHeaderPayload: sessionStorage.getItem(JWT_PAYLOAD_STORAGE_KEY) ?? "",
       jwtSignature: sessionStorage.getItem(JWT_SIGNATURE_STORAGE_KEY) ?? "",
-      settingsCollapsed: sessionStorage.getItem(SETTINGS_COLLAPSED_KEY) === "1",
     };
   } catch {
     return {
@@ -61,7 +81,6 @@ function readStoredAuth() {
       csrfToken: "",
       jwtHeaderPayload: "",
       jwtSignature: "",
-      settingsCollapsed: false,
     };
   }
 }
@@ -91,13 +110,8 @@ function formatFetchError(err: unknown): string {
   return "Something went wrong";
 }
 
-function isCaptchaError(message: string): boolean {
-  return (
-    message.includes("human verification") ||
-    message.includes("CAPTCHA") ||
-    message.toLowerCase().includes("captcha")
-  );
-}
+const COOKIES_REQUIRED_MESSAGE =
+  "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT). הדביקו אותן בהגדרות — התחברות בסיסמה זמינה רק לטעינת תגובות של קורס בודד.";
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -127,6 +141,50 @@ function courseDisplayName(courseId: string): string {
   return course?.nameHe || course?.name || courseId;
 }
 
+function unansweredFirstCourseIds(
+  courses: typeof COURSES,
+  store: ThreadStore
+): string[] {
+  const withUnanswered: string[] = [];
+  const withoutUnanswered: string[] = [];
+  for (const course of courses) {
+    const entries = Object.values(getCourseBucket(store, course.id).threads);
+    if (entries.length > 0 && countUnanswered(entries) > 0) {
+      withUnanswered.push(course.id);
+    } else {
+      withoutUnanswered.push(course.id);
+    }
+  }
+  return [...withUnanswered, ...withoutUnanswered];
+}
+
+function newCheckAllTabId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `tab-${Math.random().toString(36).slice(2)}`;
+}
+
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function App() {
   const storedAuth = readStoredAuth();
   const [auth, setAuth] = useState<AuthSettingsValues>({
@@ -136,9 +194,7 @@ export default function App() {
     jwtHeaderPayload: storedAuth.jwtHeaderPayload,
     jwtSignature: storedAuth.jwtSignature,
   });
-  const [settingsCollapsed, setSettingsCollapsed] = useState(
-    storedAuth.settingsCollapsed
-  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [threadStore, setThreadStore] = useState<ThreadStore>(() =>
     loadThreadStore()
@@ -151,6 +207,17 @@ export default function App() {
   const [checkAllStats, setCheckAllStats] = useState<
     ForumThreadsResponse["requestStats"] | null
   >(null);
+  const [checkAllProgress, setCheckAllProgress] =
+    useState<CheckAllProgress | null>(null);
+  const [checkAllSummary, setCheckAllSummary] =
+    useState<CheckAllSummary | null>(null);
+  const [checkAllCursor, setCheckAllCursor] = useState<CheckAllCursor | null>(
+    () => loadCheckAllCursor()
+  );
+  const [checkAllFrozenOrder, setCheckAllFrozenOrder] = useState<
+    string[] | null
+  >(null);
+  const [elapsedTick, setElapsedTick] = useState(0);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
 
   const threadStoreRef = useRef(threadStore);
@@ -159,10 +226,28 @@ export default function App() {
   syncRef.current = syncByCourse;
   const authRef = useRef(auth);
   authRef.current = auth;
+  const checkAllCancelRef = useRef(false);
+  const checkAllTabIdRef = useRef(newCheckAllTabId());
+  const checkAllCourses = useMemo(() => checkAllCourseList(COURSES), []);
 
   useEffect(() => {
     saveThreadStore(threadStore);
   }, [threadStore]);
+
+  useEffect(() => {
+    if (!checkingAll || checkAllProgress?.phase !== "fetching") return;
+    const id = window.setInterval(() => {
+      setElapsedTick((n) => n + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [checkingAll, checkAllProgress?.phase]);
+
+  useEffect(() => {
+    const tabId = checkAllTabIdRef.current;
+    return () => {
+      releaseCheckAllLock(tabId);
+    };
+  }, []);
 
   const persistAuth = useCallback((next: AuthSettingsValues) => {
     try {
@@ -192,17 +277,15 @@ export default function App() {
       const cookieAuth = cookieAuthFrom(currentAuth);
 
       if (currentAuth.useCookies && !hasCookieAuth(cookieAuth)) {
+        const message =
+          "Paste csrftoken plus both JWT cookies " +
+          "(edx-jwt-cookie-header-payload and edx-jwt-cookie-signature), " +
+          "or turn off “Use browser cookies” in Settings.";
         setSyncByCourse((prev) => ({
           ...prev,
-          [courseId]: {
-            status: "error",
-            message:
-              "Paste csrftoken plus both JWT cookies " +
-              "(edx-jwt-cookie-header-payload and edx-jwt-cookie-signature), " +
-              "or turn off “Use browser cookies” in Settings.",
-          },
+          [courseId]: { status: "error", message },
         }));
-        return { ok: false as const, upserted: 0 };
+        return { ok: false as const, upserted: 0, message };
       }
 
       persistAuth(currentAuth);
@@ -243,6 +326,7 @@ export default function App() {
             : {}),
         });
 
+        let persistError: string | null = null;
         setThreadStore((prev) => {
           const next = mergeCoursePoll(prev, courseId, data.threads, {
             seed: seed && !hasStored,
@@ -250,6 +334,10 @@ export default function App() {
             categoryName: data.categoryName ?? categoryName,
             totalCount: data.totalCount,
           });
+          const saved = saveThreadStore(next);
+          if (!saved.ok) {
+            persistError = saved.message;
+          }
           threadStoreRef.current = next;
           return next;
         });
@@ -263,27 +351,36 @@ export default function App() {
           },
         }));
 
+        if (persistError) {
+          return {
+            ok: false as const,
+            upserted: data.threads.length,
+            message: persistError,
+            persistError: true as const,
+            data,
+          };
+        }
+
         return { ok: true as const, upserted: data.threads.length, data };
       } catch (err) {
+        const message = formatFetchError(err);
         setSyncByCourse((prev) => ({
           ...prev,
-          [courseId]: { status: "error", message: formatFetchError(err) },
+          [courseId]: { status: "error", message },
         }));
-        return { ok: false as const, upserted: 0 };
+        return { ok: false as const, upserted: 0, message };
       }
     },
     [cookieAuthFrom, persistAuth]
   );
 
   const handleSelectCourse = useCallback((courseId: string) => {
-    // Selection only shows the local store — fetch via Refresh or בדוק הכל.
+    // Selection only shows the local store — fetch via טען תגובות or בדוק הכל.
     setSelectedId(courseId);
-    setCheckAllError(null);
   }, []);
 
   const handleSelectInbox = useCallback(() => {
     setSelectedId(INBOX_SELECTION);
-    setCheckAllError(null);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -291,42 +388,205 @@ export default function App() {
     void pollCourse(selectedId);
   }, [pollCourse, selectedId]);
 
-  const handleCheckAll = useCallback(async () => {
-    setCheckingAll(true);
-    setCheckAllError(null);
-    setCheckAllStats(null);
-    setSelectedId((prev) => prev ?? INBOX_SELECTION);
+  const persistCursor = useCallback(
+    (next: CheckAllCursor) => {
+      saveCheckAllCursor(next);
+      setCheckAllCursor(next);
+    },
+    []
+  );
 
-    let totalUpserted = 0;
-    let lastStats: ForumThreadsResponse["requestStats"] | null = null;
-    const errors: string[] = [];
+  const handleStopCheckAll = useCallback(() => {
+    checkAllCancelRef.current = true;
+    setCheckAllProgress((prev) =>
+      prev ? { ...prev, phase: "stopping" } : prev
+    );
+  }, []);
 
-    for (const course of COURSES) {
-      const result = await pollCourse(course.id);
-      if (result.ok) {
-        totalUpserted += result.upserted;
-        if (result.data?.requestStats) {
-          lastStats = result.data.requestStats;
-        }
-      } else {
-        const sync = syncRef.current[course.id];
-        if (sync?.status === "error") {
-          errors.push(`${courseDisplayName(course.id)}: ${sync.message}`);
-        }
+  const handleCheckAll = useCallback(
+    async (mode: "resume" | "restart" | "fresh" = "fresh") => {
+      const currentAuth = authRef.current;
+      const cookieAuth = cookieAuthFrom(currentAuth);
+      if (!currentAuth.useCookies || !hasCookieAuth(cookieAuth)) {
+        setCheckAllError(COOKIES_REQUIRED_MESSAGE);
+        setSettingsOpen(true);
+        return;
       }
-    }
 
-    if (errors.length > 0) {
-      setCheckAllError(
-        errors.length === COURSES.length
-          ? errors[0] ?? "Check all failed"
-          : `Finished with ${errors.length} error(s). Upserted ${totalUpserted} thread(s). First error: ${errors[0]}`
+      if (!tryAcquireCheckAllLock(checkAllTabIdRef.current)) {
+        setCheckAllError(checkAllStopMessage("lock"));
+        return;
+      }
+
+      const sidebarOrderIds = unansweredFirstCourseIds(
+        COURSES,
+        threadStoreRef.current
       );
-    }
+      const queue = sidebarOrderIds
+        .map((id) => checkAllCourses.find((course) => course.id === id))
+        .filter(
+          (course): course is (typeof checkAllCourses)[number] =>
+            Boolean(course)
+        );
+      const existingCursor = loadCheckAllCursor();
+      const resume =
+        mode === "resume" &&
+        hasIncompleteCheckAll(
+          existingCursor,
+          queue.map((course) => course.id)
+        );
+      const completed = new Set(
+        resume ? (existingCursor?.completedCourseIds ?? []) : []
+      );
+      const startedAt =
+        resume && existingCursor?.startedAt
+          ? existingCursor.startedAt
+          : new Date().toISOString();
 
-    setCheckAllStats(lastStats);
-    setCheckingAll(false);
-  }, [pollCourse]);
+      checkAllCancelRef.current = false;
+      setCheckingAll(true);
+      setCheckAllError(null);
+      setCheckAllStats(null);
+      setCheckAllSummary(null);
+      setSelectedId((prev) => prev ?? INBOX_SELECTION);
+      setCheckAllFrozenOrder(sidebarOrderIds);
+      persistCursor({
+        startedAt,
+        completedCourseIds: [...completed],
+        status: "in_progress",
+      });
+
+      let totalUpserted = 0;
+      let lastStats: ForumThreadsResponse["requestStats"] | null = null;
+      const failedNames: string[] = [];
+      let stopKind: CheckAllStopKind | undefined;
+      let persistStopMessage: string | null = null;
+      let scanned = completed.size;
+
+      const pending = queue.filter((course) => !completed.has(course.id));
+
+      try {
+        for (let i = 0; i < pending.length; i += 1) {
+          const course = pending[i]!;
+          const nextCourse = pending[i + 1];
+          const index = scanned + 1;
+
+          if (checkAllCancelRef.current) {
+            stopKind = "cancelled";
+            break;
+          }
+
+          if (isBrowserOffline()) {
+            stopKind = "offline";
+            break;
+          }
+
+          refreshCheckAllLock(checkAllTabIdRef.current);
+          setElapsedTick(0);
+          setCheckAllProgress({
+            index,
+            total: queue.length,
+            courseId: course.id,
+            phase: "fetching",
+            fetchStartedAt: Date.now(),
+          });
+
+          const result = await pollCourse(course.id);
+          scanned += 1;
+
+          if (result.ok) {
+            totalUpserted += result.upserted;
+            completed.add(course.id);
+            persistCursor({
+              startedAt,
+              completedCourseIds: [...completed],
+              status: "in_progress",
+            });
+            if (result.data?.requestStats) {
+              lastStats = result.data.requestStats;
+            }
+          } else if ("persistError" in result && result.persistError) {
+            persistStopMessage = result.message;
+            stopKind = "persist";
+            break;
+          } else {
+            const sync = syncRef.current[course.id];
+            const message =
+              result.message ??
+              (sync?.status === "error" ? sync.message : "Check failed");
+            const classified = classifyCheckAllStop(message);
+            failedNames.push(courseDisplayName(course.id));
+            if (classified) {
+              stopKind = classified;
+              break;
+            }
+          }
+
+          if (checkAllCancelRef.current) {
+            stopKind = "cancelled";
+            break;
+          }
+
+          if (nextCourse) {
+            setElapsedTick(0);
+            setCheckAllProgress({
+              index: scanned + 1,
+              total: queue.length,
+              courseId: nextCourse.id,
+              phase: "fetching",
+              fetchStartedAt: Date.now(),
+            });
+            await waitCheckAllGap(CHECK_ALL_GAP_MS, () =>
+              checkAllCancelRef.current
+            );
+            if (checkAllCancelRef.current) {
+              stopKind = "cancelled";
+              break;
+            }
+          }
+        }
+
+        const incomplete = completed.size < queue.length;
+        if (!incomplete) {
+          clearCheckAllCursor();
+          setCheckAllCursor(null);
+        } else {
+          persistCursor({
+            startedAt,
+            completedCourseIds: [...completed],
+            status: "incomplete",
+          });
+        }
+
+        const summary: CheckAllSummary = {
+          scanned,
+          total: queue.length,
+          upserted: totalUpserted,
+          failedNames,
+          stoppedReason: stopKind,
+          incomplete,
+        };
+
+        setCheckAllStats(lastStats);
+        setCheckAllSummary(summary);
+        setCheckAllError(
+          stopKind === "persist" && persistStopMessage
+            ? `${checkAllStopMessage("persist")} ${persistStopMessage}`
+            : stopKind
+              ? checkAllStopMessage(stopKind)
+              : failedNames.length > 0
+                ? `נסרקו ${scanned}/${queue.length}. נכשלו: ${failedNames.join(", ")}`
+                : null
+        );
+      } finally {
+        releaseCheckAllLock(checkAllTabIdRef.current);
+        setCheckingAll(false);
+        setCheckAllProgress(null);
+        setCheckAllFrozenOrder(null);
+      }
+    },
+    [checkAllCourses, cookieAuthFrom, persistCursor, pollCourse]
+  );
 
   const handleMarkSeen = useCallback((courseId: string, threadId: string) => {
     setThreadStore((prev) => {
@@ -356,16 +616,12 @@ export default function App() {
     setAuth((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleToggleSettings() {
-    setSettingsCollapsed((prev) => {
-      const next = !prev;
-      try {
-        sessionStorage.setItem(SETTINGS_COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+  function handleOpenSettings() {
+    setSettingsOpen(true);
+  }
+
+  function handleCloseSettings() {
+    setSettingsOpen(false);
   }
 
   const sidebarCache: Record<string, CourseCacheEntry> = {};
@@ -424,8 +680,20 @@ export default function App() {
     ? syncByCourse[selectedCourseId]
     : undefined;
   const showingInbox = selectedId === INBOX_SELECTION;
-  const isSyncingSelected =
-    checkingAll || selectedSync?.status === "syncing";
+  const isSyncingSelected = selectedSync?.status === "syncing";
+  const canResumeCheckAll = hasIncompleteCheckAll(
+    checkAllCursor,
+    checkAllCourses.map((course) => course.id)
+  );
+  const checkAllElapsedSeconds =
+    checkAllProgress?.phase === "fetching" &&
+    checkAllProgress.fetchStartedAt &&
+    elapsedTick >= 0
+      ? Math.max(
+          0,
+          Math.floor((Date.now() - checkAllProgress.fetchStartedAt) / 1000)
+        )
+      : undefined;
   const selectedUnansweredCount = selectedCourseId
     ? countUnanswered(selectedEntries)
     : 0;
@@ -444,17 +712,20 @@ export default function App() {
       toolNameHe="תמיכה טכנית - קמפוס IL"
       toolDescriptionHe="ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
-        <AuthSettings
-          values={auth}
-          onChange={handleAuthChange}
-          collapsed={settingsCollapsed}
-          onToggleCollapsed={handleToggleSettings}
-        />
+      <div className="relative mx-auto flex w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
+        <button
+          type="button"
+          onClick={handleOpenSettings}
+          aria-label="הגדרות"
+          title="הגדרות"
+          className="absolute right-2 top-2 z-30 inline-flex h-8 w-8 items-center justify-center rounded-control border border-surface-200 bg-white text-surface-600 shadow-sm transition-colors hover:bg-surface-50 hover:text-surface-900"
+        >
+          <SettingsIcon />
+        </button>
 
         <div
           dir="rtl"
-          className="flex min-h-[560px] flex-col md:h-[calc(100vh-11rem)] md:min-h-[480px]"
+          className="flex min-h-[560px] flex-col md:h-[calc(100vh-6rem)] md:min-h-[480px]"
         >
           <div className="relative z-20 flex shrink-0">
             {/* Matches sidebar width so the course header sits only above the threads pane. */}
@@ -463,7 +734,7 @@ export default function App() {
               aria-hidden
             />
             <div className="relative z-20 flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3 border-b border-r border-surface-200 bg-white px-4 py-2.5 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)]">
-              <div className="min-w-0 flex-1 text-right">
+              <div className="min-w-0 flex-1 ps-9 text-right md:ps-0">
                 {selectedId ? (
                   <>
                     <p className="truncate text-sm font-semibold text-surface-900">
@@ -528,7 +799,20 @@ export default function App() {
                         <RequestStatsLine stats={courseRequestStats} />
                       </div>
                     ) : null}
-                    {isSyncingSelected ? (
+                    {checkingAll && checkAllProgress ? (
+                      <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-600">
+                        <Spinner size="sm" />
+                        <span>
+                          {checkAllProgress.phase === "stopping"
+                            ? "עוצר אחרי הקורס הנוכחי…"
+                            : `בודקים ${checkAllProgress.index}/${checkAllProgress.total} · ${courseDisplayName(checkAllProgress.courseId)}`}
+                          {checkAllProgress.phase !== "stopping" &&
+                          checkAllProgress.fetchStartedAt
+                            ? ` · ${formatElapsedHe(Date.now() - checkAllProgress.fetchStartedAt)}`
+                            : null}
+                        </span>
+                      </p>
+                    ) : isSyncingSelected ? (
                       <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-500">
                         <Spinner size="sm" />
                         מסנכרן…
@@ -575,28 +859,56 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void handleCheckAll()}
-                  loading={checkingAll}
-                  disabled
-                  title="בדוק הכל מושבת זמנית — השתמשו ב-Refresh לקורס נבחר"
-                >
-                  בדוק הכל
-                </Button>
-                {selectedCourseId ? (
+                {checkingAll ? (
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={handleRefresh}
+                    onClick={handleStopCheckAll}
+                    disabled={checkAllProgress?.phase === "stopping"}
+                    title="הבדיקה תיעצר אחרי הקורס הנוכחי"
+                  >
+                    {checkAllProgress?.phase === "stopping"
+                      ? "עוצר אחרי הקורס הנוכחי…"
+                      : "עצור"}
+                  </Button>
+                ) : canResumeCheckAll ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleCheckAll("resume")}
+                    >
+                      המשך בדיקה
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleCheckAll("restart")}
+                    >
+                      בדוק הכל מחדש
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void handleCheckAll("fresh")}
+                  >
+                    בדוק הכל
+                  </Button>
+                )}
+                {selectedCourseId ? (
+                  <LoadThreadsButton
+                    threadCount={auth.threadCount}
+                    onThreadCountChange={(count) =>
+                      handleAuthChange({ threadCount: String(count) })
+                    }
+                    onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
                     disabled={
                       selectedSync?.status === "syncing" || checkingAll
                     }
-                  >
-                    Refresh
-                  </Button>
+                  />
                 ) : null}
               </div>
             </div>
@@ -610,6 +922,16 @@ export default function App() {
               inboxNewCount={inboxNewCount}
               onSelectInbox={handleSelectInbox}
               onSelect={handleSelectCourse}
+              frozenCourseIds={checkAllFrozenOrder}
+              checkAll={
+                checkAllProgress
+                  ? {
+                      courseId: checkAllProgress.courseId,
+                      phase: checkAllProgress.phase,
+                      elapsedSeconds: checkAllElapsedSeconds,
+                    }
+                  : null
+              }
             />
 
             <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-[#E8E8EA] md:border-t-0">
@@ -618,15 +940,43 @@ export default function App() {
                   <EmptySelection />
                 ) : showingInbox ? (
                   <div className="flex flex-col gap-3 p-4">
-                    {checkAllError ? (
+                    {checkAllSummary || checkAllError ? (
                       <div
                         className={`rounded-md border p-3 text-sm ${
-                          isCaptchaError(checkAllError)
+                          checkAllError && isCaptchaError(checkAllError)
                             ? "border-amber-400 bg-amber-50 text-amber-900"
-                            : "border-danger bg-red-50 text-danger"
+                            : checkAllError
+                              ? "border-danger bg-red-50 text-danger"
+                              : "border-surface-200 bg-white text-surface-700"
                         }`}
                       >
-                        {checkAllError}
+                        {checkAllSummary ? (
+                          <p>
+                            נסרקו {checkAllSummary.scanned}/
+                            {checkAllSummary.total}
+                            {" · "}
+                            נשמרו {checkAllSummary.upserted} שרשורים
+                            {" · "}
+                            {inboxUnansweredCount} ללא מענה
+                            {checkAllSummary.failedNames.length > 0
+                              ? ` · נכשלו: ${checkAllSummary.failedNames.join(", ")}`
+                              : ""}
+                          </p>
+                        ) : null}
+                        {checkAllError ? (
+                          <p className={checkAllSummary ? "mt-1" : undefined}>
+                            {checkAllError}
+                          </p>
+                        ) : null}
+                        {checkAllSummary?.incomplete && !checkingAll ? (
+                          <button
+                            type="button"
+                            className="mt-2 font-semibold text-blue-800 underline-offset-2 hover:underline"
+                            onClick={() => void handleCheckAll("resume")}
+                          >
+                            המשך בדיקה
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -712,7 +1062,8 @@ export default function App() {
 
                     {selectedEntries.length === 0 ? (
                       <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
-                        אין שרשורים שמורים לקורס זה. לחצו Refresh או בדוק הכל.
+                        אין שרשורים שמורים לקורס זה. לחצו טען תגובות או בדוק
+                        הכל.
                       </div>
                     ) : (
                       selectedEntries.map((entry) => (
@@ -751,6 +1102,13 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <AuthSettings
+        values={auth}
+        onChange={handleAuthChange}
+        open={settingsOpen}
+        onClose={handleCloseSettings}
+      />
     </PageLayout>
   );
 }

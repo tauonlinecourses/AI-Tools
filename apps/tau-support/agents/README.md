@@ -73,6 +73,10 @@ platform.
 - `../src/lib/threadStore.ts` — Browser `localStorage` inbox (`tau-support-thread-store-v1`):
   per-course `lastCheckedAt` watermark, thread map, merge/upsert, retention cap,
   and per-thread `noAnswerNeeded` override (cleared on newer poll activity).
+  `saveThreadStore` returns success/failure so a full localStorage quota can
+  stop check-all instead of failing silently.
+- `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
+  inter-course gap, and CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
   optional `since`, `knownThreads`, `maxPages`. Returns threads that need upsert
   (seed: top page; incremental: newer than watermark only).
@@ -81,7 +85,8 @@ platform.
 
 ## Web UI (course hub)
 
-The tau-support page is a **centered max-width hub** (not full-bleed) with an
+The tau-support page is a **centered max-width hub** (`max-w-[90rem]`, taller
+viewport fill via `calc(100vh-6rem)`; not full-bleed) with an
 RTL split layout inspired by the campus IL forum list:
 
 - **Right sidebar:** white course list with a tight left-edge
@@ -90,14 +95,24 @@ RTL split layout inspired by the campus IL forum list:
   Add courses by editing that JSON file. Each course’s technical-help forum
   name (`forumCategory`, matching the campus IL URL after `/category/`) can
   differ per course and is used when polling (not shown on the sidebar row).
-  Inbox and course rows show **חדש** counts from the local store. No separate
-  sidebar header line above the list.
+  If the configured name is missing in that course, polling also tries
+  **פורום בעיות טכניות** and **בעיות טכניות**, and uses whichever name
+  matches for topic filtering and thread URLs.
+  Inbox and course rows show **חדש** counts from the local store. Courses with
+  unanswered threads (`unansweredCount > 0`) are sorted to the **top** of the
+  list; remaining courses keep their original `courses.json` order. **בדוק הכל**
+  uses that same order (unanswered first, then catalog order) and **freezes**
+  it for the run so the current row does not jump. Only the course currently
+  in queue is marked **בודק כעת** (amber row + elapsed time), including the
+  short pause before its fetch starts. No separate sidebar header line above
+  the list.
 - **Main pane:** soft light grey thread area (`#E8E8EA`); empty state until
   inbox/course is selected; then stored
   threads (survives reload). Global inbox is a flat list across courses.
   In **פיד של כל הקורסים**, a header toggle filters **הכל** vs **ללא מענה**
   (same unanswered rules as course rows / cards). Thread cards use
-  `rounded-control` and a small downward drop shadow.
+  `rounded-control`, a small downward drop shadow, and slightly larger type
+  (`text-base` for titles and forum bodies).
 - **Course header** sits only above the left thread pane (not over the
   sidebar). The right sidebar starts below that header row. Header has a
   right-edge border and a drop shadow under the bar. The outer hub box also
@@ -105,13 +120,38 @@ RTL split layout inspired by the campus IL forum list:
   (`N שרשורים שמורים · N ללא מענה · N תגובות חדשות מפעם שעברה`) — inbox
   includes the unanswered count too — and,
   temporarily, the last-run request/cookies stats line under that.
-- **Toolbar:** **בדוק הכל** is temporarily disabled. Per-course **Refresh**
-  polls only the selected course. Existing cards stay visible while syncing.
-  Each course row in the sidebar shows **מעודכן לתאריך** from that course’s
+- **Toolbar:** **בדוק הכל** runs a sequential poll of every catalog course
+  except the sandbox, in sidebar order (unanswered first). It **requires
+  browser cookies** (password login is
+  single-course **טען תגובות** only). Courses run one at a time with a
+  short pause between them (the UI stays on **בודק כעת** for the next
+  course — no “waiting” / **הבא בתור** copy). Each successful course is written to `localStorage`
+  immediately (inside the React store updater) so a crash/CAPTCHA does not
+  lose earlier courses. A session **run cursor** skips already-finished
+  courses; after a stop the primary action is **המשך בדיקה**, with
+  **בדוק הכל מחדש** as a secondary full incremental re-poll. **עצור** means
+  stop after the current course (the in-flight request is not aborted).
+  The run **aborts immediately** on CAPTCHA, 401, offline, or a persist
+  (quota) failure. Per-course timeouts / missing category are recorded and
+  the run continues. A second tab is blocked by `tau-support-check-all-lock`.
+  Header shows `בודקים N/total · course name` and elapsed seconds.
+  Per-course **טען N תגובות אחרונות** (`LoadThreadsButton`, e.g.
+  **טען 5 תגובות אחרונות**) still polls only the selected course. The label
+  shows the chosen count. A small chevron on the **visual left** of that
+  control opens a menu to pick how many threads to fetch (**3 / 5 / 10**,
+  default 3); the choice updates `auth.threadCount` used by `pollCourse`.
+  Existing cards stay visible while syncing. Each course row shows
+  **מעודכן לתאריך** as a date only (no clock time) from that course’s
   `lastCheckedAt` watermark (or — if never polled).
-- **Settings strip** (collapsible, above the split): threads to load (1–20,
-  default 3), and cookie auth. Forum category is **not** global — it comes
-  from each course’s `forumCategory` in `courses.json`.
+- **Settings popup:** opened from a **gear icon button in the top-right
+  corner of the hub box** (`SettingsIcon` in `App.tsx`). Clicking it opens a
+  modal dialog (`AuthSettings`, `open`/`onClose` props) with threads to load
+  (still editable there; toolbar presets are 3/5/10, default 3) and cookie
+  auth; close via the ✕, the **Done** button, the backdrop, or the `Esc` key.
+  The dialog open state is local (not persisted). Forum category is **not**
+  global — it comes from each course’s `forumCategory` in `courses.json`, with
+  the Hebrew technical-help name fallbacks above when the configured label is
+  absent.
 
 ### Thread inbox sync
 
@@ -120,10 +160,12 @@ what has already been fetched:
 
 1. **First poll** for a course (no `lastCheckedAt`): fetch the top page, seed
    the store **without** flooding “חדש” badges, set the watermark.
-2. **Later polls** (`בדוק הכל` / Refresh): send `since=lastCheckedAt` and
-   known thread snapshots. The server walks pages until activity ≤ watermark,
-   skips unchanged known ids, and hydrates comments only for new/updated
-   threads. The client **merges** into `localStorage` (does not replace).
+2. **Later polls** (`בדוק הכל` / **טען תגובות**): send `since=lastCheckedAt`
+   and known thread snapshots. The server walks pages until activity ≤
+   watermark, skips unchanged known ids, and hydrates comments only for
+   new/updated threads. The client **merges** into `localStorage` immediately
+   after each course (does not replace; does not wait for the whole check-all
+   run).
 3. **New vs updated:** unknown `thread.id` → `isNew`; known id with newer
    `last_activity_at` / higher `comment_count` → `isUpdated`. Opening a card
    clears those flags (`seenAt`).
@@ -134,8 +176,9 @@ what has already been fetched:
 
 Courses are **not** fetched on page load or on course click. Clicking a course
 (or **פיד של כל הקורסים**) only shows what is already in the local store. Fetching
-happens when you click **Refresh** (selected course). **בדוק הכל** (all
-courses) remains in the UI but is disabled for now.
+happens when you click **טען תגובות** (selected course) or **בדוק הכל** /
+**המשך בדיקה**. Check-all does not change the selected course (stay on inbox
+or whatever you were reading); the inbox updates as each course merges.
 Unanswered **counts appear on sidebar rows only after** that course has threads
 in the store (otherwise “—”).
 
@@ -165,7 +208,11 @@ but none were returned. When `comment_count <= 1` (no real replies), that
 notice is omitted.
 Unanswered threads get a red highlight and a **ללא מענה** badge to the
 **left** of the title in the main list; the sidebar badge is the count of such
-threads in the last fetch for that course.
+threads in the last fetch for that course. On sidebar rows, when that count is
+greater than 0 it is shown as a **red circle with a white number** (no message
+icon); a count of 0 is shown as plain text. Those courses also float to the top
+of the sidebar while keeping relative order within the unanswered / answered
+groups.
 
 On threads that would otherwise be unanswered, the card’s action button is
 **אין צורך במענה** (replaces the old Raw JSON toggle). Clicking it stores
@@ -181,7 +228,24 @@ title (and still never get **ללא מענה**). Tagged thread/reply cards keep 
 soft tint fill matching the badge color; untagged cards use a white background.
 
 Each loaded thread includes full reply trees when available (merged from
-endorsed/non-endorsed comment lists). A temporary **request stats** line in the
+endorsed/non-endorsed comment lists). Reply hydration is **bounded** per thread
+(`MAX_COMMENT_DEPTH = 4` levels and `MAX_CHILD_FETCHES_PER_THREAD = 60` child
+requests in `forumThreadsCore.ts`). Open edX discussions are only two levels
+deep, so these caps never truncate real replies; they exist so a busy course
+(e.g. the Python intro) or a thread whose API echoes comments back can’t fan
+out into an unbounded request chain that makes a poll appear to hang forever.
+Child **fetches** only run for top-level responses (`depth === 0`): when a
+student replies *on* a staff response, Campus IL sets `child_count > 0` on that
+response, and a further child-of-child fetch is what used to echo the parent
+and render the same reply nested inside itself. `fetchChildComments` also keeps
+only rows whose `parent_id` matches the requested parent.
+In addition to the depth/fetch caps, `hydrateCommentTree` tracks the **ancestor
+path** (both comment ids and a content signature of `author_label` + body) and
+drops any fetched child that matches an ancestor or a same-id sibling.
+The UI also runs `sanitizeCommentForest` on load / merge / render
+(`src/lib/commentTree.ts`) so already-cached bad trees in `localStorage` are
+cleaned without requiring a re-poll.
+A temporary **request stats** line in the
 main-column header shows login vs forum API call counts after each fetch.
 Thread titles link to campus IL
 (`app.campus.gov.il/discussions/.../posts/{id}`); the **Open in forum**
@@ -242,7 +306,11 @@ is skipped.
   alter course or forum data.
 - **API volume**: Each course fetch logs in (unless using cookies) and
   may issue dozens of requests when loading full reply trees for several
-  threads. Use fewer threads while testing; open one course at a time.
+  threads. Reply hydration is capped per thread (see **depth / child-fetch
+  budget** above) so a single heavy or misbehaving thread cannot balloon the
+  request count. Use fewer threads while testing; open one course at a time.
+  Busy courses can still take up to the 3-minute client timeout on the first
+  seed — prefer **Use browser cookies** and keep **threads to load** low (3).
 - **JWT cookies vs sessionid**: Campus IL browser logins often expose
   `edx-jwt-cookie-header-payload` + `edx-jwt-cookie-signature` instead of
   `sessionid`. The app reconstitutes these into an `Authorization: JWT …`

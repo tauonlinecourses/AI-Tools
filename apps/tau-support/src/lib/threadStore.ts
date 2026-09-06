@@ -5,6 +5,7 @@
  */
 
 import type { ForumThread } from "./types";
+import { sanitizeCommentForest } from "./commentTree";
 
 export const THREAD_STORE_KEY = "tau-support-thread-store-v1";
 export const THREAD_STORE_VERSION = 1;
@@ -79,17 +80,47 @@ export function loadThreadStore(): ThreadStore {
     if (!raw) return emptyThreadStore();
     const parsed: unknown = JSON.parse(raw);
     if (!isThreadStore(parsed)) return emptyThreadStore();
-    return parsed;
+    // Strip self-echo comment trees saved before the nesting guards existed.
+    const courses: ThreadStore["courses"] = {};
+    for (const [courseId, bucket] of Object.entries(parsed.courses)) {
+      const threads: CourseThreadBucket["threads"] = {};
+      for (const [threadId, entry] of Object.entries(bucket.threads)) {
+        threads[threadId] = {
+          ...entry,
+          thread: {
+            ...entry.thread,
+            comments: sanitizeCommentForest(entry.thread.comments),
+          },
+        };
+      }
+      courses[courseId] = { ...bucket, threads };
+    }
+    return { ...parsed, courses };
   } catch {
     return emptyThreadStore();
   }
 }
 
-export function saveThreadStore(store: ThreadStore): void {
+export type SaveThreadStoreResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+export function saveThreadStore(store: ThreadStore): SaveThreadStoreResult {
   try {
     localStorage.setItem(THREAD_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // ignore quota / private mode
+    return { ok: true };
+  } catch (err) {
+    const quota =
+      err instanceof DOMException &&
+      (err.name === "QuotaExceededError" ||
+        err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        err.code === 22);
+    return {
+      ok: false,
+      message: quota
+        ? "אין מקום לשמור את השרשורים בדפדפן (localStorage מלא). מחקו נתונים או טענו פחות שרשורים."
+        : "שמירת השרשורים נכשלה. ייתכן שהדפדפן חוסם localStorage.",
+    };
   }
 }
 
@@ -180,7 +211,10 @@ export function mergeCoursePoll(
 
     if (!existing) {
       threads[incoming.id] = {
-        thread: incoming,
+        thread: {
+          ...incoming,
+          comments: sanitizeCommentForest(incoming.comments),
+        },
         fetchedAt: now,
         seenAt: seed ? now : null,
         isNew: !seed,
@@ -194,10 +228,11 @@ export function mergeCoursePoll(
       ...existing.thread,
       ...incoming,
       // Keep prior comments when the poll returned a summary without replies.
-      comments:
+      comments: sanitizeCommentForest(
         incoming.comments !== undefined
           ? incoming.comments
-          : existing.thread.comments,
+          : existing.thread.comments
+      ),
       comments_error:
         incoming.comments_error !== undefined
           ? incoming.comments_error

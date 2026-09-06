@@ -1,4 +1,7 @@
+import { useEffect, useMemo, useRef } from "react";
+import { Spinner } from "@workspace/ui";
 import type { CourseEntry } from "../lib/courses";
+import type { CheckAllPhase } from "../lib/checkAllRun";
 
 export const INBOX_SELECTION = "__inbox__";
 
@@ -13,6 +16,12 @@ export type CourseCacheEntry =
     }
   | { status: "idle"; lastCheckedAt?: string | null };
 
+export interface CheckAllSidebarState {
+  courseId: string | null;
+  phase: CheckAllPhase;
+  elapsedSeconds?: number;
+}
+
 interface CourseSidebarProps {
   courses: CourseEntry[];
   /** Course id, `INBOX_SELECTION`, or null. */
@@ -21,13 +30,16 @@ interface CourseSidebarProps {
   inboxNewCount: number;
   onSelectInbox: () => void;
   onSelect: (courseId: string) => void;
+  /** Snapshot of sidebar order for the duration of a check-all run. */
+  frozenCourseIds?: string[] | null;
+  checkAll?: CheckAllSidebarState | null;
 }
 
-function formatLastCheckedAt(iso?: string | null): string | null {
+function formatLastCheckedDate(iso?: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("he-IL");
+  return d.toLocaleDateString("he-IL");
 }
 
 function MessageIcon({ className }: { className?: string }) {
@@ -56,8 +68,45 @@ export function CourseSidebar({
   inboxNewCount,
   onSelectInbox,
   onSelect,
+  frozenCourseIds,
+  checkAll,
 }: CourseSidebarProps) {
   const inboxSelected = selectedId === INBOX_SELECTION;
+  const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
+
+  const sortedCourses = useMemo(() => {
+    if (frozenCourseIds && frozenCourseIds.length > 0) {
+      const byId = new Map(courses.map((course) => [course.id, course]));
+      return frozenCourseIds
+        .map((id) => byId.get(id))
+        .filter((course): course is CourseEntry => Boolean(course));
+    }
+
+    const withUnanswered: CourseEntry[] = [];
+    const withoutUnanswered: CourseEntry[] = [];
+    for (const course of courses) {
+      const entry = cache[course.id];
+      const hasUnanswered =
+        entry?.status === "ready" && entry.unansweredCount > 0;
+      if (hasUnanswered) {
+        withUnanswered.push(course);
+      } else {
+        withoutUnanswered.push(course);
+      }
+    }
+    // Preserve original list order within each group.
+    return [...withUnanswered, ...withoutUnanswered];
+  }, [courses, cache, frozenCourseIds]);
+
+  const activeCourseId = checkAll?.courseId ?? null;
+
+  useEffect(() => {
+    if (!activeCourseId) return;
+    rowRefs.current[activeCourseId]?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [activeCourseId]);
 
   return (
     <aside
@@ -94,25 +143,45 @@ export function CourseSidebar({
           </button>
         </li>
 
-        {courses.map((course) => {
+        {sortedCourses.map((course) => {
           const entry = cache[course.id];
           const selected = selectedId === course.id;
           const title = course.nameHe || course.name;
-          const lastCheckedLabel = formatLastCheckedAt(entry?.lastCheckedAt);
+          const lastCheckedLabel = formatLastCheckedDate(entry?.lastCheckedAt);
+          const fetching =
+            Boolean(checkAll?.courseId) && checkAll?.courseId === course.id;
+          const syncing =
+            !fetching &&
+            (entry?.status === "loading" || entry?.status === "syncing");
+
+          let rowClass = "bg-transparent hover:bg-black/[0.04]";
+          if (fetching) {
+            rowClass = "bg-amber-50 hover:bg-amber-50";
+          } else if (selected) {
+            rowClass = "bg-blue-50 hover:bg-blue-50";
+          }
 
           return (
-            <li key={course.id} className="border-b border-surface-200">
+            <li
+              key={course.id}
+              ref={(node) => {
+                rowRefs.current[course.id] = node;
+              }}
+              className="border-b border-surface-200"
+            >
               <button
                 type="button"
                 onClick={() => onSelect(course.id)}
-                className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${
-                  selected ? "bg-blue-50" : "bg-transparent hover:bg-black/[0.04]"
-                }`}
+                className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${rowClass}`}
               >
                 <span className="flex items-start justify-between gap-2">
                   <span
                     className={`min-w-0 text-sm font-semibold leading-snug ${
-                      selected ? "text-blue-800" : "text-blue-700"
+                      fetching
+                        ? "text-amber-950"
+                        : selected
+                          ? "text-blue-800"
+                          : "text-blue-700"
                     }`}
                   >
                     {title}
@@ -124,21 +193,26 @@ export function CourseSidebar({
                       </span>
                     ) : null}
                     <span className="flex items-center gap-1">
-                      <MessageIcon className="text-surface-400" />
-                      {entry?.status === "loading" ||
-                      entry?.status === "syncing" ? (
+                      {fetching ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
+                          <Spinner size="sm" />
+                          <span>בודק כעת</span>
+                        </span>
+                      ) : syncing ? (
                         <span>טוען…</span>
                       ) : entry?.status === "ready" ? (
-                        <span
-                          className={
-                            entry.unansweredCount > 0
-                              ? "font-semibold text-red-700"
-                              : undefined
-                          }
-                          title="הודעות ללא מענה בטעינה האחרונה"
-                        >
-                          {entry.unansweredCount}
-                        </span>
+                        entry.unansweredCount > 0 ? (
+                          <span
+                            className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-semibold leading-none text-white"
+                            title="הודעות ללא מענה בטעינה האחרונה"
+                          >
+                            {entry.unansweredCount}
+                          </span>
+                        ) : (
+                          <span title="הודעות ללא מענה בטעינה האחרונה">
+                            {entry.unansweredCount}
+                          </span>
+                        )
                       ) : entry?.status === "error" ? (
                         <span className="text-danger">שגיאה</span>
                       ) : (
@@ -147,6 +221,11 @@ export function CourseSidebar({
                     </span>
                   </span>
                 </span>
+                {fetching && checkAll?.elapsedSeconds != null ? (
+                  <span className="text-xs font-medium text-amber-800">
+                    כבר {checkAll.elapsedSeconds} שנ׳
+                  </span>
+                ) : null}
                 <span className="text-xs text-surface-400">
                   מעודכן לתאריך:{" "}
                   {lastCheckedLabel ?? (

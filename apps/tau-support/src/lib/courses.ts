@@ -16,6 +16,8 @@ export interface CourseEntry {
   /**
    * Technical-help forum category name as it appears in the campus IL
    * discussions URL after `/category/`. Can differ per course.
+   * If missing in the course, the server also tries
+   * "פורום בעיות טכניות" and "בעיות טכניות".
    */
   forumCategory: string;
 }
