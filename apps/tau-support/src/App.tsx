@@ -6,11 +6,12 @@ import {
   INBOX_SELECTION,
   type CourseCacheEntry,
 } from "./components/CourseSidebar";
-import { EmptySelection } from "./components/EmptySelection";
+import { HomeDashboard } from "./components/HomeDashboard";
 import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
 import { fetchForumThreads, fetchLmsLogin, hasReusableSession, type LmsSessionCredentials } from "./lib/api";
 import {
+  applyRemoteUiFlagsToStore,
   hydrateThreadStoreFromSupabase,
   mergeLocalUiFlags,
 } from "./lib/supabaseHydrate";
@@ -25,20 +26,23 @@ import {
   checkAllStopMessage,
   classifyCheckAllStop,
   clearCheckAllCursor,
-  formatElapsedHe,
   hasIncompleteCheckAll,
   isBrowserOffline,
   isCaptchaError,
+  lastCheckAllFromSummary,
   loadCheckAllCursor,
+  loadLastCheckAllRun,
   refreshCheckAllLock,
   releaseCheckAllLock,
   saveCheckAllCursor,
+  saveLastCheckAllRun,
   tryAcquireCheckAllLock,
   waitCheckAllGap,
   type CheckAllCursor,
   type CheckAllProgress,
   type CheckAllStopKind,
   type CheckAllSummary,
+  type LastCheckAllRun,
 } from "./lib/checkAllRun";
 import { COURSES, findCourseById } from "./lib/courses";
 import {
@@ -152,29 +156,6 @@ function formatFetchError(err: unknown): string {
 const AUTH_REQUIRED_MESSAGE =
   "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT) בהגדרות, או כבו את ״Use browser cookies״ והגדירו LMS_USERNAME / LMS_PASSWORD בשרת (התחברות חד-פעמית לכל הריצה).";
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-function RequestStatsLine({
-  stats,
-}: {
-  stats: NonNullable<ForumThreadsResponse["requestStats"]>;
-}) {
-  const authLabel = stats.usedCookies
-    ? "browser cookies (no password login)"
-    : `${stats.loginRequests} login request${stats.loginRequests === 1 ? "" : "s"}`;
-
-  return (
-    <p className="text-[11px] leading-snug text-surface-400" dir="ltr">
-      This run: {authLabel} · {stats.forumApiRequests} forum API request
-      {stats.forumApiRequests === 1 ? "" : "s"} · {stats.totalRequests} total ·{" "}
-      {formatDuration(stats.durationMs)}
-    </p>
-  );
-}
-
 function courseDisplayName(courseId: string): string {
   const course = findCourseById(courseId);
   return course?.nameHe || course?.name || courseId;
@@ -245,9 +226,6 @@ export default function App() {
   );
   const [checkingAll, setCheckingAll] = useState(false);
   const [checkAllError, setCheckAllError] = useState<string | null>(null);
-  const [checkAllStats, setCheckAllStats] = useState<
-    ForumThreadsResponse["requestStats"] | null
-  >(null);
   const [checkAllProgress, setCheckAllProgress] =
     useState<CheckAllProgress | null>(null);
   const [checkAllSummary, setCheckAllSummary] =
@@ -258,6 +236,9 @@ export default function App() {
   const [checkAllFrozenOrder, setCheckAllFrozenOrder] = useState<
     string[] | null
   >(null);
+  const [lastCheckAllRun, setLastCheckAllRun] = useState<LastCheckAllRun | null>(
+    () => loadLastCheckAllRun()
+  );
   const [elapsedTick, setElapsedTick] = useState(0);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
 
@@ -301,8 +282,15 @@ export default function App() {
           const merged = mergeLocalUiFlags(result.store, local);
           threadStoreRef.current = merged;
           setThreadStore(merged);
+          const markedCount = Object.values(merged.courses).reduce(
+            (sum, bucket) =>
+              sum +
+              Object.values(bucket.threads).filter((e) => e.noAnswerNeeded)
+                .length,
+            0
+          );
           console.info(
-            `[tau-support] Hydrated inbox from Supabase (${remoteThreadCount} thread(s)).`
+            `[tau-support] Hydrated inbox from Supabase (${remoteThreadCount} thread(s), ${markedCount} marked אין צורך במענה).`
           );
           // If local cache still held אין צורך במענה / seen flags that DB
           // defaults had not yet stored, push them up once.
@@ -338,7 +326,8 @@ export default function App() {
             void syncCourseThreadsToSupabase(
               courseId,
               entries,
-              bucket.lastCheckedAt
+              bucket.lastCheckedAt,
+              { includeUiState: true }
             ).then((res) => {
               if (!res.ok && !res.skipped) {
                 console.warn(
@@ -365,6 +354,43 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Re-pull shared UX flags (אין צורך במענה / seen) when returning to the tab
+  // so localhost picks up marks saved from another browser/session.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const refreshFlags = () => {
+      void applyRemoteUiFlagsToStore(threadStoreRef.current).then((result) => {
+        if (!result.ok) {
+          if (result.message) {
+            console.warn(
+              `[tau-support] UI-flag refresh failed: ${result.message}`
+            );
+          }
+          return;
+        }
+        if (result.store !== threadStoreRef.current) {
+          threadStoreRef.current = result.store;
+          setThreadStore(result.store);
+          console.info(
+            `[tau-support] Refreshed UI flags from Supabase (${result.marked ?? 0} marked אין צורך במענה).`
+          );
+        }
+      });
+    };
+
+    const onFocus = () => refreshFlags();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshFlags();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -408,7 +434,12 @@ export default function App() {
   const pollCourse = useCallback(
     async (
       courseId: string,
-      options?: { forceSeed?: boolean; session?: LmsSessionCredentials }
+      options?: {
+        forceSeed?: boolean;
+        session?: LmsSessionCredentials;
+        /** Walk every page until the watermark (single-course "טען תגובות חדשות"). */
+        fetchAllNew?: boolean;
+      }
     ) => {
       const currentAuth = authRef.current;
       const cookieAuth = cookieAuthFrom(currentAuth);
@@ -434,6 +465,7 @@ export default function App() {
       const bucket = getCourseBucket(threadStoreRef.current, courseId);
       const hasStored = Object.keys(bucket.threads).length > 0;
       const seed = options?.forceSeed === true || !bucket.lastCheckedAt;
+      const fetchAllNew = options?.fetchAllNew === true && !seed;
 
       setSyncByCourse((prev) => ({
         ...prev,
@@ -442,7 +474,9 @@ export default function App() {
 
       try {
         const parsedCount = Number.parseInt(currentAuth.threadCount, 10);
-        const pageSize = Number.isFinite(parsedCount) ? parsedCount : 3;
+        const settingsPageSize = Number.isFinite(parsedCount) ? parsedCount : 3;
+        // All-new: largest LMS page size so we cover the backlog in fewer requests.
+        const pageSize = fetchAllNew ? 20 : settingsPageSize;
         const course = findCourseById(courseId);
         const categoryName = course?.forumCategory.trim() || undefined;
         const sessionCreds: LmsSessionCredentials | null = sessionOverride
@@ -458,7 +492,7 @@ export default function App() {
         const data = await fetchForumThreads(courseId, {
           categoryName,
           pageSize,
-          maxPages: seed ? 1 : 5,
+          maxPages: seed ? 1 : fetchAllNew ? 200 : 5,
           ...(seed
             ? {}
             : {
@@ -494,8 +528,9 @@ export default function App() {
         // Merge against the ref first (sync + localStorage must not wait on
         // React flushing setState — after `await`, the updater can be deferred
         // and a side-effect var inside it stays empty).
+        const beforeMerge = threadStoreRef.current;
         const next = mergeCoursePoll(
-          threadStoreRef.current,
+          beforeMerge,
           courseId,
           data.threads,
           mergeMeta
@@ -519,9 +554,27 @@ export default function App() {
           },
         }));
 
+        // If new activity cleared אין צורך במענה locally, push that clear to DB.
+        const beforeBucket = getCourseBucket(beforeMerge, courseId);
+        const afterBucket = getCourseBucket(next, courseId);
+        for (const [threadId, afterEntry] of Object.entries(
+          afterBucket.threads
+        )) {
+          const beforeEntry = beforeBucket.threads[threadId];
+          if (beforeEntry?.noAnswerNeeded && !afterEntry.noAnswerNeeded) {
+            void syncThreadUiStateToSupabase(threadId, {
+              noAnswerNeeded: false,
+              seenAt: afterEntry.seenAt ?? null,
+              isNew: Boolean(afterEntry.isNew),
+              isUpdated: Boolean(afterEntry.isUpdated),
+            });
+          }
+        }
+
         // Mirror the full course bucket (not only this poll's hits) so an
         // incremental run with 0 new threads still backfills Supabase.
         // Always pass lastCheckedAt so watermarks survive cross-browser hydrate.
+        // Content-only upsert — does not overwrite no_answer_needed / seen.
         const courseBucket = getCourseBucket(next, courseId);
         const toSync = Object.values(courseBucket.threads);
         if (toSync.length > 0 || courseBucket.lastCheckedAt) {
@@ -572,8 +625,12 @@ export default function App() {
   );
 
   const handleSelectCourse = useCallback((courseId: string) => {
-    // Selection only shows the local store — fetch via טען תגובות or בדוק הכל.
+    // Selection only shows the local store — fetch via טען תגובות חדשות or בדוק הכל.
     setSelectedId(courseId);
+  }, []);
+
+  const handleSelectHome = useCallback(() => {
+    setSelectedId(null);
   }, []);
 
   const handleSelectInbox = useCallback(() => {
@@ -582,7 +639,7 @@ export default function App() {
 
   const handleRefresh = useCallback(() => {
     if (!selectedId || selectedId === INBOX_SELECTION) return;
-    void pollCourse(selectedId);
+    void pollCourse(selectedId, { fetchAllNew: true });
   }, [pollCourse, selectedId]);
 
   const persistCursor = useCallback(
@@ -673,9 +730,8 @@ export default function App() {
       checkAllCancelRef.current = false;
       setCheckingAll(true);
       setCheckAllError(null);
-      setCheckAllStats(null);
       setCheckAllSummary(null);
-      setSelectedId((prev) => prev ?? INBOX_SELECTION);
+      setSelectedId(null);
       setCheckAllFrozenOrder(sidebarOrderIds);
       persistCursor({
         startedAt,
@@ -684,7 +740,6 @@ export default function App() {
       });
 
       let totalUpserted = 0;
-      let lastStats: ForumThreadsResponse["requestStats"] | null = null;
       const failedNames: string[] = [];
       let stopKind: CheckAllStopKind | undefined;
       let persistStopMessage: string | null = null;
@@ -729,9 +784,6 @@ export default function App() {
               completedCourseIds: [...completed],
               status: "in_progress",
             });
-            if (result.data?.requestStats) {
-              lastStats = result.data.requestStats;
-            }
           } else if ("persistError" in result && result.persistError) {
             persistStopMessage = result.message;
             stopKind = "persist";
@@ -800,8 +852,10 @@ export default function App() {
           incomplete,
         };
 
-        setCheckAllStats(lastStats);
         setCheckAllSummary(summary);
+        const lastRun = lastCheckAllFromSummary(summary);
+        saveLastCheckAllRun(lastRun);
+        setLastCheckAllRun(lastRun);
         setCheckAllError(
           stopKind === "persist" && persistStopMessage
             ? `${checkAllStopMessage("persist")} ${persistStopMessage}`
@@ -943,7 +997,7 @@ export default function App() {
     ? syncByCourse[selectedCourseId]
     : undefined;
   const showingInbox = selectedId === INBOX_SELECTION;
-  const isSyncingSelected = selectedSync?.status === "syncing";
+  const showingHome = selectedId === null;
   const canResumeCheckAll = hasIncompleteCheckAll(
     checkAllCursor,
     checkAllCourses.map((course) => course.id)
@@ -963,10 +1017,25 @@ export default function App() {
   const selectedNewCount = selectedCourseId
     ? countNewForCourse(threadStore, selectedCourseId)
     : 0;
-  const courseRequestStats =
-    selectedSync?.status === "ready"
-      ? selectedSync.lastResponse?.requestStats
-      : undefined;
+
+  const homeStats = useMemo(() => {
+    let unansweredCount = 0;
+    let noAnswerNeededCount = 0;
+    for (const course of checkAllCourses) {
+      const bucket = getCourseBucket(threadStore, course.id);
+      const entries = Object.values(bucket.threads);
+      unansweredCount += countUnanswered(entries);
+      for (const entry of entries) {
+        if (entry.noAnswerNeeded) noAnswerNeededCount += 1;
+      }
+    }
+    return {
+      totalCourses: checkAllCourses.length,
+      unansweredCount,
+      newCount: countNewAcrossStore(threadStore),
+      noAnswerNeededCount,
+    };
+  }, [checkAllCourses, threadStore]);
 
   return (
     <PageLayout
@@ -976,31 +1045,63 @@ export default function App() {
       toolDescriptionHe="ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
     >
       <div className="relative mx-auto flex w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
-        <button
-          type="button"
-          onClick={handleOpenSettings}
-          aria-label="הגדרות"
-          title="הגדרות"
-          className="absolute right-2 top-2 z-30 inline-flex h-8 w-8 items-center justify-center rounded-control border border-surface-200 bg-white text-surface-600 shadow-sm transition-colors hover:bg-surface-50 hover:text-surface-900"
-        >
-          <SettingsIcon />
-        </button>
-
         <div
           dir="rtl"
           className="flex min-h-[560px] flex-col md:h-[calc(100vh-6rem)] md:min-h-[480px]"
         >
-          <div className="relative z-20 flex shrink-0">
-            {/* Matches sidebar width so the course header sits only above the threads pane. */}
-            <div
-              className="hidden shrink-0 border-b border-surface-200 bg-white md:block md:w-[34%]"
-              aria-hidden
-            />
-            <div className="relative z-20 flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3 border-b border-r border-surface-200 bg-white px-4 py-2.5 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)]">
-              <div className="min-w-0 flex-1 ps-9 text-right md:ps-0">
-                {selectedId ? (
+          <div className="relative z-20 flex shrink-0 flex-col md:flex-row">
+            <div className="relative flex w-full shrink-0 border-b border-surface-200 bg-white md:w-[34%] md:border-e">
+              <button
+                type="button"
+                onClick={handleSelectHome}
+                className={`flex h-full min-h-full w-full items-center gap-2 py-2.5 pe-12 ps-3 text-right transition-colors ${
+                  showingHome
+                    ? "bg-sky-100 text-sky-950"
+                    : "text-surface-900 hover:bg-sky-50"
+                }`}
+              >
+                <svg
+                  className="shrink-0"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 10.5 12 3l9 7.5" />
+                  <path d="M5 9.5V21h14V9.5" />
+                </svg>
+                <span className="truncate text-lg font-semibold sm:text-xl">
+                  דף הבית
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenSettings}
+                aria-label="הגדרות"
+                title="הגדרות"
+                className="absolute left-2 top-1/2 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-control border border-surface-200 bg-white text-surface-600 shadow-sm transition-colors hover:bg-surface-50 hover:text-surface-900"
+              >
+                <SettingsIcon />
+              </button>
+            </div>
+            <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">
+              <div
+                className={`min-w-0 flex-1 text-right ${
+                  showingHome ? "flex h-full items-center" : ""
+                }`}
+              >
+                {showingHome ? (
+                  <p className="w-full truncate text-lg font-semibold leading-none text-surface-900 sm:text-xl">
+                    דף הבית
+                  </p>
+                ) : selectedId ? (
                   <>
-                    <p className="truncate text-sm font-semibold text-surface-900">
+                    <p className="truncate text-sm font-semibold leading-5 text-surface-900">
                       {showingInbox
                         ? "פיד של כל הקורסים"
                         : selectedCourse?.nameHe ||
@@ -1009,7 +1110,7 @@ export default function App() {
                     </p>
                     {showingInbox ? (
                       <p
-                        className="mt-0.5 text-xs text-surface-600"
+                        className="mt-0.5 truncate text-xs leading-4 text-surface-600"
                         dir="rtl"
                       >
                         <span className="font-semibold text-surface-900">
@@ -1033,7 +1134,7 @@ export default function App() {
                       </p>
                     ) : (
                       <p
-                        className="mt-0.5 text-xs text-surface-600"
+                        className="mt-0.5 truncate text-xs leading-4 text-surface-600"
                         dir="rtl"
                       >
                         <span className="font-semibold text-surface-900">
@@ -1052,46 +1153,8 @@ export default function App() {
                         תגובות חדשות מפעם שעברה
                       </p>
                     )}
-                    {showingInbox && checkAllStats ? (
-                      <div className="mt-1">
-                        <RequestStatsLine stats={checkAllStats} />
-                      </div>
-                    ) : null}
-                    {!showingInbox && courseRequestStats ? (
-                      <div className="mt-1">
-                        <RequestStatsLine stats={courseRequestStats} />
-                      </div>
-                    ) : null}
-                    {checkingAll && checkAllProgress ? (
-                      <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-600">
-                        <Spinner size="sm" />
-                        <span>
-                          {checkAllProgress.phase === "stopping"
-                            ? "עוצר אחרי הקורס הנוכחי…"
-                            : `בודקים ${checkAllProgress.index}/${checkAllProgress.total} · ${courseDisplayName(checkAllProgress.courseId)}`}
-                          {checkAllProgress.phase !== "stopping" &&
-                          checkAllProgress.fetchStartedAt
-                            ? ` · ${formatElapsedHe(Date.now() - checkAllProgress.fetchStartedAt)}`
-                            : null}
-                        </span>
-                      </p>
-                    ) : isSyncingSelected ? (
-                      <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-500">
-                        <Spinner size="sm" />
-                        מסנכרן…
-                      </p>
-                    ) : inboxHydrating ? (
-                      <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-500">
-                        <Spinner size="sm" />
-                        טוען תיבה מ-Supabase…
-                      </p>
-                    ) : null}
                   </>
-                ) : (
-                  <p className="text-sm text-surface-600">
-                    בחרו פיד של כל הקורסים / קורס, או בדקו את כל הקורסים
-                  </p>
-                )}
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {showingInbox ? (
@@ -1139,41 +1202,9 @@ export default function App() {
                       ? "עוצר אחרי הקורס הנוכחי…"
                       : "עצור"}
                   </Button>
-                ) : canResumeCheckAll ? (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void handleCheckAll("resume")}
-                      disabled={inboxHydrating}
-                    >
-                      המשך בדיקה
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleCheckAll("restart")}
-                      disabled={inboxHydrating}
-                    >
-                      בדוק הכל מחדש
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void handleCheckAll("fresh")}
-                    disabled={inboxHydrating}
-                  >
-                    בדוק הכל
-                  </Button>
-                )}
+                ) : null}
                 {selectedCourseId ? (
                   <LoadThreadsButton
-                    threadCount={auth.threadCount}
-                    onThreadCountChange={(count) =>
-                      handleAuthChange({ threadCount: String(count) })
-                    }
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
                     disabled={
@@ -1207,10 +1238,31 @@ export default function App() {
               }
             />
 
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-[#E8E8EA] md:border-t-0">
+            <main
+              className={`flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 md:border-t-0 ${
+                showingHome ? "bg-white" : "bg-[#E8E8EA]"
+              }`}
+            >
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {!selectedId ? (
-                  <EmptySelection />
+                {showingHome ? (
+                  <HomeDashboard
+                    stats={homeStats}
+                    lastRun={lastCheckAllRun}
+                    checkingAll={checkingAll}
+                    canResume={canResumeCheckAll}
+                    progress={checkAllProgress}
+                    elapsedSeconds={checkAllElapsedSeconds}
+                    currentCourseName={
+                      checkAllProgress
+                        ? courseDisplayName(checkAllProgress.courseId)
+                        : null
+                    }
+                    summary={checkAllSummary}
+                    error={checkAllError}
+                    disabled={inboxHydrating}
+                    onCheckAll={(mode) => void handleCheckAll(mode)}
+                    onStop={handleStopCheckAll}
+                  />
                 ) : showingInbox ? (
                   <div className="flex flex-col gap-3 p-4">
                     {checkAllSummary || checkAllError ? (
@@ -1335,7 +1387,7 @@ export default function App() {
 
                     {selectedEntries.length === 0 ? (
                       <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
-                        אין שרשורים שמורים לקורס זה. לחצו טען תגובות או בדוק
+                        אין שרשורים שמורים לקורס זה. לחצו טען תגובות חדשות או בדוק
                         הכל.
                       </div>
                     ) : (

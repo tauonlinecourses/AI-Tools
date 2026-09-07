@@ -8,6 +8,7 @@ export const CHECK_ALL_GAP_MS = 3000;
 export const CHECK_ALL_CURSOR_KEY = "tau-support-check-all-cursor";
 export const CHECK_ALL_LOCK_KEY = "tau-support-check-all-lock";
 export const CHECK_ALL_LOCK_STALE_MS = 4 * 60 * 1000;
+export const LAST_CHECK_ALL_KEY = "tau-support-last-check-all";
 
 export type CheckAllPhase = "fetching" | "waiting" | "stopping";
 
@@ -39,6 +40,15 @@ export interface CheckAllSummary {
   upserted: number;
   failedNames: string[];
   stoppedReason?: CheckAllStopKind;
+  incomplete: boolean;
+}
+
+/** Durable last בדוק הכל / משוך שאלות חדשות run (localStorage). */
+export interface LastCheckAllRun {
+  completedAt: string;
+  scanned: number;
+  total: number;
+  upserted: number;
   incomplete: boolean;
 }
 
@@ -142,6 +152,49 @@ export function clearCheckAllCursor(): void {
   } catch {
     // ignore
   }
+}
+
+function isLastCheckAllRun(value: unknown): value is LastCheckAllRun {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.completedAt === "string" &&
+    typeof record.scanned === "number" &&
+    typeof record.total === "number" &&
+    typeof record.upserted === "number" &&
+    typeof record.incomplete === "boolean"
+  );
+}
+
+export function loadLastCheckAllRun(): LastCheckAllRun | null {
+  try {
+    const raw = localStorage.getItem(LAST_CHECK_ALL_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isLastCheckAllRun(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastCheckAllRun(run: LastCheckAllRun): void {
+  try {
+    localStorage.setItem(LAST_CHECK_ALL_KEY, JSON.stringify(run));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function lastCheckAllFromSummary(
+  summary: CheckAllSummary
+): LastCheckAllRun {
+  return {
+    completedAt: new Date().toISOString(),
+    scanned: summary.scanned,
+    total: summary.total,
+    upserted: summary.upserted,
+    incomplete: summary.incomplete,
+  };
 }
 
 function readLock(): CheckAllLock | null {

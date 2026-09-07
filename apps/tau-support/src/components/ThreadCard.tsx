@@ -31,14 +31,14 @@ function CommentBlock({
   const nest =
     depth > 0 ? "mr-4 mt-3 border-r-2 pr-3 text-right" : "mt-3 text-right";
   const box = isStaff
-    ? "rounded-control overflow-hidden border border-amber-200 bg-amber-50/70 p-3 ring-1 ring-amber-100"
+    ? "rounded-control overflow-hidden border border-amber-200 bg-amber-100 p-3"
     : "rounded-control overflow-hidden border border-surface-100 bg-white p-3";
 
   return (
     <div dir="rtl" className={`${nest} ${box} ${FORUM_RTL_CLASS}`}>
       <div className="mb-1 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
         {isStaff ? (
-          <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
             צוות
           </span>
         ) : null}
@@ -100,14 +100,14 @@ export function ThreadCard({
   }
 
   const cardTone = needsAnswer
-    ? "!bg-red-50/70 border-red-300 ring-1 ring-red-200"
+    ? "!bg-red-100 !border-red-300"
     : isStaffThread
-      ? "!bg-amber-50/70 border-amber-300 ring-1 ring-amber-200"
+      ? "!bg-amber-100 !border-amber-300"
       : noAnswerNeeded
-        ? "!bg-emerald-50/50 border-emerald-200 ring-1 ring-emerald-100"
+        ? "!bg-emerald-100 !border-emerald-300"
         : isNew || isUpdated
-          ? "!bg-blue-50/50 border-blue-200 ring-1 ring-blue-100"
-          : "!bg-white border-surface-200";
+          ? "!bg-blue-100 !border-blue-300"
+          : "!bg-white";
 
   return (
     <Card className={`rounded-control overflow-hidden shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] ${cardTone}`}>
@@ -143,22 +143,22 @@ export function ThreadCard({
                 </span>
               ) : null}
               {isUpdated && !isNew ? (
-                <span className="rounded-full bg-sky-200/90 px-2 py-0.5 text-[11px] font-semibold text-sky-900">
+                <span className="rounded-full bg-sky-200 px-2 py-0.5 text-[11px] font-semibold text-sky-900">
                   עודכן
                 </span>
               ) : null}
               {isStaffThread ? (
-                <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
                   צוות
                 </span>
               ) : null}
               {noAnswerNeeded ? (
-                <span className="rounded-full bg-emerald-200/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
+                <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
                   אין צורך במענה
                 </span>
               ) : null}
               {needsAnswer ? (
-                <span className="rounded-full bg-red-200/80 px-2 py-0.5 text-[11px] font-semibold text-red-900">
+                <span className="rounded-full bg-red-200 px-2 py-0.5 text-[11px] font-semibold text-red-900">
                   ללא מענה
                 </span>
               ) : null}

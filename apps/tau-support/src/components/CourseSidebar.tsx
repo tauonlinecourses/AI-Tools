@@ -24,7 +24,7 @@ export interface CheckAllSidebarState {
 
 interface CourseSidebarProps {
   courses: CourseEntry[];
-  /** Course id, `INBOX_SELECTION`, or null. */
+  /** Course id, `INBOX_SELECTION`, or null (home dashboard). */
   selectedId: string | null;
   cache: Record<string, CourseCacheEntry>;
   inboxNewCount: number;
@@ -118,25 +118,27 @@ export function CourseSidebar({
           <button
             type="button"
             onClick={onSelectInbox}
-            className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${
-              inboxSelected ? "bg-blue-50" : "bg-transparent hover:bg-black/[0.04]"
+            className={`flex h-full w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${
+              inboxSelected
+                ? "bg-sky-100"
+                : "bg-transparent hover:bg-sky-50"
             }`}
           >
             <span
               className={`flex items-center justify-between gap-2 text-sm font-semibold leading-snug ${
-                inboxSelected ? "text-blue-800" : "text-blue-700"
+                inboxSelected ? "text-sky-950" : "text-surface-900"
               }`}
             >
               <span>פיד של כל הקורסים</span>
               {inboxNewCount > 0 ? (
-                <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                <span className="rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
                   {inboxNewCount} חדש
                 </span>
               ) : null}
             </span>
             <span className="mt-0.5 flex items-center gap-2 text-xs text-surface-500">
               <span className="flex items-center gap-1">
-                <MessageIcon className="text-surface-400" />
+                <MessageIcon className="text-sky-600" />
                 <span>כל הקורסים</span>
               </span>
             </span>
@@ -154,11 +156,11 @@ export function CourseSidebar({
             !fetching &&
             (entry?.status === "loading" || entry?.status === "syncing");
 
-          let rowClass = "bg-transparent hover:bg-black/[0.04]";
+          let rowClass = "bg-transparent hover:bg-sky-50";
           if (fetching) {
-            rowClass = "bg-amber-50 hover:bg-amber-50";
+            rowClass = "bg-amber-100 hover:bg-amber-100";
           } else if (selected) {
-            rowClass = "bg-blue-50 hover:bg-blue-50";
+            rowClass = "bg-sky-100 hover:bg-sky-100";
           }
 
           return (
@@ -167,12 +169,12 @@ export function CourseSidebar({
               ref={(node) => {
                 rowRefs.current[course.id] = node;
               }}
-              className="border-b border-surface-200"
+              className="border-b border-surface-200 last:border-b-0"
             >
               <button
                 type="button"
                 onClick={() => onSelect(course.id)}
-                className={`flex w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${rowClass}`}
+                className={`flex h-full w-full flex-col gap-1 px-3 py-3 text-right transition-colors ${rowClass}`}
               >
                 <span className="flex items-start justify-between gap-2">
                   <span
@@ -180,21 +182,21 @@ export function CourseSidebar({
                       fetching
                         ? "text-amber-950"
                         : selected
-                          ? "text-blue-800"
-                          : "text-blue-700"
+                          ? "text-sky-950"
+                          : "text-surface-900"
                     }`}
                   >
                     {title}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-xs text-surface-500">
                     {entry?.status === "ready" && (entry.newCount ?? 0) > 0 ? (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+                      <span className="rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
                         {entry.newCount}
                       </span>
                     ) : null}
                     <span className="flex items-center gap-1">
                       {fetching ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-900">
                           <Spinner size="sm" />
                           <span>בודק כעת</span>
                         </span>
@@ -203,13 +205,16 @@ export function CourseSidebar({
                       ) : entry?.status === "ready" ? (
                         entry.unansweredCount > 0 ? (
                           <span
-                            className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-semibold leading-none text-white"
+                            className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full border border-rose-300 bg-rose-100 px-1.5 text-[11px] font-semibold leading-none text-rose-800"
                             title="הודעות ללא מענה בטעינה האחרונה"
                           >
                             {entry.unansweredCount}
                           </span>
                         ) : (
-                          <span title="הודעות ללא מענה בטעינה האחרונה">
+                          <span
+                            className="text-surface-400"
+                            title="הודעות ללא מענה בטעינה האחרונה"
+                          >
                             {entry.unansweredCount}
                           </span>
                         )
@@ -222,11 +227,11 @@ export function CourseSidebar({
                   </span>
                 </span>
                 {fetching && checkAll?.elapsedSeconds != null ? (
-                  <span className="text-xs font-medium text-amber-800">
-                    כבר {checkAll.elapsedSeconds} שנ׳
+                  <span className="text-xs font-medium text-amber-900">
+                    {checkAll.elapsedSeconds} שנ׳
                   </span>
                 ) : null}
-                <span className="text-xs text-surface-400">
+                <span className="text-xs text-surface-500">
                   מעודכן לתאריך:{" "}
                   {lastCheckedLabel ?? (
                     <span className="text-surface-300">—</span>

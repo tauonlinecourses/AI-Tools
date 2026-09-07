@@ -1674,8 +1674,10 @@ export async function fetchForumThreads(
     const since = options?.since?.trim() || undefined;
     const sinceMs = since ? activityTimestampMs(since) : 0;
     const useSince = Boolean(since && sinceMs > 0);
+    // Safety ceiling only — incremental polls stop at the since watermark.
+    // Allow enough pages to collect *all* newer threads for a busy course.
     const maxPages = Math.min(
-      20,
+      200,
       Math.max(1, options?.maxPages ?? (useSince ? 5 : 1))
     );
     const known = buildKnownThreadMap(options?.knownThreads);

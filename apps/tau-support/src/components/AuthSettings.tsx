@@ -88,9 +88,9 @@ export function AuthSettings({
         <div className="flex flex-col gap-3 px-4 py-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
-              label="Threads to load"
+              label="בדוק הכל page size"
               placeholder="3"
-              hint="Most recently active (1–20). Each loads full replies. Forum category comes from each course in courses.json."
+              hint="Page size for בדוק הכל only (1–20). טען תגובות חדשות always loads every newer thread for the selected course."
               value={values.threadCount}
               onChange={(e) => onChange({ threadCount: e.target.value })}
             />

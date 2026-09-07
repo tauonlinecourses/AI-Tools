@@ -407,10 +407,11 @@ export function listGlobalInbox(store: ThreadStore): GlobalInboxItem[] {
       items.push({ courseId, entry });
     }
   }
+  // All-courses feed: order by original post time (OP created_at), newest first.
   return items.sort(
     (a, b) =>
-      activityTimestampMs(threadActivityAt(b.entry.thread)) -
-      activityTimestampMs(threadActivityAt(a.entry.thread))
+      activityTimestampMs(b.entry.thread.created_at) -
+      activityTimestampMs(a.entry.thread.created_at)
   );
 }
 

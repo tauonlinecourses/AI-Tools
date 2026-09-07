@@ -155,8 +155,8 @@ function pruneToMax(
 
 /**
  * Merge local cache onto remote: DB owns shared UX flags.
- * `noAnswerNeeded` ORs local→remote once so pre-column local marks aren't lost.
- * seen / חדש prefer remote; local fills only when remote still has defaults.
+ * Prefer remote `noAnswerNeeded` / seen / חדש; local may fill only when remote
+ * still has all-default UI state (one-time migration from older local caches).
  */
 export function mergeLocalUiFlags(
   remote: ThreadStore,
@@ -172,19 +172,29 @@ export function mergeLocalUiFlags(
         threads[threadId] = entry;
         continue;
       }
-      const remoteHasSeenState =
-        entry.seenAt != null || entry.isNew || entry.isUpdated;
-      threads[threadId] = {
-        ...entry,
-        noAnswerNeeded: Boolean(
-          entry.noAnswerNeeded || localEntry.noAnswerNeeded
-        ),
-        seenAt: remoteHasSeenState
-          ? entry.seenAt
-          : (localEntry.seenAt ?? entry.seenAt),
-        isNew: remoteHasSeenState ? entry.isNew : localEntry.isNew,
-        isUpdated: remoteHasSeenState ? entry.isUpdated : localEntry.isUpdated,
-      };
+      const remoteHasUiState =
+        Boolean(entry.noAnswerNeeded) ||
+        entry.seenAt != null ||
+        entry.isNew ||
+        entry.isUpdated;
+      threads[threadId] = remoteHasUiState
+        ? {
+            ...entry,
+            // Remote true always wins; OR local only if remote is still false
+            // (covers DB default before a local mark was pushed up).
+            noAnswerNeeded: Boolean(
+              entry.noAnswerNeeded || localEntry.noAnswerNeeded
+            ),
+          }
+        : {
+            ...entry,
+            seenAt: localEntry.seenAt ?? entry.seenAt,
+            isNew: localEntry.isNew,
+            isUpdated: localEntry.isUpdated,
+            noAnswerNeeded: Boolean(
+              entry.noAnswerNeeded || localEntry.noAnswerNeeded
+            ),
+          };
     }
     // Prefer remote watermark; fall back to local if column missing / null.
     // If still null but we have threads, use newest fetchedAt so the next poll
@@ -206,6 +216,87 @@ export function mergeLocalUiFlags(
     };
   }
   return { version: remote.version, courses };
+}
+
+/**
+ * Pull only shared UX flags from Supabase and overlay onto an existing store.
+ * Used after load and on window focus so localhost picks up marks made elsewhere.
+ */
+export async function applyRemoteUiFlagsToStore(
+  store: ThreadStore
+): Promise<{ ok: boolean; store: ThreadStore; marked?: number; message?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { ok: false, store, message: "Supabase not configured" };
+  }
+
+  try {
+    const res = await supabase
+      .from("threads")
+      .select(
+        "campus_thread_id,course_id,no_answer_needed,seen_at,is_new,is_updated"
+      );
+    if (res.error) throw res.error;
+
+    const rows = (res.data ?? []) as Array<{
+      campus_thread_id: string;
+      course_id: string;
+      no_answer_needed: boolean | null;
+      seen_at: string | null;
+      is_new: boolean | null;
+      is_updated: boolean | null;
+    }>;
+
+    let marked = 0;
+    let changed = false;
+    const courses: ThreadStore["courses"] = { ...store.courses };
+
+    for (const row of rows) {
+      const bucket = courses[row.course_id];
+      if (!bucket) continue;
+      const entry = bucket.threads[row.campus_thread_id];
+      if (!entry) continue;
+
+      const noAnswerNeeded = Boolean(row.no_answer_needed);
+      const seenAt = row.seen_at ?? null;
+      const isNew = Boolean(row.is_new);
+      const isUpdated = Boolean(row.is_updated);
+      if (noAnswerNeeded) marked += 1;
+
+      if (
+        Boolean(entry.noAnswerNeeded) === noAnswerNeeded &&
+        (entry.seenAt ?? null) === seenAt &&
+        Boolean(entry.isNew) === isNew &&
+        Boolean(entry.isUpdated) === isUpdated
+      ) {
+        continue;
+      }
+
+      changed = true;
+      courses[row.course_id] = {
+        ...bucket,
+        threads: {
+          ...bucket.threads,
+          [row.campus_thread_id]: {
+            ...entry,
+            noAnswerNeeded,
+            seenAt,
+            isNew,
+            isUpdated,
+          },
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      store: changed ? { ...store, courses } : store,
+      marked,
+    };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to refresh UI flags";
+    return { ok: false, store, message };
+  }
 }
 
 /**

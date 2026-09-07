@@ -56,7 +56,7 @@ interface CourseRow {
   last_checked_at?: string | null;
 }
 
-interface ThreadRow {
+interface ThreadContentRow {
   campus_thread_id: string;
   course_id: string;
   title: string | null;
@@ -70,6 +70,10 @@ interface ThreadRow {
   last_activity_at: string | null;
   raw: Record<string, unknown>;
   synced_at: string;
+}
+
+/** Full thread row including shared inbox UX flags (backfill / explicit UI sync). */
+interface ThreadRow extends ThreadContentRow {
   no_answer_needed: boolean;
   seen_at: string | null;
   is_new: boolean;
@@ -113,11 +117,10 @@ function uiStateFromEntry(entry: StoredThreadEntry): ThreadUiState {
   };
 }
 
-function buildThreadRow(
+function buildThreadContentRow(
   courseId: string,
-  thread: ForumThread,
-  ui: ThreadUiState
-): ThreadRow {
+  thread: ForumThread
+): ThreadContentRow {
   const bodyText = toPlainText(thread.raw_body, thread.rendered_body);
   // Store the raw Open edX object without the hydrated comment tree — comments
   // live in the messages table, so we avoid duplicating (and bloating) them.
@@ -137,6 +140,16 @@ function buildThreadRow(
     last_activity_at: nullable(threadActivityAt(thread)),
     raw: rawThread as Record<string, unknown>,
     synced_at: new Date().toISOString(),
+  };
+}
+
+function buildThreadRow(
+  courseId: string,
+  thread: ForumThread,
+  ui: ThreadUiState
+): ThreadRow {
+  return {
+    ...buildThreadContentRow(courseId, thread),
     no_answer_needed: ui.noAnswerNeeded,
     seen_at: nullable(ui.seenAt),
     is_new: ui.isNew,
@@ -184,8 +197,15 @@ export async function syncThreadUiStateToSupabase(
         is_new: ui.isNew,
         is_updated: ui.isUpdated,
       })
-      .eq("campus_thread_id", threadId);
+      .eq("campus_thread_id", threadId)
+      .select("campus_thread_id");
     if (res.error) throw res.error;
+    if (!res.data?.length) {
+      return {
+        ok: false,
+        message: `No threads row for ${threadId} — poll/sync the course first so UI flags can persist.`,
+      };
+    }
     return { ok: true, threads: 1 };
   } catch (err) {
     const message =
@@ -194,23 +214,38 @@ export async function syncThreadUiStateToSupabase(
   }
 }
 
+export interface SyncCourseOptions {
+  /**
+   * When true, also write `no_answer_needed` / seen / חדש on upsert.
+   * Default false for polls so a stale localStorage cache cannot wipe DB marks.
+   * Use true for first-time backfill from local → remote.
+   */
+  includeUiState?: boolean;
+}
+
 /**
  * Upsert one course's polled threads (+ messages + Q↔A pairs) into Supabase.
  * Returns a result object; never throws.
  *
- * @param entries Stored inbox entries (includes shared UX flags).
+ * By default **does not** overwrite shared UX flags on `threads` — those are
+ * owned by `syncThreadUiStateToSupabase` / hydrate. Pass `includeUiState` when
+ * backfilling an empty remote from localStorage.
+ *
  * @param lastCheckedAt ISO watermark to store on `courses.last_checked_at`
  *   (drives incremental polls after hydrate-from-DB).
  */
 export async function syncCourseThreadsToSupabase(
   courseId: string,
   entries: StoredThreadEntry[],
-  lastCheckedAt?: string | null
+  lastCheckedAt?: string | null,
+  options?: SyncCourseOptions
 ): Promise<SyncResult> {
   if (!supabase) return { ok: false, skipped: true };
   if (entries.length === 0 && !lastCheckedAt) {
     return { ok: true, threads: 0, messages: 0, qaPairs: 0 };
   }
+
+  const includeUiState = options?.includeUiState === true;
 
   try {
     const course = findCourseById(courseId);
@@ -222,14 +257,18 @@ export async function syncCourseThreadsToSupabase(
       ...(lastCheckedAt ? { last_checked_at: lastCheckedAt } : {}),
     };
 
-    const threadRows: ThreadRow[] = [];
+    const threadRows: Array<ThreadContentRow | ThreadRow> = [];
     const messageRows: MessageRow[] = [];
     const qaRows: QaPairRow[] = [];
     const qaDeleteThreadIds: string[] = [];
 
     for (const entry of entries) {
       const thread = entry.thread;
-      threadRows.push(buildThreadRow(courseId, thread, uiStateFromEntry(entry)));
+      threadRows.push(
+        includeUiState
+          ? buildThreadRow(courseId, thread, uiStateFromEntry(entry))
+          : buildThreadContentRow(courseId, thread)
+      );
       messageRows.push(...buildMessageRows(thread));
 
       // Unknown comment forest: persist thread/messages, leave qa_pairs alone
@@ -265,6 +304,7 @@ export async function syncCourseThreadsToSupabase(
     if (courseRes.error) throw courseRes.error;
 
     // 2. Threads (skip empty upsert — still allow watermark-only course update).
+    //    Content-only upsert leaves no_answer_needed / seen columns untouched.
     if (threadRows.length > 0) {
       const threadRes = await supabase
         .from("threads")

@@ -20,7 +20,7 @@ export function ForumBody({ rendered_body, raw_body }: ForumBodyProps) {
   }
 
   return (
-    <p dir="rtl" className="text-sm text-surface-700 whitespace-pre-wrap text-right">
+    <p dir="rtl" className="text-sm font-normal text-surface-800 whitespace-pre-wrap text-right">
       {html}
     </p>
   );

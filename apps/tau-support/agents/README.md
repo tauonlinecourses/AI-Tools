@@ -89,9 +89,11 @@ platform.
   (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`). Local cache may fill
   gaps once when DB still has defaults.
 - `../src/lib/supabaseSync.ts` — After each successful course poll, upserts
-  `courses` (incl. `last_checked_at`) / `threads` (incl. UX flags) /
-  `messages` / `qa_pairs`. Toggle **אין צורך במענה** / mark-seen patches
-  those columns immediately. Failures are non-blocking.
+  `courses` (incl. `last_checked_at`) / thread **content** / `messages` /
+  `qa_pairs`. Poll upserts do **not** overwrite `no_answer_needed` / seen /
+  חדש (those are owned by toggle/mark-seen patches + hydrate). Toggle
+  **אין צורך במענה** / mark-seen patches those columns immediately. Failures
+  are non-blocking.
 - `../supabase/schema.sql` — Canonical Phase 1 schema (source of truth).
 - `../supabase/migrations/001_init.sql` — Applyable copy of that schema for a
   fresh tau-support project.
@@ -117,7 +119,14 @@ viewport fill via `calc(100vh-6rem)`; not full-bleed) with an
 RTL split layout inspired by the campus IL forum list:
 
 - **Right sidebar:** white course list with a tight left-edge
-  drop shadow; **פיד של כל הקורסים** (global inbox) plus all courses from
+  drop shadow. Rows use the same solid pastel language as the home stats
+  (`sky-100` selected full-bleed, `amber-100` while **בודק כעת**, `rose`
+  unanswered badges, `violet` new-count badges). The header
+  strip above the list (same width as the sidebar)
+  has **דף הבית** (`sky-100` when selected) and the **settings** gear on the
+  visual left of that strip.
+  The scrollable list starts with **פיד של כל הקורסים** (global inbox) plus all
+  courses from
   `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**).
   Add courses by editing that JSON file. Each course’s technical-help forum
   name (`forumCategory`, matching the campus IL URL after `/category/`) can
@@ -127,27 +136,49 @@ RTL split layout inspired by the campus IL forum list:
   matches for topic filtering and thread URLs.
   Inbox and course rows show **חדש** counts from the local store. Courses with
   unanswered threads (`unansweredCount > 0`) are sorted to the **top** of the
-  list; remaining courses keep their original `courses.json` order. **בדוק הכל**
+  list; remaining courses keep their original `courses.json` order. **בדוק הכל** /
+  **משוך שאלות חדשות**
   uses that same order (unanswered first, then catalog order) and **freezes**
   it for the run so the current row does not jump. Only the course currently
   in queue is marked **בודק כעת** (amber row + elapsed time), including the
   short pause before its fetch starts. No separate sidebar header line above
   the list.
-- **Main pane:** soft light grey thread area (`#E8E8EA`); empty state until
-  inbox/course is selected; then stored
-  threads (survives reload). Global inbox is a flat list across courses.
-  In **פיד של כל הקורסים**, a header toggle filters **הכל** vs **ללא מענה**
+- **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
+  white on **home**. Default selection is
+  **home** (`HomeDashboard`): friendly greeting **שלום אחרי/ת תמיכה של חודש
+  {month} 👋**, then **העדכון האחרון היה ב:** from `localStorage`
+  (`tau-support-last-check-all`), a white **משוך שאלות חדשות** CTA (same flow
+  as **בדוק הכל**), and large colorful stat boxes (total courses, unanswered,
+  new activity, marked לא צרכים מענה / `noAnswerNeeded`).
+  While a check-all run is active the home pane shows an animated pipeline
+  (התחברות → סריקת קורסים → סיום) with progress bar, current course, and
+  elapsed time; the sidebar **בודק כעת** markers stay. After a run finishes,
+  a **דוח ריצה** above the CTA shows threads saved from courses
+  scanned (from the in-memory summary or persisted last-run). Selecting
+  inbox/course
+  shows stored threads (survives reload). Global inbox is a flat list across
+  courses,
+  ordered by original post time (`created_at`, newest first) — not last
+  activity. In **פיד של כל הקורסים**, a header toggle filters **הכל** vs
+  **ללא מענה**
   (same unanswered rules as course rows / cards). Thread cards use
   `rounded-control`, a small downward drop shadow, and slightly larger type
   (`text-base` for titles and forum bodies).
 - **Course header** sits only above the left thread pane (not over the
   sidebar). The right sidebar starts below that header row. Header has a
   right-edge border and a drop shadow under the bar. The outer hub box also
-  uses a page-level drop shadow. Header shows compact counts
+  uses a page-level drop shadow. On home the header is **דף הבית**. On
+  inbox/course it shows compact counts
   (`N שרשורים שמורים · N ללא מענה · N תגובות חדשות מפעם שעברה`) — inbox
-  includes the unanswered count too — and,
-  temporarily, the last-run request/cookies stats line under that.
-- **Toolbar:** **בדוק הכל** runs a sequential poll of every catalog course
+  includes the unanswered count too. Header height is fixed to that title +
+  counts pair only (no fetch request-stats / sync status lines in the header).
+- **Toolbar / check-all:** On home the primary CTA is **משוך שאלות חדשות**
+  (dashboard); the header keeps **עצור** while a run is active. Inbox and
+  course headers do not show **בדוק הכל** (courses still have
+  **טען תגובות חדשות עבור קורס זה**).
+  Starting a run navigates to home so the animated flow is visible.
+  **בדוק הכל** / **משוך שאלות חדשות** runs a sequential poll of every catalog
+  course
   except the sandbox, in sidebar order (unanswered first). Auth is either
   **browser cookies** (paste CSRF + JWT in Settings) **or** env password with
   a **single** `POST /api/lms-login` at the start of the run (server uses
@@ -156,7 +187,7 @@ RTL split layout inspired by the campus IL forum list:
   server does not password-login again. CAPTCHA/auth failure on that login
   aborts before any course is polled. Derived session may sit in
   `sessionStorage` for **המשך בדיקה** in the same tab; a 401 clears it.
-  Single-course **טען תגובות** with cookies off still password-logs in once
+  Single-course **טען תגובות חדשות** with cookies off still password-logs in once
   per request. Courses run one at a time with a
   short pause between them (the UI stays on **בודק כעת** for the next
   course — no “waiting” / **הבא בתור** copy). Each successful course is written to
@@ -169,20 +200,22 @@ RTL split layout inspired by the campus IL forum list:
   The run **aborts immediately** on CAPTCHA, 401, offline, or a persist
   (quota) failure. Per-course timeouts / missing category are recorded and
   the run continues. A second tab is blocked by `tau-support-check-all-lock`.
+  When a run ends (complete or incomplete), `tau-support-last-check-all` stores
+  `completedAt` plus scanned/total/upserted/incomplete for the home dashboard.
   Header shows `בודקים N/total · course name` and elapsed seconds.
-  Per-course **טען N תגובות אחרונות** (`LoadThreadsButton`, e.g.
-  **טען 5 תגובות אחרונות**) still polls only the selected course. The label
-  shows the chosen count. A small chevron on the **visual left** of that
-  control opens a menu to pick how many threads to fetch (**3 / 5 / 10**,
-  default 3); the choice updates `auth.threadCount` used by `pollCourse`.
+  Per-course **טען תגובות חדשות עבור קורס זה** (`LoadThreadsButton`) polls only the
+  selected course and walks **all** newer threads since `lastCheckedAt`
+  (page size 20, up to 200 pages, stops at the watermark). **בדוק הכל** still
+  uses a shorter incremental window (settings page size, up to 5 pages).
   Existing cards stay visible while syncing. Each course row shows
   **מעודכן לתאריך** as a date only (no clock time) from that course’s
   `lastCheckedAt` watermark (or — if never polled).
-- **Settings popup:** opened from a **gear icon button in the top-right
-  corner of the hub box** (`SettingsIcon` in `App.tsx`). Clicking it opens a
-  modal dialog (`AuthSettings`, `open`/`onClose` props) with threads to load
-  (still editable there; toolbar presets are 3/5/10, default 3) and cookie
-  auth; close via the ✕, the **Done** button, the backdrop, or the `Esc` key.
+- **Settings popup:** opened from the **gear icon in the sidebar header
+  strip** (visual left of **דף הבית**; `SettingsIcon` in `App.tsx`). Clicking it
+  opens a
+  modal dialog (`AuthSettings`, `open`/`onClose` props) with page size used by
+  **בדוק הכל** and cookie auth; close via the ✕, the **Done** button, the
+  backdrop, or the `Esc` key.
   The dialog open state is local (not persisted). Forum category is **not**
   global — it comes from each course’s `forumCategory` in `courses.json`, with
   the Hebrew technical-help name fallbacks above when the configured label is
@@ -195,23 +228,26 @@ RTL split layout inspired by the campus IL forum list:
 cache (instant paint + offline / missing-env fallback).
 
 On load the app hydrates from Supabase (`supabaseHydrate`), including shared
-thread states (**אין צורך במענה**, seen / חדש). Local-only leftovers may fill
-DB defaults once and are then written back. If Supabase is empty but this
-browser already has a local cache, that cache is kept and **backfilled** to
-Supabase so other sessions can load it next time. If hydrate fails or env is
-missing, the UI keeps the localStorage cache.
+thread states (**אין צורך במענה**, seen / חדש). Returning to the tab also
+re-pulls those UX flags so another browser’s marks show up on localhost.
+Local-only leftovers may fill DB defaults once and are then written back. If
+Supabase is empty but this browser already has a local cache, that cache is
+kept and **backfilled** to Supabase so other sessions can load it next time.
+If hydrate fails or env is missing, the UI keeps the localStorage cache.
 
 Poll merge rules:
 
 1. **First poll** for a course (no `lastCheckedAt`): fetch the top page, seed
    the store **without** flooding “חדש” badges, set the watermark.
-2. **Later polls** (`בדוק הכל` / **טען תגובות**): send `since=lastCheckedAt`
+2. **Later polls** (`בדוק הכל` / **טען תגובות חדשות**): send `since=lastCheckedAt`
    and known thread snapshots. The server walks pages until activity ≤
    watermark, skips unchanged known ids, and hydrates comments only for
-   new/updated threads. The client **merges** into the in-memory store +
-   localStorage immediately after each course (does not replace; does not wait
-   for the whole check-all run), then mirrors the course bucket to Supabase
-   (including `courses.last_checked_at`).
+   new/updated threads. **טען תגובות חדשות** keeps walking until the watermark
+   (all new threads for that course); **בדוק הכל** uses a shorter page budget.
+   The client **merges** into the in-memory store + localStorage immediately
+   after each course (does not replace; does not wait for the whole check-all
+   run), then mirrors the course bucket to Supabase (including
+   `courses.last_checked_at`).
 3. **New vs updated:** unknown `thread.id` → `isNew`; known id with newer
    `last_activity_at` / higher `comment_count` → `isUpdated`. Opening a card
    clears those flags (`seenAt`).
@@ -233,7 +269,7 @@ Sync is fire-and-forget. If `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are
 missing, hydrate/sync are skipped (console warning) and the poll still
 succeeds against localStorage. Sync errors are logged with
 `[tau-support] Supabase sync failed…` and successes with
-`[tau-support] Supabase synced N thread(s)…`. Neither aborts **טען תגובות** /
+`[tau-support] Supabase synced N thread(s)…`. Neither aborts **טען תגובות חדשות** /
 **בדוק הכל**.
 
 #### Schema
@@ -320,7 +356,7 @@ polymorphic across sources):
 
 Courses are **not** fetched on page load or on course click. Clicking a course
 (or **פיד של כל הקורסים**) only shows what is already in the local store. Fetching
-happens when you click **טען תגובות** (selected course) or **בדוק הכל** /
+happens when you click **טען תגובות חדשות** (selected course) or **בדוק הכל** /
 **המשך בדיקה**. Check-all does not change the selected course (stay on inbox
 or whatever you were reading); the inbox updates as each course merges.
 Unanswered **counts appear on sidebar rows only after** that course has threads
@@ -332,7 +368,7 @@ By default **Use browser cookies** is on. Paste from DevTools → Cookies →
 box to use `LMS_USERNAME` / `LMS_PASSWORD` on the server instead. For
 **בדוק הכל** in that mode the client calls **`POST /api/lms-login` once**
 (password stays on the server), then reuses the returned session on each
-course poll. Single-course **טען תגובות** still logs in per request when
+course poll. Single-course **טען תגובות חדשות** still logs in per request when
 cookies are off. The server resolves the category to Open edX topic ids via
 `/api/discussion/v1/course_topics/`, then fetches matching threads.
 
@@ -353,11 +389,12 @@ If `comment_count > 1` but replies failed to load, the thread is **not**
 counted as unanswered, and the card shows a notice that replies were expected
 but none were returned. When `comment_count <= 1` (no real replies), that
 notice is omitted.
-Unanswered threads get a red highlight and a **ללא מענה** badge to the
+Unanswered threads get a clearer red highlight (solid `red-100` fill, same
+hue as before) and a **ללא מענה** badge to the
 **left** of the title in the main list; the sidebar badge is the count of such
 threads in the last fetch for that course. On sidebar rows, when that count is
-greater than 0 it is shown as a **red circle with a white number** (no message
-icon); a count of 0 is shown as plain text. Those courses also float to the top
+greater than 0 it is shown as a **rose pastel chip** matching the home stats
+(no message icon); a count of 0 is shown as plain text. Those courses also float to the top
 of the sidebar while keeping relative order within the unanswered / answered
 groups.
 
@@ -459,7 +496,7 @@ is skipped.
   alter course or forum data.
 - **API volume**: Each course fetch may issue dozens of requests when loading
   full reply trees. **בדוק הכל** with cookies (or after one `/api/lms-login`)
-  does not password-login per course. Single-course **טען תגובות** without
+  does not password-login per course. Single-course **טען תגובות חדשות** without
   cookies still logs in once per click. Reply hydration is capped per thread
   (see **depth / child-fetch budget** above) so a single heavy or misbehaving
   thread cannot balloon the request count. Use fewer threads while testing.
@@ -481,7 +518,8 @@ is skipped.
 3. In the tau-support UI, expand **Settings**, enable **Use browser cookies**,
    and paste those three values (or set `LMS_CSRF_TOKEN` /
    `LMS_JWT_HEADER_PAYLOAD` / `LMS_JWT_SIGNATURE` in `.env` for CLI/server-only
-   use). Then open **פיד של כל הקורסים** or click **בדוק הכל** (or a course) to
+   use). Then use **משוך שאלות חדשות** on **דף הבית**, open **פיד של כל הקורסים**,
+   or click **בדוק הכל** from an inbox/course header (or a course) to
    seed/sync the local inbox.
 4. Restart the dev server if you changed `.env`. Cookie values from the form are
    sent only with that request and stored in **sessionStorage** until you close
