@@ -13,12 +13,16 @@
  *   qa_pairs.answer_message_id references messages, so messages go first.
  * - Always writes `courses.last_checked_at` when provided so hydrate can
  *   resume incremental polls on another device.
+ * - Thread UX flags (`no_answer_needed`, seen / חדש) are shared in DB.
  */
 
 import { findCourseById } from "./courses";
 import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
 import { supabase } from "./supabase";
-import { threadActivityAt } from "./threadStore";
+import {
+  threadActivityAt,
+  type StoredThreadEntry,
+} from "./threadStore";
 import type { ForumThread } from "./types";
 import { isStaffAuthor } from "./unanswered";
 
@@ -30,6 +34,13 @@ export interface SyncResult {
   threads?: number;
   messages?: number;
   qaPairs?: number;
+}
+
+export interface ThreadUiState {
+  noAnswerNeeded: boolean;
+  seenAt?: string | null;
+  isNew: boolean;
+  isUpdated: boolean;
 }
 
 function nullable(value?: string | null): string | null {
@@ -59,6 +70,10 @@ interface ThreadRow {
   last_activity_at: string | null;
   raw: Record<string, unknown>;
   synced_at: string;
+  no_answer_needed: boolean;
+  seen_at: string | null;
+  is_new: boolean;
+  is_updated: boolean;
 }
 
 interface MessageRow {
@@ -89,7 +104,20 @@ interface QaPairRow {
   answered_at: string | null;
 }
 
-function buildThreadRow(courseId: string, thread: ForumThread): ThreadRow {
+function uiStateFromEntry(entry: StoredThreadEntry): ThreadUiState {
+  return {
+    noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+    seenAt: entry.seenAt ?? null,
+    isNew: Boolean(entry.isNew),
+    isUpdated: Boolean(entry.isUpdated),
+  };
+}
+
+function buildThreadRow(
+  courseId: string,
+  thread: ForumThread,
+  ui: ThreadUiState
+): ThreadRow {
   const bodyText = toPlainText(thread.raw_body, thread.rendered_body);
   // Store the raw Open edX object without the hydrated comment tree — comments
   // live in the messages table, so we avoid duplicating (and bloating) them.
@@ -109,6 +137,10 @@ function buildThreadRow(courseId: string, thread: ForumThread): ThreadRow {
     last_activity_at: nullable(threadActivityAt(thread)),
     raw: rawThread as Record<string, unknown>,
     synced_at: new Date().toISOString(),
+    no_answer_needed: ui.noAnswerNeeded,
+    seen_at: nullable(ui.seenAt),
+    is_new: ui.isNew,
+    is_updated: ui.isUpdated,
   };
 }
 
@@ -134,19 +166,49 @@ function buildMessageRows(thread: ForumThread): MessageRow[] {
 }
 
 /**
+ * Patch inbox UX flags on one thread row (אין צורך במענה / seen / חדש).
+ * Fire-and-forget from the UI; never throws.
+ */
+export async function syncThreadUiStateToSupabase(
+  threadId: string,
+  ui: ThreadUiState
+): Promise<SyncResult> {
+  if (!supabase) return { ok: false, skipped: true };
+
+  try {
+    const res = await supabase
+      .from("threads")
+      .update({
+        no_answer_needed: ui.noAnswerNeeded,
+        seen_at: nullable(ui.seenAt),
+        is_new: ui.isNew,
+        is_updated: ui.isUpdated,
+      })
+      .eq("campus_thread_id", threadId);
+    if (res.error) throw res.error;
+    return { ok: true, threads: 1 };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Supabase UI-state sync failed";
+    return { ok: false, message };
+  }
+}
+
+/**
  * Upsert one course's polled threads (+ messages + Q↔A pairs) into Supabase.
  * Returns a result object; never throws.
  *
+ * @param entries Stored inbox entries (includes shared UX flags).
  * @param lastCheckedAt ISO watermark to store on `courses.last_checked_at`
  *   (drives incremental polls after hydrate-from-DB).
  */
 export async function syncCourseThreadsToSupabase(
   courseId: string,
-  threads: ForumThread[],
+  entries: StoredThreadEntry[],
   lastCheckedAt?: string | null
 ): Promise<SyncResult> {
   if (!supabase) return { ok: false, skipped: true };
-  if (threads.length === 0 && !lastCheckedAt) {
+  if (entries.length === 0 && !lastCheckedAt) {
     return { ok: true, threads: 0, messages: 0, qaPairs: 0 };
   }
 
@@ -165,8 +227,9 @@ export async function syncCourseThreadsToSupabase(
     const qaRows: QaPairRow[] = [];
     const qaDeleteThreadIds: string[] = [];
 
-    for (const thread of threads) {
-      threadRows.push(buildThreadRow(courseId, thread));
+    for (const entry of entries) {
+      const thread = entry.thread;
+      threadRows.push(buildThreadRow(courseId, thread, uiStateFromEntry(entry)));
       messageRows.push(...buildMessageRows(thread));
 
       // Unknown comment forest: persist thread/messages, leave qa_pairs alone

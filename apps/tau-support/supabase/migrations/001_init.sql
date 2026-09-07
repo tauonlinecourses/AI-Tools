@@ -36,7 +36,11 @@ create table if not exists threads (
   created_at       timestamptz,
   last_activity_at timestamptz,
   raw              jsonb,
-  synced_at        timestamptz not null default now()
+  synced_at        timestamptz not null default now(),
+  no_answer_needed boolean not null default false,
+  seen_at          timestamptz,
+  is_new           boolean not null default false,
+  is_updated       boolean not null default false
 );
 
 create table if not exists messages (

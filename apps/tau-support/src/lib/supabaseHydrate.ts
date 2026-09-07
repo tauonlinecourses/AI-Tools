@@ -35,6 +35,10 @@ interface ThreadDbRow {
   last_activity_at: string | null;
   raw: Record<string, unknown> | null;
   synced_at: string;
+  no_answer_needed: boolean | null;
+  seen_at: string | null;
+  is_new: boolean | null;
+  is_updated: boolean | null;
 }
 
 interface MessageDbRow {
@@ -150,8 +154,9 @@ function pruneToMax(
 }
 
 /**
- * Overlay local-only UX flags (seen / new / noAnswerNeeded) from a previous
- * localStorage store onto a freshly hydrated remote store.
+ * Merge local cache onto remote: DB owns shared UX flags.
+ * `noAnswerNeeded` ORs local→remote once so pre-column local marks aren't lost.
+ * seen / חדש prefer remote; local fills only when remote still has defaults.
  */
 export function mergeLocalUiFlags(
   remote: ThreadStore,
@@ -163,15 +168,23 @@ export function mergeLocalUiFlags(
     const threads: CourseThreadBucket["threads"] = {};
     for (const [threadId, entry] of Object.entries(bucket.threads)) {
       const localEntry = localBucket?.threads[threadId];
-      threads[threadId] = localEntry
-        ? {
-            ...entry,
-            seenAt: localEntry.seenAt ?? entry.seenAt,
-            isNew: localEntry.isNew,
-            isUpdated: localEntry.isUpdated,
-            noAnswerNeeded: localEntry.noAnswerNeeded,
-          }
-        : entry;
+      if (!localEntry) {
+        threads[threadId] = entry;
+        continue;
+      }
+      const remoteHasSeenState =
+        entry.seenAt != null || entry.isNew || entry.isUpdated;
+      threads[threadId] = {
+        ...entry,
+        noAnswerNeeded: Boolean(
+          entry.noAnswerNeeded || localEntry.noAnswerNeeded
+        ),
+        seenAt: remoteHasSeenState
+          ? entry.seenAt
+          : (localEntry.seenAt ?? entry.seenAt),
+        isNew: remoteHasSeenState ? entry.isNew : localEntry.isNew,
+        isUpdated: remoteHasSeenState ? entry.isUpdated : localEntry.isUpdated,
+      };
     }
     // Prefer remote watermark; fall back to local if column missing / null.
     // If still null but we have threads, use newest fetchedAt so the next poll
@@ -210,7 +223,7 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
         .from("courses")
         .select("id,name_he,forum_category,last_checked_at"),
       supabase.from("threads").select(
-        "campus_thread_id,course_id,title,author,author_label,body_text,comment_count,created_at,last_activity_at,raw,synced_at"
+        "campus_thread_id,course_id,title,author,author_label,body_text,comment_count,created_at,last_activity_at,raw,synced_at,no_answer_needed,seen_at,is_new,is_updated"
       ),
       supabase.from("messages").select(
         "campus_comment_id,thread_id,parent_id,author,author_label,endorsed,body_text,created_at,raw"
@@ -265,10 +278,10 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
       bucket.threads[row.campus_thread_id] = {
         thread,
         fetchedAt: row.synced_at || now,
-        seenAt: now,
-        isNew: false,
-        isUpdated: false,
-        noAnswerNeeded: false,
+        seenAt: row.seen_at ?? null,
+        isNew: Boolean(row.is_new),
+        isUpdated: Boolean(row.is_updated),
+        noAnswerNeeded: Boolean(row.no_answer_needed),
       };
     }
 

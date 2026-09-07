@@ -15,7 +15,10 @@ import {
   mergeLocalUiFlags,
 } from "./lib/supabaseHydrate";
 import { isSupabaseConfigured } from "./lib/supabase";
-import { syncCourseThreadsToSupabase } from "./lib/supabaseSync";
+import {
+  syncCourseThreadsToSupabase,
+  syncThreadUiStateToSupabase,
+} from "./lib/supabaseSync";
 import {
   CHECK_ALL_GAP_MS,
   checkAllCourseList,
@@ -301,6 +304,28 @@ export default function App() {
           console.info(
             `[tau-support] Hydrated inbox from Supabase (${remoteThreadCount} thread(s)).`
           );
+          // If local cache still held אין צורך במענה / seen flags that DB
+          // defaults had not yet stored, push them up once.
+          for (const [courseId, bucket] of Object.entries(merged.courses)) {
+            const remoteBucket = result.store.courses[courseId];
+            for (const [threadId, entry] of Object.entries(bucket.threads)) {
+              const remoteEntry = remoteBucket?.threads[threadId];
+              if (!remoteEntry) continue;
+              const changed =
+                Boolean(entry.noAnswerNeeded) !==
+                  Boolean(remoteEntry.noAnswerNeeded) ||
+                Boolean(entry.isNew) !== Boolean(remoteEntry.isNew) ||
+                Boolean(entry.isUpdated) !== Boolean(remoteEntry.isUpdated) ||
+                (entry.seenAt ?? null) !== (remoteEntry.seenAt ?? null);
+              if (!changed) continue;
+              void syncThreadUiStateToSupabase(threadId, {
+                noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+                seenAt: entry.seenAt ?? null,
+                isNew: Boolean(entry.isNew),
+                isUpdated: Boolean(entry.isUpdated),
+              });
+            }
+          }
         } else if (localThreadCount > 0) {
           // First browser with a local cache, empty remote — keep local and
           // push it up so Supabase becomes the shared source of truth.
@@ -308,11 +333,11 @@ export default function App() {
             `[tau-support] Supabase inbox empty; keeping localStorage (${localThreadCount} thread(s)) and backfilling.`
           );
           for (const [courseId, bucket] of Object.entries(local.courses)) {
-            const threads = Object.values(bucket.threads).map((e) => e.thread);
-            if (threads.length === 0 && !bucket.lastCheckedAt) continue;
+            const entries = Object.values(bucket.threads);
+            if (entries.length === 0 && !bucket.lastCheckedAt) continue;
             void syncCourseThreadsToSupabase(
               courseId,
-              threads,
+              entries,
               bucket.lastCheckedAt
             ).then((res) => {
               if (!res.ok && !res.skipped) {
@@ -498,9 +523,7 @@ export default function App() {
         // incremental run with 0 new threads still backfills Supabase.
         // Always pass lastCheckedAt so watermarks survive cross-browser hydrate.
         const courseBucket = getCourseBucket(next, courseId);
-        const toSync = Object.values(courseBucket.threads).map(
-          (entry) => entry.thread
-        );
+        const toSync = Object.values(courseBucket.threads);
         if (toSync.length > 0 || courseBucket.lastCheckedAt) {
           void syncCourseThreadsToSupabase(
             courseId,
@@ -802,6 +825,21 @@ export default function App() {
     setThreadStore((prev) => {
       const next = markThreadSeen(prev, courseId, threadId);
       threadStoreRef.current = next;
+      const entry = getCourseBucket(next, courseId).threads[threadId];
+      if (entry) {
+        void syncThreadUiStateToSupabase(threadId, {
+          noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+          seenAt: entry.seenAt ?? null,
+          isNew: Boolean(entry.isNew),
+          isUpdated: Boolean(entry.isUpdated),
+        }).then((res) => {
+          if (!res.ok && !res.skipped) {
+            console.warn(
+              `[tau-support] Failed to persist seen state for ${threadId}: ${res.message}`
+            );
+          }
+        });
+      }
       return next;
     });
   }, []);
@@ -816,6 +854,21 @@ export default function App() {
           !currentlyMarked
         );
         threadStoreRef.current = next;
+        const entry = getCourseBucket(next, courseId).threads[threadId];
+        if (entry) {
+          void syncThreadUiStateToSupabase(threadId, {
+            noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+            seenAt: entry.seenAt ?? null,
+            isNew: Boolean(entry.isNew),
+            isUpdated: Boolean(entry.isUpdated),
+          }).then((res) => {
+            if (!res.ok && !res.skipped) {
+              console.warn(
+                `[tau-support] Failed to persist אין צורך במענה for ${threadId}: ${res.message}`
+              );
+            }
+          });
+        }
         return next;
       });
     },

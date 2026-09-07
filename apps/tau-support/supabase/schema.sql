@@ -43,7 +43,12 @@ create table if not exists threads (
   created_at       timestamptz,        -- Campus IL created_at
   last_activity_at timestamptz,
   raw              jsonb,              -- full Open edX thread object
-  synced_at        timestamptz not null default now()
+  synced_at        timestamptz not null default now(),
+  -- Shared inbox UX (staff tool — same across browsers)
+  no_answer_needed boolean not null default false,
+  seen_at          timestamptz,
+  is_new           boolean not null default false,
+  is_updated       boolean not null default false
 );
 
 -- One row per comment/reply, flattened from the Open edX comment forest.
@@ -84,6 +89,8 @@ create table if not exists qa_pairs (
 -- INDEXES (foreign keys aren't auto-indexed in Postgres)
 -- ============================================================
 create index if not exists idx_threads_course_id     on threads(course_id);
+create index if not exists idx_threads_no_answer_needed
+  on threads(no_answer_needed) where no_answer_needed = true;
 create index if not exists idx_messages_thread_id     on messages(thread_id);
 create index if not exists idx_qa_pairs_course_id     on qa_pairs(course_id);
 create index if not exists idx_qa_pairs_content_hash  on qa_pairs(content_hash);

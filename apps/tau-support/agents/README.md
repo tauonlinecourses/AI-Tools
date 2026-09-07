@@ -85,16 +85,20 @@ platform.
   Missing env → client is `null` and a console warning is logged; the inbox
   falls back to localStorage only. Never put the service_role key here.
 - `../src/lib/supabaseHydrate.ts` — On app load, rebuilds `ThreadStore` from
-  `courses` / `threads` / `messages`. Overlay local-only UX flags
-  (`seenAt` / `isNew` / `noAnswerNeeded`) from localStorage when present.
+  `courses` / `threads` / `messages`, including shared UX flags
+  (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`). Local cache may fill
+  gaps once when DB still has defaults.
 - `../src/lib/supabaseSync.ts` — After each successful course poll, upserts
-  `courses` (incl. `last_checked_at`) / `threads` / `messages` / `qa_pairs`.
-  Failures are non-blocking.
+  `courses` (incl. `last_checked_at`) / `threads` (incl. UX flags) /
+  `messages` / `qa_pairs`. Toggle **אין צורך במענה** / mark-seen patches
+  those columns immediately. Failures are non-blocking.
 - `../supabase/schema.sql` — Canonical Phase 1 schema (source of truth).
 - `../supabase/migrations/001_init.sql` — Applyable copy of that schema for a
   fresh tau-support project.
 - `../supabase/migrations/002_courses_last_checked_at.sql` — Adds
   `courses.last_checked_at` for projects created before that column existed.
+- `../supabase/migrations/003_thread_ui_state.sql` — Adds shared inbox flags on
+  `threads` (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`).
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
   inter-course gap, and CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
@@ -190,9 +194,9 @@ RTL split layout inspired by the campus IL forum list:
 **Campus IL** remains the upstream forum. **localStorage** is a write-through
 cache (instant paint + offline / missing-env fallback).
 
-On load the app hydrates from Supabase (`supabaseHydrate`). Local-only UX
-flags (`seenAt` / `isNew` / `isUpdated` / `noAnswerNeeded`) are overlaid from
-localStorage when the same thread ids exist. If Supabase is empty but this
+On load the app hydrates from Supabase (`supabaseHydrate`), including shared
+thread states (**אין צורך במענה**, seen / חדש). Local-only leftovers may fill
+DB defaults once and are then written back. If Supabase is empty but this
 browser already has a local cache, that cache is kept and **backfilled** to
 Supabase so other sessions can load it next time. If hydrate fails or env is
 missing, the UI keeps the localStorage cache.
@@ -239,7 +243,7 @@ Four tables in the dedicated project (`supabase/schema.sql`):
 | Table | Key | Role |
 | --- | --- | --- |
 | `courses` | Open edX course id | Catalog mirror + `last_checked_at` poll watermark |
-| `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped) |
+| `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped), shared UX (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`) |
 | `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
 | `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
 
@@ -291,8 +295,8 @@ only:
 - `VITE_SUPABASE_ANON_KEY`
 
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
-before the first sync. If `courses.last_checked_at` is missing on an existing
-project, also apply `002_courses_last_checked_at.sql`.
+before the first sync. If columns are missing on an existing project, also apply
+`002_courses_last_checked_at.sql` and/or `003_thread_ui_state.sql`.
 
 #### Phase 2 RAG design (not built)
 
@@ -359,7 +363,8 @@ groups.
 
 On threads that would otherwise be unanswered, the card’s action button is
 **אין צורך במענה** (replaces the old Raw JSON toggle). Clicking it stores
-`noAnswerNeeded` on the local inbox entry, clears **ללא מענה** / unread flags,
+`noAnswerNeeded` on the inbox entry **and** patches `threads.no_answer_needed`
+in Supabase (shared across browsers), clears **ללא מענה** / unread flags,
 and shows an emerald **אין צורך במענה** badge. **בטל סימון** undoes it.
 On the next poll, if that thread’s `last_activity_at` or `comment_count`
 advances, the override is cleared so the thread can show as unanswered again.
