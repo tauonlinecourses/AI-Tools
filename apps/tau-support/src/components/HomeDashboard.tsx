@@ -51,7 +51,7 @@ function currentHebrewMonth(): string {
 
 export function homeGreetingTitle(now = new Date()): string {
   const month = HEBREW_MONTHS[now.getMonth()] ?? "";
-  return `שלום אחרי/ת תמיכה של חודש ${month} 👋`;
+  return `שלום אחראי/ת תמיכה של חודש ${month} 👋`;
 }
 
 function formatLastRunDateTime(iso: string): string {
@@ -289,7 +289,7 @@ export function HomeDashboard({
       <div className="my-auto flex w-full flex-col gap-14 sm:gap-16">
       <header className="text-center">
         <h2 className="text-3xl font-semibold leading-snug text-surface-900 sm:text-4xl">
-          שלום אחרי/ת תמיכה של חודש {month}{" "}
+          שלום אחראי/ת תמיכה של חודש {month}{" "}
           <span className="inline-block origin-[70%_70%] animate-[wave_1.4s_ease-in-out_infinite]" aria-hidden>
             👋
           </span>
@@ -299,7 +299,7 @@ export function HomeDashboard({
             ? `העדכון האחרון היה ב: ${formatLastRunDateTime(lastRun.completedAt)}${
                 lastRun.incomplete ? " (ריצה חלקית)" : ""
               }`
-            : "העדכון האחרון היה ב: עדיין לא הורץ משוך שאלות חדשות"}
+            : "העדכון האחרון היה ב: עדיין לא הורצה בדיקת שאלות חדשות"}
         </p>
       </header>
 
@@ -386,7 +386,7 @@ export function HomeDashboard({
                 onClick={() => onCheckAll("fresh")}
                 disabled={disabled}
               >
-                משוך שאלות חדשות
+                בדיקת שאלות חדשות
               </Button>
             )}
           </div>

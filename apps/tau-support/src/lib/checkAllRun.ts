@@ -43,7 +43,7 @@ export interface CheckAllSummary {
   incomplete: boolean;
 }
 
-/** Durable last בדוק הכל / משוך שאלות חדשות run (localStorage). */
+/** Durable last בדוק הכל / בדיקת שאלות חדשות run (localStorage). */
 export interface LastCheckAllRun {
   completedAt: string;
   scanned: number;

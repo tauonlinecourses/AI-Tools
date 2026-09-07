@@ -137,7 +137,7 @@ RTL split layout inspired by the campus IL forum list:
   Inbox and course rows show **חדש** counts from the local store. Courses with
   unanswered threads (`unansweredCount > 0`) are sorted to the **top** of the
   list; remaining courses keep their original `courses.json` order. **בדוק הכל** /
-  **משוך שאלות חדשות**
+  **בדיקת שאלות חדשות**
   uses that same order (unanswered first, then catalog order) and **freezes**
   it for the run so the current row does not jump. Only the course currently
   in queue is marked **בודק כעת** (amber row + elapsed time), including the
@@ -145,9 +145,9 @@ RTL split layout inspired by the campus IL forum list:
   the list.
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is
-  **home** (`HomeDashboard`): friendly greeting **שלום אחרי/ת תמיכה של חודש
+  **home** (`HomeDashboard`): friendly greeting **שלום אחראי/ת תמיכה של חודש
   {month} 👋**, then **העדכון האחרון היה ב:** from `localStorage`
-  (`tau-support-last-check-all`), a white **משוך שאלות חדשות** CTA (same flow
+  (`tau-support-last-check-all`), a white **בדיקת שאלות חדשות** CTA (same flow
   as **בדוק הכל**), and large colorful stat boxes (total courses, unanswered,
   new activity, marked לא צרכים מענה / `noAnswerNeeded`).
   While a check-all run is active the home pane shows an animated pipeline
@@ -172,12 +172,12 @@ RTL split layout inspired by the campus IL forum list:
   (`N שרשורים שמורים · N ללא מענה · N תגובות חדשות מפעם שעברה`) — inbox
   includes the unanswered count too. Header height is fixed to that title +
   counts pair only (no fetch request-stats / sync status lines in the header).
-- **Toolbar / check-all:** On home the primary CTA is **משוך שאלות חדשות**
+- **Toolbar / check-all:** On home the primary CTA is **בדיקת שאלות חדשות**
   (dashboard); the header keeps **עצור** while a run is active. Inbox and
   course headers do not show **בדוק הכל** (courses still have
   **טען תגובות חדשות עבור קורס זה**).
   Starting a run navigates to home so the animated flow is visible.
-  **בדוק הכל** / **משוך שאלות חדשות** runs a sequential poll of every catalog
+  **בדוק הכל** / **בדיקת שאלות חדשות** runs a sequential poll of every catalog
   course
   except the sandbox, in sidebar order (unanswered first). Auth is either
   **browser cookies** (paste CSRF + JWT in Settings) **or** env password with
@@ -518,7 +518,7 @@ is skipped.
 3. In the tau-support UI, expand **Settings**, enable **Use browser cookies**,
    and paste those three values (or set `LMS_CSRF_TOKEN` /
    `LMS_JWT_HEADER_PAYLOAD` / `LMS_JWT_SIGNATURE` in `.env` for CLI/server-only
-   use). Then use **משוך שאלות חדשות** on **דף הבית**, open **פיד של כל הקורסים**,
+   use). Then use **בדיקת שאלות חדשות** on **דף הבית**, open **פיד של כל הקורסים**,
    or click **בדוק הכל** from an inbox/course header (or a course) to
    seed/sync the local inbox.
 4. Restart the dev server if you changed `.env`. Cookie values from the form are
