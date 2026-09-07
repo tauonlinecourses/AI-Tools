@@ -71,23 +71,30 @@ platform.
   **`forumCategory`**) used by the course hub sidebar. Edit this JSON file to
   add courses and set each course’s technical-help forum name.
 - `../src/lib/courses.ts` — Thin helpers that load `courses.json`.
-- `../src/lib/threadStore.ts` — Browser `localStorage` inbox (`tau-support-thread-store-v1`):
-  per-course `lastCheckedAt` watermark, thread map, merge/upsert, retention cap,
-  and per-thread `noAnswerNeeded` override (cleared on newer poll activity).
-  `saveThreadStore` returns success/failure so a full localStorage quota can
-  stop check-all instead of failing silently.
+- `../src/lib/threadStore.ts` — In-memory inbox + `localStorage` write-through
+  cache (`tau-support-thread-store-v1`): per-course `lastCheckedAt` watermark,
+  thread map, merge/upsert, retention cap, and per-thread `noAnswerNeeded`
+  override (cleared on newer poll activity). `saveThreadStore` returns
+  success/failure so a full localStorage quota can stop check-all instead of
+  failing silently. Durable shared state lives in Supabase (see hydrate/sync).
 - `../src/lib/qaPairing.ts` — Deterministic student-question ↔ staff-answer
   pairing (plain text, `lang`, `content_hash`, `resolution_text`). Used by
   the Supabase sync; no network I/O.
 - `../src/lib/supabase.ts` — Optional browser client for the **dedicated**
   tau-support Supabase project (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`).
   Missing env → client is `null` and a console warning is logged; the inbox
-  still works. Never put the service_role key here.
+  falls back to localStorage only. Never put the service_role key here.
+- `../src/lib/supabaseHydrate.ts` — On app load, rebuilds `ThreadStore` from
+  `courses` / `threads` / `messages`. Overlay local-only UX flags
+  (`seenAt` / `isNew` / `noAnswerNeeded`) from localStorage when present.
 - `../src/lib/supabaseSync.ts` — After each successful course poll, upserts
-  `courses` / `threads` / `messages` / `qa_pairs`. Failures are non-blocking.
+  `courses` (incl. `last_checked_at`) / `threads` / `messages` / `qa_pairs`.
+  Failures are non-blocking.
 - `../supabase/schema.sql` — Canonical Phase 1 schema (source of truth).
 - `../supabase/migrations/001_init.sql` — Applyable copy of that schema for a
   fresh tau-support project.
+- `../supabase/migrations/002_courses_last_checked_at.sql` — Adds
+  `courses.last_checked_at` for projects created before that column existed.
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
   inter-course gap, and CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
@@ -148,9 +155,10 @@ RTL split layout inspired by the campus IL forum list:
   Single-course **טען תגובות** with cookies off still password-logs in once
   per request. Courses run one at a time with a
   short pause between them (the UI stays on **בודק כעת** for the next
-  course — no “waiting” / **הבא בתור** copy). Each successful course is written to `localStorage`
-  immediately (inside the React store updater) so a crash/CAPTCHA does not
-  lose earlier courses. A session **run cursor** skips already-finished
+  course — no “waiting” / **הבא בתור** copy). Each successful course is written to
+  the in-memory store + `localStorage` cache and mirrored to Supabase
+  immediately so a crash/CAPTCHA does not lose earlier courses (and other
+  browsers can hydrate). A session **run cursor** skips already-finished
   courses; after a stop the primary action is **המשך בדיקה**, with
   **בדוק הכל מחדש** as a secondary full incremental re-poll. **עצור** means
   stop after the current course (the in-flight request is not aborted).
@@ -178,17 +186,28 @@ RTL split layout inspired by the campus IL forum list:
 
 ### Thread inbox sync
 
-Campus IL remains the source of truth. The browser store is a working inbox of
-what has already been fetched:
+**Supabase** is the durable, shared inbox source of truth across browsers.
+**Campus IL** remains the upstream forum. **localStorage** is a write-through
+cache (instant paint + offline / missing-env fallback).
+
+On load the app hydrates from Supabase (`supabaseHydrate`). Local-only UX
+flags (`seenAt` / `isNew` / `isUpdated` / `noAnswerNeeded`) are overlaid from
+localStorage when the same thread ids exist. If Supabase is empty but this
+browser already has a local cache, that cache is kept and **backfilled** to
+Supabase so other sessions can load it next time. If hydrate fails or env is
+missing, the UI keeps the localStorage cache.
+
+Poll merge rules:
 
 1. **First poll** for a course (no `lastCheckedAt`): fetch the top page, seed
    the store **without** flooding “חדש” badges, set the watermark.
 2. **Later polls** (`בדוק הכל` / **טען תגובות**): send `since=lastCheckedAt`
    and known thread snapshots. The server walks pages until activity ≤
    watermark, skips unchanged known ids, and hydrates comments only for
-   new/updated threads. The client **merges** into `localStorage` immediately
-   after each course (does not replace; does not wait for the whole check-all
-   run).
+   new/updated threads. The client **merges** into the in-memory store +
+   localStorage immediately after each course (does not replace; does not wait
+   for the whole check-all run), then mirrors the course bucket to Supabase
+   (including `courses.last_checked_at`).
 3. **New vs updated:** unknown `thread.id` → `isNew`; known id with newer
    `last_activity_at` / higher `comment_count` → `isUpdated`. Opening a card
    clears those flags (`seenAt`).
@@ -197,14 +216,20 @@ what has already been fetched:
 
 ### Supabase persistence (Phase 1)
 
-Campus IL remains the source of truth. After a successful poll merge, the
-client **mirrors** the fetched threads into a dedicated Supabase project so
-they survive beyond the 50-thread local inbox and become the RAG corpus.
+After a successful poll merge, the client **upserts** that course’s stored
+threads into the dedicated Supabase project (the full local bucket for the
+course, not only threads returned by this poll — so an incremental run with 0
+new hits still backfills the DB and refreshes `last_checked_at`).
 
-The browser inbox is unchanged: sync is fire-and-forget. If
-`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are missing, sync is skipped
-(console warning) and the poll still succeeds. Sync errors are logged with
-`[tau-support] Supabase sync failed…` and never abort **טען תגובות** /
+Sync is computed **outside** the React `setState` updater (after `await`,
+React may defer updaters; a side-effect list filled inside the updater was
+staying empty and skipping Supabase entirely).
+
+Sync is fire-and-forget. If `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are
+missing, hydrate/sync are skipped (console warning) and the poll still
+succeeds against localStorage. Sync errors are logged with
+`[tau-support] Supabase sync failed…` and successes with
+`[tau-support] Supabase synced N thread(s)…`. Neither aborts **טען תגובות** /
 **בדוק הכל**.
 
 #### Schema
@@ -213,7 +238,7 @@ Four tables in the dedicated project (`supabase/schema.sql`):
 
 | Table | Key | Role |
 | --- | --- | --- |
-| `courses` | Open edX course id | Catalog mirror from `courses.json` |
+| `courses` | Open edX course id | Catalog mirror + `last_checked_at` poll watermark |
 | `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped) |
 | `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
 | `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
@@ -266,7 +291,8 @@ only:
 - `VITE_SUPABASE_ANON_KEY`
 
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
-before the first sync.
+before the first sync. If `courses.last_checked_at` is missing on an existing
+project, also apply `002_courses_last_checked_at.sql`.
 
 #### Phase 2 RAG design (not built)
 
@@ -454,8 +480,8 @@ is skipped.
    seed/sync the local inbox.
 4. Restart the dev server if you changed `.env`. Cookie values from the form are
    sent only with that request and stored in **sessionStorage** until you close
-   the browser tab. Fetched threads persist in **localStorage**
-   (`tau-support-thread-store-v1`) across reloads.
+   the browser tab. On load the inbox hydrates from **Supabase**;
+   `localStorage` (`tau-support-thread-store-v1`) is a write-through cache.
 
 The main open question is not safety — it's whether your specific campus IL
 account actually has read access to each course's forum via this API, which

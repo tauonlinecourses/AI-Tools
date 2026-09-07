@@ -1,10 +1,10 @@
 /**
  * Supabase client for the dedicated tau-support project.
  *
- * Unlike course-builder, this client is OPTIONAL: if the env vars are missing
- * the app still runs (the browser localStorage inbox remains the source of
- * truth) and thread → Supabase sync is simply skipped. This keeps the forum
- * poller working even before the Supabase project is provisioned.
+ * When configured, Supabase is the durable inbox source of truth (hydrate on
+ * load + sync after each poll). localStorage is a write-through cache for
+ * instant paint and offline fallback. If env vars are missing, the app still
+ * runs on localStorage alone and sync/hydrate are skipped.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -17,7 +17,7 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 if (!isSupabaseConfigured) {
   console.warn(
     "[tau-support] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY not set — " +
-      "thread sync to Supabase is skipped. The localStorage inbox still works."
+      "inbox hydrate/sync skipped. Falling back to localStorage only."
   );
 }
 

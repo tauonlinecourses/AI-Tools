@@ -18,6 +18,7 @@ create table if not exists courses (
   name           text not null,
   name_he        text,
   forum_category text,
+  last_checked_at timestamptz,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );

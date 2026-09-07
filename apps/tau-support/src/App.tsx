@@ -10,6 +10,11 @@ import { EmptySelection } from "./components/EmptySelection";
 import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
 import { fetchForumThreads, fetchLmsLogin, hasReusableSession, type LmsSessionCredentials } from "./lib/api";
+import {
+  hydrateThreadStoreFromSupabase,
+  mergeLocalUiFlags,
+} from "./lib/supabaseHydrate";
+import { isSupabaseConfigured } from "./lib/supabase";
 import { syncCourseThreadsToSupabase } from "./lib/supabaseSync";
 import {
   CHECK_ALL_GAP_MS,
@@ -48,7 +53,7 @@ import {
   type ThreadStore,
 } from "./lib/threadStore";
 import { countUnanswered, entryNeedsAnswer } from "./lib/unanswered";
-import type { ForumThread, ForumThreadsResponse } from "./lib/types";
+import type { ForumThreadsResponse } from "./lib/types";
 
 type InboxFilter = "all" | "unanswered";
 
@@ -230,6 +235,8 @@ export default function App() {
   const [threadStore, setThreadStore] = useState<ThreadStore>(() =>
     loadThreadStore()
   );
+  /** True until first Supabase hydrate attempt finishes (or is skipped). */
+  const [inboxHydrating, setInboxHydrating] = useState(isSupabaseConfigured);
   const [syncByCourse, setSyncByCourse] = useState<Record<string, SyncStatus>>(
     {}
   );
@@ -264,6 +271,77 @@ export default function App() {
   useEffect(() => {
     saveThreadStore(threadStore);
   }, [threadStore]);
+
+  // Supabase is the durable inbox source of truth across browsers.
+  // localStorage is only a write-through cache + offline paint / offline fallback.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!isSupabaseConfigured) {
+        setInboxHydrating(false);
+        return;
+      }
+      const local = loadThreadStore();
+      const result = await hydrateThreadStoreFromSupabase();
+      if (cancelled) return;
+      if (result.ok && result.store) {
+        const remoteThreadCount = result.threadCount ?? 0;
+        const remoteHasWatermark = Object.values(result.store.courses).some(
+          (bucket) => Boolean(bucket.lastCheckedAt)
+        );
+        const localThreadCount = Object.values(local.courses).reduce(
+          (sum, bucket) => sum + Object.keys(bucket.threads).length,
+          0
+        );
+
+        if (remoteThreadCount > 0 || remoteHasWatermark) {
+          const merged = mergeLocalUiFlags(result.store, local);
+          threadStoreRef.current = merged;
+          setThreadStore(merged);
+          console.info(
+            `[tau-support] Hydrated inbox from Supabase (${remoteThreadCount} thread(s)).`
+          );
+        } else if (localThreadCount > 0) {
+          // First browser with a local cache, empty remote — keep local and
+          // push it up so Supabase becomes the shared source of truth.
+          console.info(
+            `[tau-support] Supabase inbox empty; keeping localStorage (${localThreadCount} thread(s)) and backfilling.`
+          );
+          for (const [courseId, bucket] of Object.entries(local.courses)) {
+            const threads = Object.values(bucket.threads).map((e) => e.thread);
+            if (threads.length === 0 && !bucket.lastCheckedAt) continue;
+            void syncCourseThreadsToSupabase(
+              courseId,
+              threads,
+              bucket.lastCheckedAt
+            ).then((res) => {
+              if (!res.ok && !res.skipped) {
+                console.warn(
+                  `[tau-support] Backfill failed for ${courseId}: ${res.message}`
+                );
+              }
+            });
+          }
+        } else {
+          threadStoreRef.current = result.store;
+          setThreadStore(result.store);
+          console.info("[tau-support] Hydrated empty inbox from Supabase.");
+        }
+      } else if (result.skipped) {
+        console.warn(
+          "[tau-support] Supabase hydrate skipped — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
+        );
+      } else {
+        console.warn(
+          `[tau-support] Supabase hydrate failed; using localStorage cache: ${result.message}`
+        );
+      }
+      setInboxHydrating(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!checkingAll || checkAllProgress?.phase !== "fetching") return;
@@ -382,28 +460,30 @@ export default function App() {
         });
 
         let persistError: string | null = null;
-        // Merged (most complete) versions of the threads we just fetched — used
-        // for the Supabase mirror so we sync the full comment tree, not a
-        // summary payload.
-        let syncThreads: ForumThread[] = [];
-        setThreadStore((prev) => {
-          const next = mergeCoursePoll(prev, courseId, data.threads, {
-            seed: seed && !hasStored,
-            forumUiOrigin: data.forumUiOrigin,
-            categoryName: data.categoryName ?? categoryName,
-            totalCount: data.totalCount,
-          });
-          const saved = saveThreadStore(next);
-          if (!saved.ok) {
-            persistError = saved.message;
-          }
-          threadStoreRef.current = next;
-          const mergedBucket = getCourseBucket(next, courseId);
-          syncThreads = data.threads
-            .map((t) => mergedBucket.threads[t.id]?.thread)
-            .filter((t): t is ForumThread => Boolean(t));
-          return next;
-        });
+        const mergeMeta = {
+          seed: seed && !hasStored,
+          forumUiOrigin: data.forumUiOrigin,
+          categoryName: data.categoryName ?? categoryName,
+          totalCount: data.totalCount,
+        };
+        // Merge against the ref first (sync + localStorage must not wait on
+        // React flushing setState — after `await`, the updater can be deferred
+        // and a side-effect var inside it stays empty).
+        const next = mergeCoursePoll(
+          threadStoreRef.current,
+          courseId,
+          data.threads,
+          mergeMeta
+        );
+        const saved = saveThreadStore(next);
+        if (!saved.ok) {
+          persistError = saved.message;
+        }
+        threadStoreRef.current = next;
+        // Re-merge into latest React state so mark-seen during the fetch is kept.
+        setThreadStore((prev) =>
+          mergeCoursePoll(prev, courseId, data.threads, mergeMeta)
+        );
 
         setSyncByCourse((prev) => ({
           ...prev,
@@ -414,19 +494,35 @@ export default function App() {
           },
         }));
 
-        // Mirror to Supabase (Phase 1 RAG corpus). Non-blocking: the local
-        // inbox is the source of truth in the browser, so failures (or a
-        // missing Supabase config) only warn and never break the poll.
-        if (syncThreads.length > 0) {
-          void syncCourseThreadsToSupabase(courseId, syncThreads).then(
-            (res) => {
-              if (!res.ok && !res.skipped) {
-                console.warn(
-                  `[tau-support] Supabase sync failed for ${courseId}: ${res.message}`
-                );
-              }
+        // Mirror the full course bucket (not only this poll's hits) so an
+        // incremental run with 0 new threads still backfills Supabase.
+        // Always pass lastCheckedAt so watermarks survive cross-browser hydrate.
+        const courseBucket = getCourseBucket(next, courseId);
+        const toSync = Object.values(courseBucket.threads).map(
+          (entry) => entry.thread
+        );
+        if (toSync.length > 0 || courseBucket.lastCheckedAt) {
+          void syncCourseThreadsToSupabase(
+            courseId,
+            toSync,
+            courseBucket.lastCheckedAt
+          ).then((res) => {
+            if (res.skipped) {
+              console.warn(
+                "[tau-support] Supabase sync skipped — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart Vite."
+              );
+              return;
             }
-          );
+            if (!res.ok) {
+              console.warn(
+                `[tau-support] Supabase sync failed for ${courseId}: ${res.message}`
+              );
+              return;
+            }
+            console.info(
+              `[tau-support] Supabase synced ${res.threads} thread(s), ${res.messages} message(s) for ${courseId}`
+            );
+          });
         }
 
         if (persistError) {
@@ -931,6 +1027,11 @@ export default function App() {
                         <Spinner size="sm" />
                         מסנכרן…
                       </p>
+                    ) : inboxHydrating ? (
+                      <p className="mt-1 flex items-center justify-end gap-2 text-[11px] text-surface-500">
+                        <Spinner size="sm" />
+                        טוען תיבה מ-Supabase…
+                      </p>
                     ) : null}
                   </>
                 ) : (
@@ -991,6 +1092,7 @@ export default function App() {
                       variant="secondary"
                       size="sm"
                       onClick={() => void handleCheckAll("resume")}
+                      disabled={inboxHydrating}
                     >
                       המשך בדיקה
                     </Button>
@@ -998,6 +1100,7 @@ export default function App() {
                       variant="ghost"
                       size="sm"
                       onClick={() => void handleCheckAll("restart")}
+                      disabled={inboxHydrating}
                     >
                       בדוק הכל מחדש
                     </Button>
@@ -1007,6 +1110,7 @@ export default function App() {
                     variant="secondary"
                     size="sm"
                     onClick={() => void handleCheckAll("fresh")}
+                    disabled={inboxHydrating}
                   >
                     בדוק הכל
                   </Button>
@@ -1020,7 +1124,9 @@ export default function App() {
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
                     disabled={
-                      selectedSync?.status === "syncing" || checkingAll
+                      selectedSync?.status === "syncing" ||
+                      checkingAll ||
+                      inboxHydrating
                     }
                   />
                 ) : null}

@@ -1,7 +1,8 @@
 /**
  * Persist polled Campus IL threads to the dedicated tau-support Supabase
- * project (Phase 1). Campus IL remains the source of truth; this mirrors what
- * we've fetched into durable Postgres so the future RAG layer has a corpus.
+ * project (Phase 1). Supabase is the durable inbox source of truth across
+ * browsers; Campus IL remains the upstream forum. localStorage is a
+ * write-through cache only.
  *
  * Design notes:
  * - Fully NON-BLOCKING: any failure (or missing env) returns a result the
@@ -10,6 +11,8 @@
  *   updates rows in place.
  * - Upsert order (courses → threads → messages → qa_pairs) respects the FKs;
  *   qa_pairs.answer_message_id references messages, so messages go first.
+ * - Always writes `courses.last_checked_at` when provided so hydrate can
+ *   resume incremental polls on another device.
  */
 
 import { findCourseById } from "./courses";
@@ -39,6 +42,7 @@ interface CourseRow {
   name: string;
   name_he: string | null;
   forum_category: string | null;
+  last_checked_at?: string | null;
 }
 
 interface ThreadRow {
@@ -132,13 +136,17 @@ function buildMessageRows(thread: ForumThread): MessageRow[] {
 /**
  * Upsert one course's polled threads (+ messages + Q↔A pairs) into Supabase.
  * Returns a result object; never throws.
+ *
+ * @param lastCheckedAt ISO watermark to store on `courses.last_checked_at`
+ *   (drives incremental polls after hydrate-from-DB).
  */
 export async function syncCourseThreadsToSupabase(
   courseId: string,
-  threads: ForumThread[]
+  threads: ForumThread[],
+  lastCheckedAt?: string | null
 ): Promise<SyncResult> {
   if (!supabase) return { ok: false, skipped: true };
-  if (threads.length === 0) {
+  if (threads.length === 0 && !lastCheckedAt) {
     return { ok: true, threads: 0, messages: 0, qaPairs: 0 };
   }
 
@@ -149,6 +157,7 @@ export async function syncCourseThreadsToSupabase(
       name: course?.name ?? courseId,
       name_he: nullable(course?.nameHe),
       forum_category: nullable(course?.forumCategory),
+      ...(lastCheckedAt ? { last_checked_at: lastCheckedAt } : {}),
     };
 
     const threadRows: ThreadRow[] = [];
@@ -192,11 +201,13 @@ export async function syncCourseThreadsToSupabase(
       .upsert(courseRow, { onConflict: "id" });
     if (courseRes.error) throw courseRes.error;
 
-    // 2. Threads.
-    const threadRes = await supabase
-      .from("threads")
-      .upsert(threadRows, { onConflict: "campus_thread_id" });
-    if (threadRes.error) throw threadRes.error;
+    // 2. Threads (skip empty upsert — still allow watermark-only course update).
+    if (threadRows.length > 0) {
+      const threadRes = await supabase
+        .from("threads")
+        .upsert(threadRows, { onConflict: "campus_thread_id" });
+      if (threadRes.error) throw threadRes.error;
+    }
 
     // 3. Messages (before qa_pairs — answer_message_id references them).
     if (messageRows.length > 0) {

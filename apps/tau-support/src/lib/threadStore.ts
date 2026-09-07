@@ -1,7 +1,8 @@
 /**
- * Browser-persisted forum thread inbox.
- * Campus IL remains the source of truth; this store keeps what we’ve already
- * fetched so reload / check-all can merge instead of replacing.
+ * In-memory + localStorage write-through cache of the forum inbox.
+ * Durable source of truth is Supabase (`supabaseHydrate` / `supabaseSync`);
+ * Campus IL is the upstream forum. localStorage lets the UI paint instantly
+ * and survives when Supabase env is missing.
  */
 
 import type { ForumThread } from "./types";
