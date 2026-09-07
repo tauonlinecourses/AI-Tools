@@ -1,0 +1,235 @@
+/**
+ * Persist polled Campus IL threads to the dedicated tau-support Supabase
+ * project (Phase 1). Campus IL remains the source of truth; this mirrors what
+ * we've fetched into durable Postgres so the future RAG layer has a corpus.
+ *
+ * Design notes:
+ * - Fully NON-BLOCKING: any failure (or missing env) returns a result the
+ *   caller logs; the localStorage inbox / poll never breaks.
+ * - Idempotent UPSERTs keyed on the Campus IL ids, so re-polling a thread
+ *   updates rows in place.
+ * - Upsert order (courses → threads → messages → qa_pairs) respects the FKs;
+ *   qa_pairs.answer_message_id references messages, so messages go first.
+ */
+
+import { findCourseById } from "./courses";
+import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
+import { supabase } from "./supabase";
+import { threadActivityAt } from "./threadStore";
+import type { ForumThread } from "./types";
+import { isStaffAuthor } from "./unanswered";
+
+export interface SyncResult {
+  ok: boolean;
+  /** True when Supabase isn't configured — not an error, just skipped. */
+  skipped?: boolean;
+  message?: string;
+  threads?: number;
+  messages?: number;
+  qaPairs?: number;
+}
+
+function nullable(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+interface CourseRow {
+  id: string;
+  name: string;
+  name_he: string | null;
+  forum_category: string | null;
+}
+
+interface ThreadRow {
+  campus_thread_id: string;
+  course_id: string;
+  title: string | null;
+  author: string | null;
+  author_label: string | null;
+  body_text: string | null;
+  body_hash: string | null;
+  op_is_staff: boolean;
+  comment_count: number | null;
+  created_at: string | null;
+  last_activity_at: string | null;
+  raw: Record<string, unknown>;
+  synced_at: string;
+}
+
+interface MessageRow {
+  campus_comment_id: string;
+  thread_id: string;
+  parent_id: string | null;
+  author: string | null;
+  author_label: string | null;
+  is_staff: boolean;
+  endorsed: boolean;
+  body_text: string | null;
+  body_hash: string | null;
+  created_at: string | null;
+  raw: Record<string, unknown>;
+  synced_at: string;
+}
+
+interface QaPairRow {
+  thread_id: string;
+  course_id: string;
+  question_text: string;
+  answer_text: string;
+  resolution_text: string | null;
+  answer_message_id: string | null;
+  answer_selection: string;
+  lang: string;
+  content_hash: string;
+  answered_at: string | null;
+}
+
+function buildThreadRow(courseId: string, thread: ForumThread): ThreadRow {
+  const bodyText = toPlainText(thread.raw_body, thread.rendered_body);
+  // Store the raw Open edX object without the hydrated comment tree — comments
+  // live in the messages table, so we avoid duplicating (and bloating) them.
+  const { comments: _comments, comments_error: _err, ...rawThread } = thread;
+
+  return {
+    campus_thread_id: thread.id,
+    course_id: courseId,
+    title: nullable(thread.title),
+    author: nullable(thread.author),
+    author_label: nullable(thread.author_label),
+    body_text: bodyText || null,
+    body_hash: bodyText ? hashContent(bodyText) : null,
+    op_is_staff: isStaffAuthor(thread.author_label),
+    comment_count: thread.comment_count ?? null,
+    created_at: nullable(thread.created_at),
+    last_activity_at: nullable(threadActivityAt(thread)),
+    raw: rawThread as Record<string, unknown>,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+function buildMessageRows(thread: ForumThread): MessageRow[] {
+  return flattenComments(thread.comments).map((comment) => {
+    const bodyText = toPlainText(comment.raw_body, comment.rendered_body);
+    const { children: _children, ...rawComment } = comment;
+    return {
+      campus_comment_id: comment.id,
+      thread_id: thread.id,
+      parent_id: nullable(comment.parent_id),
+      author: nullable(comment.author),
+      author_label: nullable(comment.author_label),
+      is_staff: isStaffAuthor(comment.author_label),
+      endorsed: Boolean(comment.endorsed),
+      body_text: bodyText || null,
+      body_hash: bodyText ? hashContent(bodyText) : null,
+      created_at: nullable(comment.created_at),
+      raw: rawComment as Record<string, unknown>,
+      synced_at: new Date().toISOString(),
+    };
+  });
+}
+
+/**
+ * Upsert one course's polled threads (+ messages + Q↔A pairs) into Supabase.
+ * Returns a result object; never throws.
+ */
+export async function syncCourseThreadsToSupabase(
+  courseId: string,
+  threads: ForumThread[]
+): Promise<SyncResult> {
+  if (!supabase) return { ok: false, skipped: true };
+  if (threads.length === 0) {
+    return { ok: true, threads: 0, messages: 0, qaPairs: 0 };
+  }
+
+  try {
+    const course = findCourseById(courseId);
+    const courseRow: CourseRow = {
+      id: courseId,
+      name: course?.name ?? courseId,
+      name_he: nullable(course?.nameHe),
+      forum_category: nullable(course?.forumCategory),
+    };
+
+    const threadRows: ThreadRow[] = [];
+    const messageRows: MessageRow[] = [];
+    const qaRows: QaPairRow[] = [];
+    const qaDeleteThreadIds: string[] = [];
+
+    for (const thread of threads) {
+      threadRows.push(buildThreadRow(courseId, thread));
+      messageRows.push(...buildMessageRows(thread));
+
+      // Unknown comment forest: persist thread/messages, leave qa_pairs alone
+      // so a failed hydrate never deletes a previously good pair.
+      if (thread.comments_error) {
+        continue;
+      }
+
+      const pair = buildQaPair(thread);
+      if (pair) {
+        qaRows.push({
+          thread_id: pair.threadId,
+          course_id: courseId,
+          question_text: pair.questionText,
+          answer_text: pair.answerText,
+          resolution_text: pair.resolutionText || null,
+          answer_message_id: pair.answerMessageId,
+          answer_selection: pair.answerSelection,
+          lang: pair.lang,
+          content_hash: pair.contentHash,
+          answered_at: pair.answeredAt,
+        });
+      } else {
+        // Thread was processed but no longer qualifies — drop any stale pair.
+        qaDeleteThreadIds.push(thread.id);
+      }
+    }
+
+    // 1. Course (FK target for threads + qa_pairs).
+    const courseRes = await supabase
+      .from("courses")
+      .upsert(courseRow, { onConflict: "id" });
+    if (courseRes.error) throw courseRes.error;
+
+    // 2. Threads.
+    const threadRes = await supabase
+      .from("threads")
+      .upsert(threadRows, { onConflict: "campus_thread_id" });
+    if (threadRes.error) throw threadRes.error;
+
+    // 3. Messages (before qa_pairs — answer_message_id references them).
+    if (messageRows.length > 0) {
+      const msgRes = await supabase
+        .from("messages")
+        .upsert(messageRows, { onConflict: "campus_comment_id" });
+      if (msgRes.error) throw msgRes.error;
+    }
+
+    // 4. Q↔A pairs (upsert qualifying, delete stale).
+    if (qaRows.length > 0) {
+      const qaRes = await supabase
+        .from("qa_pairs")
+        .upsert(qaRows, { onConflict: "thread_id" });
+      if (qaRes.error) throw qaRes.error;
+    }
+    if (qaDeleteThreadIds.length > 0) {
+      const delRes = await supabase
+        .from("qa_pairs")
+        .delete()
+        .in("thread_id", qaDeleteThreadIds);
+      if (delRes.error) throw delRes.error;
+    }
+
+    return {
+      ok: true,
+      threads: threadRows.length,
+      messages: messageRows.length,
+      qaPairs: qaRows.length,
+    };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Supabase sync failed";
+    return { ok: false, message };
+  }
+}

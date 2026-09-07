@@ -64,8 +64,9 @@ platform.
 - `check-one-thread.mjs` — Stage 1 CLI script. Fetches one page of threads from
   one course and prints the first raw thread object in full.
 - `../server/forumThreadsCore.ts` — Shared login + Discussion API logic used by
-  the web UI and Vercel API route. Supports incremental polls via `since` +
-  `knownThreads` (hydrate only new/updated ids).
+  the web UI and Vercel API routes. Supports incremental polls via `since` +
+  `knownThreads` (hydrate only new/updated ids). Exports
+  `loginWithEnvCredentials` for one-shot password login.
 - `../src/lib/courses.json` — Course catalog (`id`, `name`, optional `nameHe`,
   **`forumCategory`**) used by the course hub sidebar. Edit this JSON file to
   add courses and set each course’s technical-help forum name.
@@ -75,11 +76,26 @@ platform.
   and per-thread `noAnswerNeeded` override (cleared on newer poll activity).
   `saveThreadStore` returns success/failure so a full localStorage quota can
   stop check-all instead of failing silently.
+- `../src/lib/qaPairing.ts` — Deterministic student-question ↔ staff-answer
+  pairing (plain text, `lang`, `content_hash`, `resolution_text`). Used by
+  the Supabase sync; no network I/O.
+- `../src/lib/supabase.ts` — Optional browser client for the **dedicated**
+  tau-support Supabase project (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`).
+  Missing env → client is `null` and a console warning is logged; the inbox
+  still works. Never put the service_role key here.
+- `../src/lib/supabaseSync.ts` — After each successful course poll, upserts
+  `courses` / `threads` / `messages` / `qa_pairs`. Failures are non-blocking.
+- `../supabase/schema.sql` — Canonical Phase 1 schema (source of truth).
+- `../supabase/migrations/001_init.sql` — Applyable copy of that schema for a
+  fresh tau-support project.
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
   inter-course gap, and CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
   optional `since`, `knownThreads`, `maxPages`. Returns threads that need upsert
   (seed: top page; incremental: newer than watermark only).
+- `../api/lms-login.ts` — `POST /api/lms-login` (no body). Server password-logs
+  in once via `LMS_USERNAME` / `LMS_PASSWORD` and returns reusable session
+  cookies (`csrfToken` + `sessionId` and/or JWT pair) for check-all.
 - `fetch-forum-comments.mjs` — Stage 2 script. Full multi-course, multi-page
   polling with new-activity detection and a saved "last run" timestamp.
 
@@ -121,9 +137,16 @@ RTL split layout inspired by the campus IL forum list:
   includes the unanswered count too — and,
   temporarily, the last-run request/cookies stats line under that.
 - **Toolbar:** **בדוק הכל** runs a sequential poll of every catalog course
-  except the sandbox, in sidebar order (unanswered first). It **requires
-  browser cookies** (password login is
-  single-course **טען תגובות** only). Courses run one at a time with a
+  except the sandbox, in sidebar order (unanswered first). Auth is either
+  **browser cookies** (paste CSRF + JWT in Settings) **or** env password with
+  a **single** `POST /api/lms-login` at the start of the run (server uses
+  `LMS_USERNAME` / `LMS_PASSWORD`; the password never leaves the server). The
+  login response is reused as session cookies for every course poll so the
+  server does not password-login again. CAPTCHA/auth failure on that login
+  aborts before any course is polled. Derived session may sit in
+  `sessionStorage` for **המשך בדיקה** in the same tab; a 401 clears it.
+  Single-course **טען תגובות** with cookies off still password-logs in once
+  per request. Courses run one at a time with a
   short pause between them (the UI stays on **בודק כעת** for the next
   course — no “waiting” / **הבא בתור** copy). Each successful course is written to `localStorage`
   immediately (inside the React store updater) so a crash/CAPTCHA does not
@@ -172,6 +195,97 @@ what has already been fetched:
 4. **Retention:** at most 50 threads per course (newest by activity).
 5. Auth cookies stay in **sessionStorage**; the thread store never holds JWTs.
 
+### Supabase persistence (Phase 1)
+
+Campus IL remains the source of truth. After a successful poll merge, the
+client **mirrors** the fetched threads into a dedicated Supabase project so
+they survive beyond the 50-thread local inbox and become the RAG corpus.
+
+The browser inbox is unchanged: sync is fire-and-forget. If
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are missing, sync is skipped
+(console warning) and the poll still succeeds. Sync errors are logged with
+`[tau-support] Supabase sync failed…` and never abort **טען תגובות** /
+**בדוק הכל**.
+
+#### Schema
+
+Four tables in the dedicated project (`supabase/schema.sql`):
+
+| Table | Key | Role |
+| --- | --- | --- |
+| `courses` | Open edX course id | Catalog mirror from `courses.json` |
+| `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped) |
+| `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
+| `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
+
+RAG-readiness columns on `qa_pairs` (no vectors yet):
+
+- `question_text` / `answer_text` — primary retrieval unit (Phase 2 embeds these whole; do not chunk)
+- `resolution_text` — question + every staff reply, for parent-child “small-to-big” generation context
+- `content_hash` — hash of `question_text || answer_text` so Phase 2 only re-embeds changed pairs
+- `lang` — `he` / `en` / `mixed` / `unknown` from the question (Hebrew FTS is weak; Phase 2 uses `simple` + `pg_trgm`)
+- `course_id` — denormalized so retrieval can filter by course in the same SQL as the vector scan
+- `answer_message_id` / `answer_selection` — citation back to the chosen staff comment (`endorsed` or `first_staff`)
+
+The `vector` extension is enabled (`schema extensions`) so Phase 2 can add a
+`kb_chunks` table without another extension migration. **No vector columns
+exist in Phase 1.**
+
+RLS is on for all four tables with open `anon`/`authenticated` CRUD policies
+(internal staff tool, same stance as course-builder). The **service_role /
+secret key must never ship to the browser**. Tighten policies when adding
+staff login.
+
+#### Q↔A pairing rules (`qaPairing.ts`)
+
+For each **non-staff** OP thread with a hydrated comment forest and at least
+one staff reply (`isStaffAuthor` on `author_label`, same patterns as
+unanswered highlighting):
+
+1. **Question** = thread title + OP body, stripped to plain text.
+2. **Answer** = preferred staff reply:
+   - first choice: staff comment with `endorsed === true` (earliest `created_at` if several)
+   - else: earliest staff-labeled reply at any depth
+3. **Resolution** = `שאלה:` + question, then every staff reply in document order.
+4. `lang` from the question; `content_hash` from question + answer.
+5. Upsert one `qa_pairs` row per thread (`thread_id` unique).
+
+Staff-authored OPs and unanswered student threads: store `threads` /
+`messages`, **no** `qa_pairs` row (any stale pair for that thread is deleted).
+If `comments_error` is set, persist thread/messages and **leave `qa_pairs`
+alone** so a failed hydrate cannot wipe a previously good pair.
+
+#### Env
+
+Copy `apps/tau-support/.env.example` to `.env` and fill in from the **dedicated
+tau-support** Supabase project (Project Settings → API), then restart
+`pnpm dev`. These are `VITE_` vars (exposed to the browser bundle) — anon key
+only:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
+before the first sync.
+
+#### Phase 2 RAG design (not built)
+
+A later phase adds a unified `kb_chunks` table (one embeddable unit per row,
+polymorphic across sources):
+
+- `source_type` (`qa_pair` | `word_doc`), `source_id`, `content`,
+  `embedding vector(N)`, `lang`, `content_hash`, `metadata`, `parent_id`
+  (Word-doc child→parent), `course_id`
+- Q↔A pairs = **whole-unit embedding** (short focused text — no chunking).
+  Word docs = **hierarchical parent-child chunking** (~150–300 token children,
+  larger parents for generation).
+- Embedding worker is **idempotent**: only rows whose `content_hash` changed.
+- Hybrid search: pgvector cosine + keyword (`simple` FTS and/or `pg_trgm`
+  given Hebrew), fused with Reciprocal Rank Fusion. Metadata filters
+  (`course_id`, `source_type`, `lang`) are pushed into the SQL `match_*`
+  function, not applied after.
+- Citations: `source_type` + `source_id` back to `qa_pairs` / `messages`.
+
 ### Load behavior
 
 Courses are **not** fetched on page load or on course click. Clicking a course
@@ -185,9 +299,12 @@ in the store (otherwise “—”).
 By default **Use browser cookies** is on. Paste from DevTools → Cookies →
 `courses.campus.gov.il`: `csrftoken`, `edx-jwt-cookie-header-payload`, and
 `edx-jwt-cookie-signature` (there is often **no** `sessionid`). Uncheck the
-box to use `LMS_*` env vars for password login instead. The server resolves
-the category to Open edX topic ids via `/api/discussion/v1/course_topics/`,
-then fetches matching threads.
+box to use `LMS_USERNAME` / `LMS_PASSWORD` on the server instead. For
+**בדוק הכל** in that mode the client calls **`POST /api/lms-login` once**
+(password stays on the server), then reuses the returned session on each
+course poll. Single-course **טען תגובות** still logs in per request when
+cookies are off. The server resolves the category to Open edX topic ids via
+`/api/discussion/v1/course_topics/`, then fetches matching threads.
 
 ### Unanswered highlighting
 
@@ -272,6 +389,11 @@ hardcoded into the files):
 - `LMS_USERNAME` — your campus IL **email** (the address you type at login)
 - `LMS_PASSWORD` — your campus IL password
 
+Dedicated tau-support Supabase project (optional; poll still works without them):
+
+- `VITE_SUPABASE_URL` — project URL
+- `VITE_SUPABASE_ANON_KEY` — public anon key (never the service_role secret)
+
 **Important:** Open edX v1 login expects the POST field `email`, not
 `email_or_username`. Sending the wrong field name produces a generic Hebrew/English
 “error receiving login information” message even when credentials are correct. The
@@ -304,11 +426,12 @@ is skipped.
   `LMS_SESSION_ID` + `LMS_CSRF_TOKEN` from your browser DevTools.
 - **Read-only**: the script only ever performs `GET` requests. It cannot
   alter course or forum data.
-- **API volume**: Each course fetch logs in (unless using cookies) and
-  may issue dozens of requests when loading full reply trees for several
-  threads. Reply hydration is capped per thread (see **depth / child-fetch
-  budget** above) so a single heavy or misbehaving thread cannot balloon the
-  request count. Use fewer threads while testing; open one course at a time.
+- **API volume**: Each course fetch may issue dozens of requests when loading
+  full reply trees. **בדוק הכל** with cookies (or after one `/api/lms-login`)
+  does not password-login per course. Single-course **טען תגובות** without
+  cookies still logs in once per click. Reply hydration is capped per thread
+  (see **depth / child-fetch budget** above) so a single heavy or misbehaving
+  thread cannot balloon the request count. Use fewer threads while testing.
   Busy courses can still take up to the 3-minute client timeout on the first
   seed — prefer **Use browser cookies** and keep **threads to load** low (3).
 - **JWT cookies vs sessionid**: Campus IL browser logins often expose

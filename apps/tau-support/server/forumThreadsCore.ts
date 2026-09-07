@@ -964,6 +964,69 @@ async function loginFromConfig(config: ReturnType<typeof getLmsConfig>): Promise
   };
 }
 
+/**
+ * Pull reusable browser-session fields out of a password-login cookie jar
+ * so later course polls can skip loginWithPassword.
+ */
+export function extractSessionFromCookieJar(
+  cookieJar: string,
+  csrftoken: string
+): LmsSessionCredentials {
+  const csrfToken =
+    getCookieFromJar(cookieJar, "csrftoken")?.trim() || csrftoken.trim();
+  const sessionId =
+    getCookieFromJar(cookieJar, "sessionid")?.trim() || undefined;
+  const jwtHeaderPayload =
+    getCookieFromJar(cookieJar, "edx-jwt-cookie-header-payload")?.trim() ||
+    undefined;
+  const jwtSignature =
+    getCookieFromJar(cookieJar, "edx-jwt-cookie-signature")?.trim() ||
+    undefined;
+
+  const session: LmsSessionCredentials = {
+    csrfToken,
+    ...(sessionId ? { sessionId } : {}),
+    ...(jwtHeaderPayload ? { jwtHeaderPayload } : {}),
+    ...(jwtSignature ? { jwtSignature } : {}),
+  };
+
+  if (!hasBrowserSession(session)) {
+    throw new ForumThreadsError(
+      "Login succeeded but no reusable session cookies were returned " +
+        "(need sessionid, or edx-jwt-cookie-header-payload + edx-jwt-cookie-signature). " +
+        "Use browser cookies from DevTools instead.",
+      502
+    );
+  }
+
+  return session;
+}
+
+/**
+ * Password login once via LMS_USERNAME / LMS_PASSWORD (server env only).
+ * Returns credentials the client can reuse on forum-threads polls.
+ */
+export async function loginWithEnvCredentials(): Promise<LmsSessionCredentials> {
+  const config = getLmsConfig();
+  if (!config.username || !config.password) {
+    throw new ForumThreadsError(
+      "Set LMS_USERNAME and LMS_PASSWORD on the server for password login, " +
+        "or paste browser cookies in Settings.",
+      400
+    );
+  }
+
+  const passwordAuth = await loginWithPassword(
+    config.apiOrigin,
+    config.username,
+    config.password
+  );
+  return extractSessionFromCookieJar(
+    passwordAuth.cookieJar,
+    passwordAuth.csrftoken
+  );
+}
+
 function normalizeTopicName(name: string): string {
   return name.trim().normalize("NFC");
 }

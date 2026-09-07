@@ -209,6 +209,9 @@ importers:
 
   apps/tau-support:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.112.2
+        version: 2.112.2
       '@workspace/ai-client':
         specifier: workspace:*
         version: link:../../packages/ai-client

@@ -9,7 +9,8 @@ import {
 import { EmptySelection } from "./components/EmptySelection";
 import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
-import { fetchForumThreads } from "./lib/api";
+import { fetchForumThreads, fetchLmsLogin, hasReusableSession, type LmsSessionCredentials } from "./lib/api";
+import { syncCourseThreadsToSupabase } from "./lib/supabaseSync";
 import {
   CHECK_ALL_GAP_MS,
   checkAllCourseList,
@@ -47,7 +48,7 @@ import {
   type ThreadStore,
 } from "./lib/threadStore";
 import { countUnanswered, entryNeedsAnswer } from "./lib/unanswered";
-import type { ForumThreadsResponse } from "./lib/types";
+import type { ForumThread, ForumThreadsResponse } from "./lib/types";
 
 type InboxFilter = "all" | "unanswered";
 
@@ -55,6 +56,7 @@ const SESSION_STORAGE_KEY = "tau-support-use-cookies";
 const CSRF_STORAGE_KEY = "tau-support-csrf-token";
 const JWT_PAYLOAD_STORAGE_KEY = "tau-support-jwt-payload";
 const JWT_SIGNATURE_STORAGE_KEY = "tau-support-jwt-signature";
+const RUN_SESSION_STORAGE_KEY = "tau-support-check-all-run-session";
 
 type SyncStatus =
   | { status: "idle" }
@@ -90,11 +92,40 @@ function hasCookieAuth(auth: {
   jwtHeaderPayload: string;
   jwtSignature: string;
 }): boolean {
-  return Boolean(
-    auth.csrfToken.trim() &&
-      auth.jwtHeaderPayload.trim() &&
-      auth.jwtSignature.trim()
-  );
+  return hasReusableSession({
+    csrfToken: auth.csrfToken,
+    jwtHeaderPayload: auth.jwtHeaderPayload,
+    jwtSignature: auth.jwtSignature,
+  });
+}
+
+function loadRunSession(): LmsSessionCredentials | null {
+  try {
+    const raw = sessionStorage.getItem(RUN_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const session = parsed as LmsSessionCredentials;
+    return hasReusableSession(session) ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRunSession(session: LmsSessionCredentials): void {
+  try {
+    sessionStorage.setItem(RUN_SESSION_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clearRunSession(): void {
+  try {
+    sessionStorage.removeItem(RUN_SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 function formatFetchError(err: unknown): string {
@@ -110,8 +141,8 @@ function formatFetchError(err: unknown): string {
   return "Something went wrong";
 }
 
-const COOKIES_REQUIRED_MESSAGE =
-  "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT). הדביקו אותן בהגדרות — התחברות בסיסמה זמינה רק לטעינת תגובות של קורס בודד.";
+const AUTH_REQUIRED_MESSAGE =
+  "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT) בהגדרות, או כבו את ״Use browser cookies״ והגדירו LMS_USERNAME / LMS_PASSWORD בשרת (התחברות חד-פעמית לכל הריצה).";
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -272,11 +303,18 @@ export default function App() {
   }, []);
 
   const pollCourse = useCallback(
-    async (courseId: string, options?: { forceSeed?: boolean }) => {
+    async (
+      courseId: string,
+      options?: { forceSeed?: boolean; session?: LmsSessionCredentials }
+    ) => {
       const currentAuth = authRef.current;
       const cookieAuth = cookieAuthFrom(currentAuth);
+      const sessionOverride = options?.session;
+      const useSession =
+        Boolean(sessionOverride && hasReusableSession(sessionOverride)) ||
+        (currentAuth.useCookies && hasCookieAuth(cookieAuth));
 
-      if (currentAuth.useCookies && !hasCookieAuth(cookieAuth)) {
+      if (currentAuth.useCookies && !sessionOverride && !hasCookieAuth(cookieAuth)) {
         const message =
           "Paste csrftoken plus both JWT cookies " +
           "(edx-jwt-cookie-header-payload and edx-jwt-cookie-signature), " +
@@ -304,6 +342,16 @@ export default function App() {
         const pageSize = Number.isFinite(parsedCount) ? parsedCount : 3;
         const course = findCourseById(courseId);
         const categoryName = course?.forumCategory.trim() || undefined;
+        const sessionCreds: LmsSessionCredentials | null = sessionOverride
+          ? sessionOverride
+          : currentAuth.useCookies
+            ? {
+                csrfToken: cookieAuth.csrfToken,
+                jwtHeaderPayload: cookieAuth.jwtHeaderPayload,
+                jwtSignature: cookieAuth.jwtSignature,
+              }
+            : null;
+
         const data = await fetchForumThreads(courseId, {
           categoryName,
           pageSize,
@@ -317,16 +365,27 @@ export default function App() {
                   courseId
                 ),
               }),
-          ...(currentAuth.useCookies
+          ...(useSession && sessionCreds
             ? {
-                csrfToken: cookieAuth.csrfToken,
-                jwtHeaderPayload: cookieAuth.jwtHeaderPayload,
-                jwtSignature: cookieAuth.jwtSignature,
+                csrfToken: sessionCreds.csrfToken,
+                ...(sessionCreds.sessionId
+                  ? { sessionId: sessionCreds.sessionId }
+                  : {}),
+                ...(sessionCreds.jwtHeaderPayload
+                  ? { jwtHeaderPayload: sessionCreds.jwtHeaderPayload }
+                  : {}),
+                ...(sessionCreds.jwtSignature
+                  ? { jwtSignature: sessionCreds.jwtSignature }
+                  : {}),
               }
             : {}),
         });
 
         let persistError: string | null = null;
+        // Merged (most complete) versions of the threads we just fetched — used
+        // for the Supabase mirror so we sync the full comment tree, not a
+        // summary payload.
+        let syncThreads: ForumThread[] = [];
         setThreadStore((prev) => {
           const next = mergeCoursePoll(prev, courseId, data.threads, {
             seed: seed && !hasStored,
@@ -339,6 +398,10 @@ export default function App() {
             persistError = saved.message;
           }
           threadStoreRef.current = next;
+          const mergedBucket = getCourseBucket(next, courseId);
+          syncThreads = data.threads
+            .map((t) => mergedBucket.threads[t.id]?.thread)
+            .filter((t): t is ForumThread => Boolean(t));
           return next;
         });
 
@@ -350,6 +413,21 @@ export default function App() {
             upsertedCount: data.threads.length,
           },
         }));
+
+        // Mirror to Supabase (Phase 1 RAG corpus). Non-blocking: the local
+        // inbox is the source of truth in the browser, so failures (or a
+        // missing Supabase config) only warn and never break the poll.
+        if (syncThreads.length > 0) {
+          void syncCourseThreadsToSupabase(courseId, syncThreads).then(
+            (res) => {
+              if (!res.ok && !res.skipped) {
+                console.warn(
+                  `[tau-support] Supabase sync failed for ${courseId}: ${res.message}`
+                );
+              }
+            }
+          );
+        }
 
         if (persistError) {
           return {
@@ -407,8 +485,38 @@ export default function App() {
     async (mode: "resume" | "restart" | "fresh" = "fresh") => {
       const currentAuth = authRef.current;
       const cookieAuth = cookieAuthFrom(currentAuth);
-      if (!currentAuth.useCookies || !hasCookieAuth(cookieAuth)) {
-        setCheckAllError(COOKIES_REQUIRED_MESSAGE);
+
+      let runSession: LmsSessionCredentials | null = null;
+      if (currentAuth.useCookies) {
+        if (!hasCookieAuth(cookieAuth)) {
+          setCheckAllError(AUTH_REQUIRED_MESSAGE);
+          setSettingsOpen(true);
+          return;
+        }
+        runSession = {
+          csrfToken: cookieAuth.csrfToken,
+          jwtHeaderPayload: cookieAuth.jwtHeaderPayload,
+          jwtSignature: cookieAuth.jwtSignature,
+        };
+      } else {
+        const cached = loadRunSession();
+        if (mode === "resume" && cached) {
+          runSession = cached;
+        } else {
+          try {
+            runSession = await fetchLmsLogin();
+            saveRunSession(runSession);
+          } catch (err) {
+            const message = formatFetchError(err);
+            clearRunSession();
+            setCheckAllError(message);
+            return;
+          }
+        }
+      }
+
+      if (!runSession || !hasReusableSession(runSession)) {
+        setCheckAllError(AUTH_REQUIRED_MESSAGE);
         setSettingsOpen(true);
         return;
       }
@@ -491,7 +599,7 @@ export default function App() {
             fetchStartedAt: Date.now(),
           });
 
-          const result = await pollCourse(course.id);
+          const result = await pollCourse(course.id, { session: runSession });
           scanned += 1;
 
           if (result.ok) {
@@ -516,6 +624,9 @@ export default function App() {
               (sync?.status === "error" ? sync.message : "Check failed");
             const classified = classifyCheckAllStop(message);
             failedNames.push(courseDisplayName(course.id));
+            if (classified === "auth") {
+              clearRunSession();
+            }
             if (classified) {
               stopKind = classified;
               break;
@@ -550,6 +661,9 @@ export default function App() {
         if (!incomplete) {
           clearCheckAllCursor();
           setCheckAllCursor(null);
+          if (!currentAuth.useCookies) {
+            clearRunSession();
+          }
         } else {
           persistCursor({
             startedAt,
