@@ -85,6 +85,18 @@ create table if not exists qa_pairs (
   updated_at        timestamptz not null default now()
 );
 
+-- Singleton homepage "last בדוק הכל / בדיקת שאלות חדשות" run (shared across browsers).
+create table if not exists last_check_all (
+  id           text primary key default 'singleton'
+                 check (id = 'singleton'),
+  completed_at timestamptz not null,
+  scanned      int not null default 0,
+  total        int not null default 0,
+  upserted     int not null default 0,
+  incomplete   boolean not null default false,
+  updated_at   timestamptz not null default now()
+);
+
 -- ============================================================
 -- INDEXES (foreign keys aren't auto-indexed in Postgres)
 -- ============================================================
@@ -117,6 +129,11 @@ create trigger qa_pairs_updated_at
 before update on qa_pairs
 for each row execute function set_updated_at();
 
+drop trigger if exists last_check_all_updated_at on last_check_all;
+create trigger last_check_all_updated_at
+before update on last_check_all
+for each row execute function set_updated_at();
+
 -- ============================================================
 -- RLS (open policies until auth is added — internal staff tool)
 -- ============================================================
@@ -129,6 +146,7 @@ alter table courses  enable row level security;
 alter table threads  enable row level security;
 alter table messages enable row level security;
 alter table qa_pairs enable row level security;
+alter table last_check_all enable row level security;
 
 drop policy if exists "anon_authenticated_all" on courses;
 create policy "anon_authenticated_all" on courses
@@ -144,4 +162,8 @@ create policy "anon_authenticated_all" on messages
 
 drop policy if exists "anon_authenticated_all" on qa_pairs;
 create policy "anon_authenticated_all" on qa_pairs
+  for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "anon_authenticated_all" on last_check_all;
+create policy "anon_authenticated_all" on last_check_all
   for all to anon, authenticated using (true) with check (true);

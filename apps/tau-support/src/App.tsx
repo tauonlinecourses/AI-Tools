@@ -21,6 +21,11 @@ import {
   syncThreadUiStateToSupabase,
 } from "./lib/supabaseSync";
 import {
+  hydrateLastCheckAllFromSupabase,
+  preferNewerLastCheckAll,
+  syncLastCheckAllToSupabase,
+} from "./lib/lastCheckAllSync";
+import {
   CHECK_ALL_GAP_MS,
   checkAllCourseList,
   checkAllStopMessage,
@@ -350,6 +355,33 @@ export default function App() {
           `[tau-support] Supabase hydrate failed; using localStorage cache: ${result.message}`
         );
       }
+
+      // Homepage "העדכון האחרון" — merge local + remote by newest completedAt.
+      const remoteLast = await hydrateLastCheckAllFromSupabase();
+      if (!cancelled) {
+        if (remoteLast.ok) {
+          const localLast = loadLastCheckAllRun();
+          const preferred = preferNewerLastCheckAll(localLast, remoteLast.run ?? null);
+          if (preferred) {
+            saveLastCheckAllRun(preferred);
+            setLastCheckAllRun(preferred);
+            // Backfill remote when only local had a run (or local is newer).
+            if (
+              preferred === localLast &&
+              (!remoteLast.run ||
+                Date.parse(localLast!.completedAt) >
+                  Date.parse(remoteLast.run.completedAt))
+            ) {
+              void syncLastCheckAllToSupabase(preferred);
+            }
+          }
+        } else if (!remoteLast.skipped && remoteLast.message) {
+          console.warn(
+            `[tau-support] Last check-all hydrate failed: ${remoteLast.message}`
+          );
+        }
+      }
+
       setInboxHydrating(false);
     })();
     return () => {
@@ -362,7 +394,7 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    const refreshFlags = () => {
+    const refreshSharedState = () => {
       void applyRemoteUiFlagsToStore(threadStoreRef.current).then((result) => {
         if (!result.ok) {
           if (result.message) {
@@ -380,11 +412,22 @@ export default function App() {
           );
         }
       });
+
+      void hydrateLastCheckAllFromSupabase().then((result) => {
+        if (!result.ok || !result.run) return;
+        const preferred = preferNewerLastCheckAll(
+          loadLastCheckAllRun(),
+          result.run
+        );
+        if (!preferred) return;
+        saveLastCheckAllRun(preferred);
+        setLastCheckAllRun(preferred);
+      });
     };
 
-    const onFocus = () => refreshFlags();
+    const onFocus = () => refreshSharedState();
     const onVisibility = () => {
-      if (document.visibilityState === "visible") refreshFlags();
+      if (document.visibilityState === "visible") refreshSharedState();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
@@ -856,6 +899,13 @@ export default function App() {
         const lastRun = lastCheckAllFromSummary(summary);
         saveLastCheckAllRun(lastRun);
         setLastCheckAllRun(lastRun);
+        void syncLastCheckAllToSupabase(lastRun).then((res) => {
+          if (!res.ok && !res.skipped) {
+            console.warn(
+              `[tau-support] Failed to sync last check-all to Supabase: ${res.message}`
+            );
+          }
+        });
         setCheckAllError(
           stopKind === "persist" && persistStopMessage
             ? `${checkAllStopMessage("persist")} ${persistStopMessage}`

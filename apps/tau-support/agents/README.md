@@ -101,6 +101,11 @@ platform.
   `courses.last_checked_at` for projects created before that column existed.
 - `../supabase/migrations/003_thread_ui_state.sql` — Adds shared inbox flags on
   `threads` (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`).
+- `../supabase/migrations/004_last_check_all.sql` — Singleton
+  `last_check_all` row for the homepage “העדכון האחרון” timestamp (shared
+  across localhost / Vercel).
+- `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
+  for that singleton.
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
   inter-course gap, and CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
@@ -109,10 +114,24 @@ platform.
 - `../api/lms-login.ts` — `POST /api/lms-login` (no body). Server password-logs
   in once via `LMS_USERNAME` / `LMS_PASSWORD` and returns reusable session
   cookies (`csrfToken` + `sessionId` and/or JWT pair) for check-all.
+- `../server/appAuth.ts` — Shared check for the **UI gate** password
+  (`APP_PASSWORD` server env; never `VITE_`).
+- `../api/app-login.ts` — `POST /api/app-login` with `{ password }`. Returns
+  `{ ok: true }` on match, `401` on mismatch, `503` if `APP_PASSWORD` is unset.
+- `../src/lib/appAuth.ts` — Client helpers: call `/api/app-login`, persist
+  unlock in `sessionStorage` (`tau-support-app-unlocked`) for the tab session.
+- `../src/components/AppLogin.tsx` — Full-page login (סיסמה / כניסה). Shown from
+  `main.tsx` before `App` mounts so hydrate/sync do not run until unlocked.
 - `fetch-forum-comments.mjs` — Stage 2 script. Full multi-course, multi-page
   polling with new-activity detection and a saved "last run" timestamp.
 
 ## Web UI (course hub)
+
+**App password gate:** On first visit (or after closing the tab),
+`main.tsx` shows `AppLogin` until `POST /api/app-login` succeeds. Unlock is
+remembered in `sessionStorage` for that browser tab only. Set
+`APP_PASSWORD` in local `.env` and in Vercel env (server-only — never
+`VITE_APP_PASSWORD`). If unset, login returns 503 and the tool stays locked.
 
 The tau-support page is a **centered max-width hub** (`max-w-[90rem]`, taller
 viewport fill via `calc(100vh-6rem)`; not full-bleed) with an
@@ -146,8 +165,9 @@ RTL split layout inspired by the campus IL forum list:
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is
   **home** (`HomeDashboard`): friendly greeting **שלום אחראי/ת תמיכה של חודש
-  {month} 👋**, then **העדכון האחרון היה ב:** from `localStorage`
-  (`tau-support-last-check-all`), a white **בדיקת שאלות חדשות** CTA (same flow
+  {month} 👋**, then **העדכון האחרון היה ב:** from shared Supabase
+  (`last_check_all`, mirrored in `localStorage` as `tau-support-last-check-all`),
+  a white **בדיקת שאלות חדשות** CTA (same flow
   as **בדוק הכל**), and large colorful stat boxes (total courses, unanswered,
   new activity, marked לא צרכים מענה / `noAnswerNeeded`).
   While a check-all run is active the home pane shows an animated pipeline
@@ -201,7 +221,11 @@ RTL split layout inspired by the campus IL forum list:
   (quota) failure. Per-course timeouts / missing category are recorded and
   the run continues. A second tab is blocked by `tau-support-check-all-lock`.
   When a run ends (complete or incomplete), `tau-support-last-check-all` stores
-  `completedAt` plus scanned/total/upserted/incomplete for the home dashboard.
+  the homepage summary locally **and** upserts the singleton `last_check_all`
+  row in Supabase (`completedAt` plus scanned/total/upserted/incomplete). On
+  load (and when returning to the tab), the app hydrates that row and keeps the
+  newer of local vs remote so localhost and Vercel show the same
+  “העדכון האחרון היה ב” time.
   Header shows `בודקים N/total · course name` and elapsed seconds.
   Per-course **טען תגובות חדשות עבור קורס זה** (`LoadThreadsButton`) polls only the
   selected course and walks **all** newer threads since `lastCheckedAt`
@@ -274,7 +298,7 @@ succeeds against localStorage. Sync errors are logged with
 
 #### Schema
 
-Four tables in the dedicated project (`supabase/schema.sql`):
+Five tables in the dedicated project (`supabase/schema.sql`):
 
 | Table | Key | Role |
 | --- | --- | --- |
@@ -282,6 +306,7 @@ Four tables in the dedicated project (`supabase/schema.sql`):
 | `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped), shared UX (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`) |
 | `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
 | `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
+| `last_check_all` | singleton `id='singleton'` | Homepage “העדכון האחרון היה ב” run (`completed_at`, scanned/total/upserted, incomplete) — shared across localhost and Vercel |
 
 RAG-readiness columns on `qa_pairs` (no vectors yet):
 
@@ -296,7 +321,7 @@ The `vector` extension is enabled (`schema extensions`) so Phase 2 can add a
 `kb_chunks` table without another extension migration. **No vector columns
 exist in Phase 1.**
 
-RLS is on for all four tables with open `anon`/`authenticated` CRUD policies
+RLS is on for all five tables with open `anon`/`authenticated` CRUD policies
 (internal staff tool, same stance as course-builder). The **service_role /
 secret key must never ship to the browser**. Tighten policies when adding
 staff login.
@@ -332,7 +357,8 @@ only:
 
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
-`002_courses_last_checked_at.sql` and/or `003_thread_ui_state.sql`.
+`002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`, and/or
+`004_last_check_all.sql`.
 
 #### Phase 2 RAG design (not built)
 
@@ -448,6 +474,8 @@ Credentials stay server-side only (`LMS_BASE_URL`, `LMS_USERNAME`,
 Set these as environment variables when running either script (never
 hardcoded into the files):
 
+- `APP_PASSWORD` — password for the tau-support **UI login screen** (server-only;
+  set in local `.env` and Vercel). Distinct from campus IL credentials below.
 - `LMS_BASE_URL` — your campus IL site's base URL. For campus IL you can use
   either `https://app.campus.gov.il` (discussions UI) or
   `https://courses.campus.gov.il` (LMS backend). The app automatically uses

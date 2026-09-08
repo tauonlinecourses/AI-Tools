@@ -1,6 +1,10 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import {
+  isAppPasswordConfigured,
+  verifyAppPassword,
+} from "./server/appAuth";
+import {
   ForumThreadsError,
   fetchForumThreads,
   loginWithEnvCredentials,
@@ -19,6 +23,7 @@ function bridgeLmsEnv(env: Record<string, string>) {
   if (env.LMS_JWT_SIGNATURE) {
     process.env.LMS_JWT_SIGNATURE ||= env.LMS_JWT_SIGNATURE;
   }
+  if (env.APP_PASSWORD) process.env.APP_PASSWORD ||= env.APP_PASSWORD;
 }
 
 export default defineConfig(({ mode }) => {
@@ -30,6 +35,56 @@ export default defineConfig(({ mode }) => {
       {
         name: "local-api",
         configureServer(server) {
+          server.middlewares.use("/api/app-login", async (req, res) => {
+            if (req.method !== "POST") {
+              res.statusCode = 405;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "Method not allowed" }));
+              return;
+            }
+
+            bridgeLmsEnv(env);
+
+            let raw = "";
+            req.on("data", (chunk) => (raw += chunk));
+            req.on("end", () => {
+              if (!isAppPasswordConfigured()) {
+                res.statusCode = 503;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    error:
+                      "App password is not configured. Set APP_PASSWORD in .env and restart Vite.",
+                  })
+                );
+                return;
+              }
+
+              let password = "";
+              try {
+                const body = JSON.parse(raw || "{}") as {
+                  password?: unknown;
+                };
+                if (typeof body.password === "string") {
+                  password = body.password;
+                }
+              } catch {
+                password = "";
+              }
+
+              if (!verifyAppPassword(password)) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Incorrect password" }));
+                return;
+              }
+
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ ok: true }));
+            });
+          });
+
           server.middlewares.use("/api/lms-login", async (req, res) => {
             if (req.method !== "POST") {
               res.statusCode = 405;
