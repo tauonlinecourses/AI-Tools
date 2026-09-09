@@ -355,9 +355,24 @@ browser**. Tighten policies when adding staff login.
    loads `qa_pairs` whose `content_hash` is missing from / differs in
    `kb_chunks`, calls `POST /api/embed`, and upserts vectors. Stale chunks
    (deleted Q↔A) are removed.
-2. Unanswered thread cards show **שאלות דומות**: embed the student question
-   with the **same** model/API, then `rpc('match_kb_chunks')` for top-3 past
-   Q↔A (optional `course_id` filter inside SQL).
+2. Unanswered thread cards show **שאלות דומות** (text) and an **AI icon**
+   button (**נסח טיוטת תשובה** via tooltip) in the header action cluster
+   (visual top-left in RTL, beside the **check** icon for **אין צורך במענה** /
+   **בטל סימון**): embed the
+   student question with the **same** model/API, then
+   `rpc('match_kb_chunks')` for top-3 past Q↔A (optional `course_id` filter
+   inside SQL).    Hits are hydrated from `qa_pairs.question_text` /
+   `answer_text` (and chunk metadata when present). Legacy
+   `kb_chunks.content` (`title\\n\\nbody\\n\\nstaff`) is recovered by splitting
+   at a staff-reply opening — never by taking only the first blank-line
+   segment as the question (that put the OP body into **תשובה**).
+   `resolveSimilarHitDisplay` also strips any leaked body prefix before
+   render. Results render **below the thread body**
+   (after the OP question text, before replies): each hit is laid out like a
+   mini thread card (**white** bg + thread shadow) with a **bold** title, body
+   under it, and the staff answer nested as a reply box (also white, with a
+   **צוות** chip). Full question + answer text; **דמיון N%** badge in the
+   card's visual top-left.
 3. New student questions are **query-time only** — not stored as corpus
    vectors until they become a `qa_pair`.
 
@@ -366,7 +381,8 @@ works; embed/search show a clear error.
 
 #### Phase 3 draft answers (built)
 
-Unanswered thread cards also show **נסח טיוטת תשובה** (`draftAnswer.ts`):
+Unanswered thread cards also show **נסח טיוטת תשובה** in that same header
+action cluster (`draftAnswer.ts`):
 
 1. `threadQuestionText(thread)` → `findSimilarQa(question, { courseId,
    matchCount: 5, matchThreshold: 0.3 })`.
@@ -379,8 +395,12 @@ Unanswered thread cards also show **נסח טיוטת תשובה** (`draftAnswer
    Hebrew system prompt enforcing **strict grounding**: answer only from the
    retrieved staff answers, invent nothing, and emit the exact refusal
    sentence if the context doesn't cover the question.
-4. The draft renders in an editable RTL `textarea` with a **העתק** button and a
-   "מבוסס על N שאלות דומות" source line. Staff copy/edit and post manually —
+4. The draft renders **below the thread body** (after the OP question text,
+   before similar-question results / replies) in an editable RTL `textarea`
+   (`text-base` / same as forum body) titled **טיוטת תשובה**, with the
+   responsibility disclaimer under the box, a **העתק** button, a
+   "מבוסס על N שאלות דומות" source line with **הצג תשובות** / **הסתר תשובות**
+   to expand the grounding Q↔A cards, and staff copy/edit and post manually —
    **no** Campus IL writes.
 
 Reuses the existing server `OPENAI_API_KEY` and `api/chat.ts` (no new Vercel

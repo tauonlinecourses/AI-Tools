@@ -37,7 +37,8 @@ interface KbChunkHashRow {
 }
 
 function buildEmbedContent(question: string, answer: string): string {
-  return `${question.trim()}\n\n${answer.trim()}`.trim();
+  // Unique delimiter so Q/A can be split even when the question has blank lines.
+  return `${question.trim()}\n\n---\n\n${answer.trim()}`.trim();
 }
 
 async function loadPendingPairs(courseId?: string): Promise<{
@@ -140,6 +141,8 @@ async function upsertPendingBatches(
         thread_id: pair.thread_id,
         answer_message_id: pair.answer_message_id,
         answer_selection: pair.answer_selection,
+        question_text: pair.question_text,
+        answer_text: pair.answer_text,
       },
       embedding: embeddings[idx]!,
       updated_at: new Date().toISOString(),

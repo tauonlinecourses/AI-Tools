@@ -23,8 +23,14 @@ export const DRAFT_REFUSAL_SENTENCE =
   "אין לי מספיק מידע ממאגר התשובות כדי לנסח תשובה.";
 
 export interface DraftSource {
+  id: string;
   threadId: string | null;
   similarity: number;
+  questionSnippet: string;
+  answerSnippet: string;
+  questionTitle: string;
+  questionBody: string;
+  content: string;
 }
 
 export interface DraftResult {
@@ -99,8 +105,14 @@ export async function draftAnswerForThread(
   }
 
   const sources: DraftSource[] = hits.map((hit) => ({
+    id: hit.id,
     threadId: threadIdOf(hit),
     similarity: hit.similarity,
+    questionSnippet: hit.questionSnippet,
+    answerSnippet: hit.answerSnippet,
+    questionTitle: hit.questionTitle,
+    questionBody: hit.questionBody,
+    content: hit.content,
   }));
 
   const userMessage = [
