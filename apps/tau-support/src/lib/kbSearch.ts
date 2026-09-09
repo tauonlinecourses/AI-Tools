@@ -9,7 +9,6 @@
 import { embedTexts } from "./embedClient";
 import { toPlainText } from "./qaPairing";
 import { supabase } from "./supabase";
-import { courseLabel, type CourseEntry } from "./courses";
 import type { ForumThread } from "./types";
 
 export interface SimilarQaHit {
@@ -328,15 +327,9 @@ export async function findSimilarQa(
         .in("id", courseIds);
       if (!courseErr) {
         for (const course of (courses ?? []) as CourseRow[]) {
-          courseNameById.set(
-            course.id,
-            courseLabel({
-              id: course.id,
-              name: course.name,
-              nameHe: course.name_he ?? undefined,
-              forumCategory: "",
-            } satisfies CourseEntry)
-          );
+          const he = course.name_he?.trim();
+          const en = course.name?.trim();
+          courseNameById.set(course.id, he || en || course.id);
         }
       }
     }

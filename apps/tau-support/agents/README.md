@@ -380,7 +380,8 @@ browser**. Tighten policies when adding staff login.
    render. Results render **below the thread body**
    (after the OP question text, before replies): each hit is laid out like a
    mini thread card (**white** bg + thread shadow) with a **bold** title,
-   course label, body under it, and the staff answer nested as a reply box
+   Hebrew course name (`name_he`, else English `name`), body under it, and the
+   staff answer nested as a reply box
    (also white, with a **צוות** chip). Full question + answer text;
    **דמיון N%** badge in the card's visual top-left.
 3. New student questions are **query-time only** — not stored as corpus
