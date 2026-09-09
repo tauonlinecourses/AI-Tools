@@ -1,8 +1,20 @@
-import { Card, Button } from "@workspace/ui";
+import { useState, type MouseEvent } from "react";
+import { Card, Button, Spinner } from "@workspace/ui";
 import { ForumBody } from "./ForumBody";
 import { sanitizeCommentForest } from "../lib/commentTree";
 import { FORUM_RTL_CLASS } from "../lib/forumBody";
 import { buildForumThreadUrl } from "../lib/forumUrls";
+import {
+  findSimilarQa,
+  threadQuestionText,
+  type SimilarQaHit,
+} from "../lib/kbSearch";
+import {
+  DRAFT_REFUSAL_SENTENCE,
+  draftAnswerForThread,
+  type DraftSource,
+} from "../lib/draftAnswer";
+import { isSupabaseConfigured } from "../lib/supabase";
 import { isStaffAuthor, threadNeedsAnswer } from "../lib/unanswered";
 import type { ForumComment, ForumThread } from "../lib/types";
 
@@ -94,6 +106,87 @@ export function ThreadCard({
     thread.id,
     categoryName
   );
+  const [similarBusy, setSimilarBusy] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
+  const [similarHits, setSimilarHits] = useState<SimilarQaHit[] | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [draftRefused, setDraftRefused] = useState(false);
+  const [draftSources, setDraftSources] = useState<DraftSource[]>([]);
+  const [draftCopied, setDraftCopied] = useState(false);
+
+  async function handleFindSimilar(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    handleOpen();
+    setSimilarBusy(true);
+    setSimilarError(null);
+    try {
+      const question = threadQuestionText(thread);
+      const res = await findSimilarQa(question, {
+        courseId,
+        matchCount: 3,
+      });
+      if (res.skipped) {
+        setSimilarError("Supabase is not configured.");
+        setSimilarHits(null);
+        return;
+      }
+      if (!res.ok) {
+        setSimilarError(res.message ?? "Search failed");
+        setSimilarHits(null);
+        return;
+      }
+      setSimilarHits(res.hits ?? []);
+    } finally {
+      setSimilarBusy(false);
+    }
+  }
+
+  async function handleDraftAnswer(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    handleOpen();
+    setDraftBusy(true);
+    setDraftError(null);
+    setDraft(null);
+    setDraftRefused(false);
+    setDraftSources([]);
+    setDraftCopied(false);
+    try {
+      const res = await draftAnswerForThread(thread, courseId);
+      if (res.skipped) {
+        setDraftError("Supabase is not configured.");
+        return;
+      }
+      if (!res.ok) {
+        setDraftError(res.message ?? "Draft generation failed");
+        return;
+      }
+      setDraftSources(res.sources ?? []);
+      if (res.refused || !res.draft) {
+        setDraftRefused(true);
+        return;
+      }
+      setDraft(res.draft);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function handleCopyDraft(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draft) return;
+    try {
+      await navigator.clipboard.writeText(draft);
+      setDraftCopied(true);
+      window.setTimeout(() => setDraftCopied(false), 2000);
+    } catch {
+      // Clipboard may be blocked — the textarea is still selectable.
+    }
+  }
 
   function handleOpen() {
     onOpen?.();
@@ -199,6 +292,117 @@ export function ThreadCard({
             </Button>
           ) : null}
         </div>
+
+        {needsAnswer && isSupabaseConfigured ? (
+          <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={similarBusy}
+                onClick={(e) => void handleFindSimilar(e)}
+              >
+                {similarBusy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner size="sm" />
+                    מחפש…
+                  </span>
+                ) : (
+                  "שאלות דומות"
+                )}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={draftBusy}
+                onClick={(e) => void handleDraftAnswer(e)}
+              >
+                {draftBusy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner size="sm" />
+                    מנסח…
+                  </span>
+                ) : (
+                  "נסח טיוטת תשובה"
+                )}
+              </Button>
+            </div>
+            {draftError ? (
+              <p className="text-xs text-danger">{draftError}</p>
+            ) : null}
+            {draftRefused ? (
+              <p className="rounded-control border border-surface-200 bg-white p-2 text-right text-xs text-surface-600">
+                {DRAFT_REFUSAL_SENTENCE} נסו <span className="font-semibold">שאלות דומות</span> לבדיקה ידנית.
+              </p>
+            ) : null}
+            {draft ? (
+              <div className="flex flex-col gap-1 rounded-control border border-surface-200 bg-white p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-surface-800">
+                    טיוטת תשובה (ניתן לעריכה)
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => void handleCopyDraft(e)}
+                  >
+                    {draftCopied ? "הועתק" : "העתק"}
+                  </Button>
+                </div>
+                <textarea
+                  dir="rtl"
+                  lang="he"
+                  className="min-h-[120px] w-full resize-y rounded-control border border-surface-200 p-2 text-right text-sm text-surface-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                {draftSources.length > 0 ? (
+                  <p className="text-[11px] text-surface-500">
+                    מבוסס על {draftSources.length} שאלות דומות
+                    {" · "}
+                    {draftSources
+                      .map((s) => `${(s.similarity * 100).toFixed(0)}%`)
+                      .join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {similarError ? (
+              <p className="text-xs text-danger">{similarError}</p>
+            ) : null}
+            {similarHits ? (
+              similarHits.length === 0 ? (
+                <p className="text-xs text-surface-600">
+                  לא נמצאו שאלות דומות במאגר.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {similarHits.map((hit) => (
+                    <li
+                      key={hit.id}
+                      className="rounded-control border border-surface-200 bg-white p-2 text-right text-xs"
+                    >
+                      <p className="font-semibold text-surface-800">
+                        דמיון {(hit.similarity * 100).toFixed(0)}%
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-surface-700">
+                        {hit.questionSnippet.slice(0, 280)}
+                        {hit.questionSnippet.length > 280 ? "…" : ""}
+                      </p>
+                      {hit.answerSnippet ? (
+                        <p className="mt-1 whitespace-pre-wrap text-surface-600">
+                          <span className="font-semibold">תשובה: </span>
+                          {hit.answerSnippet.slice(0, 280)}
+                          {hit.answerSnippet.length > 280 ? "…" : ""}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+        ) : null}
 
         <ForumBody
           rendered_body={thread.rendered_body}

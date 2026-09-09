@@ -1,5 +1,10 @@
-import { useEffect } from "react";
-import { Input, Button } from "@workspace/ui";
+import { useEffect, useState } from "react";
+import { Input, Button, Spinner } from "@workspace/ui";
+import {
+  countPendingEmbeddings,
+  embedAllPendingQaPairs,
+} from "../lib/kbEmbed";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 export interface AuthSettingsValues {
   threadCount: string;
@@ -14,6 +19,10 @@ interface AuthSettingsProps {
   onChange: (patch: Partial<AuthSettingsValues>) => void;
   open: boolean;
   onClose: () => void;
+  /** Run check-all that seeds the latest 20 threads per course. */
+  onSeedAllTop20?: () => void;
+  seedAllBusy?: boolean;
+  seedAllDisabled?: boolean;
 }
 
 function CloseIcon({ className }: { className?: string }) {
@@ -41,7 +50,14 @@ export function AuthSettings({
   onChange,
   open,
   onClose,
+  onSeedAllTop20,
+  seedAllBusy = false,
+  seedAllDisabled = false,
 }: AuthSettingsProps) {
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [embedBusy, setEmbedBusy] = useState(false);
+  const [embedMessage, setEmbedMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -50,6 +66,49 @@ export function AuthSettings({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open || !isSupabaseConfigured) {
+      setPendingCount(null);
+      return;
+    }
+    let cancelled = false;
+    void countPendingEmbeddings().then((res) => {
+      if (cancelled) return;
+      if (res.ok && typeof res.count === "number") {
+        setPendingCount(res.count);
+      } else {
+        setPendingCount(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function handleEmbedBackfill() {
+    setEmbedBusy(true);
+    setEmbedMessage(null);
+    try {
+      const res = await embedAllPendingQaPairs();
+      if (res.skipped) {
+        setEmbedMessage("Supabase is not configured.");
+        return;
+      }
+      if (!res.ok) {
+        setEmbedMessage(res.message ?? "Embedding failed");
+        return;
+      }
+      setPendingCount(0);
+      setEmbedMessage(
+        `Embedded ${res.embedded ?? 0} pair(s)` +
+          ((res.deleted ?? 0) > 0 ? `, removed ${res.deleted} stale` : "") +
+          "."
+      );
+    } finally {
+      setEmbedBusy(false);
+    }
+  }
 
   if (!open) return null;
 
@@ -140,6 +199,77 @@ export function AuthSettings({
                 onChange={(e) => onChange({ jwtSignature: e.target.value })}
                 autoComplete="off"
               />
+            </div>
+          ) : null}
+
+          {onSeedAllTop20 ? (
+            <div
+              className="rounded-md border border-surface-200 bg-surface-50 p-3"
+              dir="rtl"
+            >
+              <p className="text-sm font-semibold text-surface-900">
+                טען 20 אחרונים לכל הקורסים
+              </p>
+              <p className="mt-1 text-xs text-surface-600">
+                רץ על כל הקורסים (בלי הסנדבוקס) ומושך את 20 השרשורים האחרונים
+                מכל קורס — לא סריקה מצטברת. אותה תור / עצור / המשך כמו{" "}
+                <span className="whitespace-nowrap">בדיקת שאלות חדשות</span>.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={seedAllBusy || seedAllDisabled}
+                  onClick={() => onSeedAllTop20()}
+                >
+                  {seedAllBusy ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner size="sm" />
+                      בודק…
+                    </span>
+                  ) : (
+                    "טען 20 לכל הקורסים"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {isSupabaseConfigured ? (
+            <div
+              className="rounded-md border border-surface-200 bg-surface-50 p-3"
+              dir="rtl"
+            >
+              <p className="text-sm font-semibold text-surface-900">
+                הטמעות (RAG)
+              </p>
+              <p className="mt-1 text-xs text-surface-600">
+                מסנכרן את כל זוגות השאלה–תשובה לטבלת הווקטורים. דורש{" "}
+                <span dir="ltr">OPENAI_API_KEY</span> בשרת.
+                {pendingCount !== null
+                  ? ` ממתינים להטמעה: ${pendingCount}.`
+                  : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={embedBusy}
+                  onClick={() => void handleEmbedBackfill()}
+                >
+                  {embedBusy ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner size="sm" />
+                      מסנכרן…
+                    </span>
+                  ) : (
+                    "סנכרן הטמעות"
+                  )}
+                </Button>
+                {embedMessage ? (
+                  <p className="text-xs text-surface-700">{embedMessage}</p>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

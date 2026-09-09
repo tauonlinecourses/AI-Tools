@@ -28,10 +28,15 @@ export interface CheckAllProgress {
   fetchStartedAt?: number;
 }
 
+/** How each course is polled during a check-all run. */
+export type CheckAllPollMode = "incremental" | "seedTop20";
+
 export interface CheckAllCursor {
   startedAt: string;
   completedCourseIds: string[];
   status: "in_progress" | "incomplete" | "complete";
+  /** Defaults to incremental when missing (older cursors). */
+  pollMode?: CheckAllPollMode;
 }
 
 export interface CheckAllSummary {
@@ -115,15 +120,24 @@ export function hasIncompleteCheckAll(
   return done.length < courseIds.length;
 }
 
+function isPollMode(value: unknown): value is CheckAllPollMode {
+  return value === "incremental" || value === "seedTop20";
+}
+
 function isCursor(value: unknown): value is CheckAllCursor {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
+  const statusOk =
+    record.status === "in_progress" ||
+    record.status === "incomplete" ||
+    record.status === "complete";
+  const pollModeOk =
+    record.pollMode === undefined || isPollMode(record.pollMode);
   return (
     typeof record.startedAt === "string" &&
     Array.isArray(record.completedCourseIds) &&
-    (record.status === "in_progress" ||
-      record.status === "incomplete" ||
-      record.status === "complete")
+    statusOk &&
+    pollModeOk
   );
 }
 

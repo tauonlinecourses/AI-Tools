@@ -3,16 +3,14 @@
 -- The applyable copy lives in migrations/001_init.sql (identical). Apply that
 -- against a fresh project; keep this file in sync as the canonical reference.
 --
--- Phase 1 scope: durable store for polled threads/messages plus deterministic
--- staff Q↔A pairs as plain text. NO embeddings/vectors are created here — the
--- `vector` extension is enabled so Phase 2 can add a kb_chunks table without a
--- new extension migration, but no vector columns exist yet.
+-- Phase 1: durable store for polled threads/messages + deterministic Q↔A pairs.
+-- Phase 2: kb_chunks holds embeddings (see below / migrations/002_kb_chunks.sql).
 
 -- ============================================================
 -- EXTENSIONS
 -- ============================================================
 create extension if not exists pgcrypto;                       -- gen_random_uuid()
-create extension if not exists vector with schema extensions;  -- Phase 2 RAG (no columns yet)
+create extension if not exists vector with schema extensions;  -- kb_chunks embeddings
 
 -- ============================================================
 -- TABLES
@@ -85,6 +83,22 @@ create table if not exists qa_pairs (
   updated_at        timestamptz not null default now()
 );
 
+-- Phase 2: one embeddable unit per row (whole Q↔A pair; word_doc later).
+create table if not exists kb_chunks (
+  id           uuid primary key default gen_random_uuid(),
+  source_type  text not null check (source_type in ('qa_pair')),
+  source_id    text not null,   -- qa_pairs.id::text
+  course_id    text references courses(id) on delete cascade,
+  content      text not null,
+  content_hash text not null,
+  lang         text,
+  metadata     jsonb not null default '{}'::jsonb,
+  embedding    extensions.vector(1536) not null,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (source_type, source_id)
+);
+
 -- Singleton homepage "last בדוק הכל / בדיקת שאלות חדשות" run (shared across browsers).
 create table if not exists last_check_all (
   id           text primary key default 'singleton'
@@ -106,6 +120,11 @@ create index if not exists idx_threads_no_answer_needed
 create index if not exists idx_messages_thread_id     on messages(thread_id);
 create index if not exists idx_qa_pairs_course_id     on qa_pairs(course_id);
 create index if not exists idx_qa_pairs_content_hash  on qa_pairs(content_hash);
+create index if not exists idx_kb_chunks_course_id     on kb_chunks(course_id);
+create index if not exists idx_kb_chunks_content_hash  on kb_chunks(content_hash);
+create index if not exists kb_chunks_embedding_hnsw
+  on kb_chunks
+  using hnsw (embedding extensions.vector_cosine_ops);
 
 -- ============================================================
 -- AUTO-UPDATE updated_at
@@ -134,6 +153,11 @@ create trigger last_check_all_updated_at
 before update on last_check_all
 for each row execute function set_updated_at();
 
+drop trigger if exists kb_chunks_updated_at on kb_chunks;
+create trigger kb_chunks_updated_at
+before update on kb_chunks
+for each row execute function set_updated_at();
+
 -- ============================================================
 -- RLS (open policies until auth is added — internal staff tool)
 -- ============================================================
@@ -146,6 +170,7 @@ alter table courses  enable row level security;
 alter table threads  enable row level security;
 alter table messages enable row level security;
 alter table qa_pairs enable row level security;
+alter table kb_chunks enable row level security;
 alter table last_check_all enable row level security;
 
 drop policy if exists "anon_authenticated_all" on courses;
@@ -164,6 +189,51 @@ drop policy if exists "anon_authenticated_all" on qa_pairs;
 create policy "anon_authenticated_all" on qa_pairs
   for all to anon, authenticated using (true) with check (true);
 
+drop policy if exists "anon_authenticated_all" on kb_chunks;
+create policy "anon_authenticated_all" on kb_chunks
+  for all to anon, authenticated using (true) with check (true);
+
 drop policy if exists "anon_authenticated_all" on last_check_all;
 create policy "anon_authenticated_all" on last_check_all
   for all to anon, authenticated using (true) with check (true);
+
+-- ============================================================
+-- Phase 2 similarity search (cosine); course filter pushed into SQL
+-- ============================================================
+create or replace function match_kb_chunks (
+  query_embedding extensions.vector(1536),
+  match_count int default 5,
+  filter_course_id text default null,
+  match_threshold float default 0.3
+)
+returns table (
+  id uuid,
+  source_id text,
+  content text,
+  metadata jsonb,
+  lang text,
+  course_id text,
+  similarity float
+)
+language sql
+stable
+set search_path = public, extensions
+as $$
+  select
+    kb.id,
+    kb.source_id,
+    kb.content,
+    kb.metadata,
+    kb.lang,
+    kb.course_id,
+    (1 - (kb.embedding <=> query_embedding))::float as similarity
+  from kb_chunks kb
+  where
+    (filter_course_id is null or kb.course_id = filter_course_id)
+    and (1 - (kb.embedding <=> query_embedding)) > match_threshold
+  order by kb.embedding <=> query_embedding
+  limit least(match_count, 50);
+$$;
+
+grant execute on function match_kb_chunks(extensions.vector, int, text, float)
+  to anon, authenticated;

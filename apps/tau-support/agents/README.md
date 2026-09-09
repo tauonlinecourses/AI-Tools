@@ -80,6 +80,22 @@ platform.
 - `../src/lib/qaPairing.ts` — Deterministic student-question ↔ staff-answer
   pairing (plain text, `lang`, `content_hash`, `resolution_text`). Used by
   the Supabase sync; no network I/O.
+- `../src/lib/embedClient.ts` — Browser `POST /api/embed` client (server holds
+  `OPENAI_API_KEY`).
+- `../src/lib/kbEmbed.ts` — Idempotent upsert of `qa_pairs` → `kb_chunks`
+  (skip when `content_hash` matches); stale chunk cleanup; Settings backfill
+  (**סנכרן הטמעות**).
+- `../src/lib/kbSearch.ts` — Query-time embed of a student question +
+  `match_kb_chunks` RPC (**שאלות דומות** on unanswered cards).
+- `../src/lib/draftAnswer.ts` — Phase 3 grounded draft: retrieve via
+  `findSimilarQa`, confidence gate (`DRAFT_MIN_SIMILARITY`), strict-grounded
+  `aiChat` (`/api/chat`, `gpt-4o`) or refusal (**נסח טיוטת תשובה**). No posting.
+- `../server/embedCore.ts` — OpenAI `text-embedding-3-small` (1536 dims).
+- `../api/embed.ts` — Vercel `POST /api/embed` (also wired in Vite middleware).
+- `../api/chat.ts` — Vercel re-export of `@workspace/ai-client/vercel`
+  (`POST /api/chat`). Local Vite middleware mounts the same Web `handler`
+  from `@workspace/ai-client/server` (restart `pnpm dev` after Vite config
+  changes).
 - `../src/lib/supabase.ts` — Optional browser client for the **dedicated**
   tau-support Supabase project (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`).
   Missing env → client is `null` and a console warning is logged; the inbox
@@ -93,8 +109,9 @@ platform.
   `qa_pairs`. Poll upserts do **not** overwrite `no_answer_needed` / seen /
   חדש (those are owned by toggle/mark-seen patches + hydrate). Toggle
   **אין צורך במענה** / mark-seen patches those columns immediately. Failures
-  are non-blocking.
-- `../supabase/schema.sql` — Canonical Phase 1 schema (source of truth).
+  are non-blocking. On success, fires non-blocking `embedQaPairsForCourse`.
+- `../supabase/schema.sql` — Canonical schema (source of truth), including
+  Phase 2 `kb_chunks` + `match_kb_chunks`.
 - `../supabase/migrations/001_init.sql` — Applyable copy of that schema for a
   fresh tau-support project.
 - `../supabase/migrations/002_courses_last_checked_at.sql` — Adds
@@ -104,10 +121,13 @@ platform.
 - `../supabase/migrations/004_last_check_all.sql` — Singleton
   `last_check_all` row for the homepage “העדכון האחרון” timestamp (shared
   across localhost / Vercel).
+- `../supabase/migrations/005_kb_chunks.sql` — Phase 2 vector table +
+  `match_kb_chunks` RPC.
 - `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
   for that singleton.
-- `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`), tab lock,
-  inter-course gap, and CAPTCHA/401/offline classification.
+- `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`, optional
+  `pollMode`: `incremental` | `seedTop20`), tab lock, inter-course gap, and
+  CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
   optional `since`, `knownThreads`, `maxPages`. Returns threads that need upsert
   (seed: top page; incremental: newer than watermark only).
@@ -214,7 +234,8 @@ RTL split layout inspired by the campus IL forum list:
   the in-memory store + `localStorage` cache and mirrored to Supabase
   immediately so a crash/CAPTCHA does not lose earlier courses (and other
   browsers can hydrate). A session **run cursor** skips already-finished
-  courses; after a stop the primary action is **המשך בדיקה**, with
+  courses and remembers `pollMode` (`incremental` vs `seedTop20` from Settings
+  **טען 20 לכל הקורסים**); after a stop the primary action is **המשך בדיקה**, with
   **בדוק הכל מחדש** as a secondary full incremental re-poll. **עצור** means
   stop after the current course (the in-flight request is not aborted).
   The run **aborts immediately** on CAPTCHA, 401, offline, or a persist
@@ -231,6 +252,8 @@ RTL split layout inspired by the campus IL forum list:
   selected course and walks **all** newer threads since `lastCheckedAt`
   (page size 20, up to 200 pages, stops at the watermark). **בדוק הכל** still
   uses a shorter incremental window (settings page size, up to 5 pages).
+  Settings **טען 20 לכל הקורסים** seeds each course with one page of the
+  latest 20 threads (`forceSeed`, not incremental).
   Existing cards stay visible while syncing. Each course row shows
   **מעודכן לתאריך** as a date only (no clock time) from that course’s
   `lastCheckedAt` watermark (or — if never polled).
@@ -238,8 +261,11 @@ RTL split layout inspired by the campus IL forum list:
   strip** (visual left of **דף הבית**; `SettingsIcon` in `App.tsx`). Clicking it
   opens a
   modal dialog (`AuthSettings`, `open`/`onClose` props) with page size used by
-  **בדוק הכל** and cookie auth; close via the ✕, the **Done** button, the
-  backdrop, or the `Esc` key.
+  **בדוק הכל**, cookie auth, optional **סנכרן הטמעות**, and
+  **טען 20 לכל הקורסים** (seed-all: one page of the latest 20 threads per
+  catalog course, same sequential queue / lock / stop / resume as check-all,
+  with `forceSeed` + `seedPageSize: 20`). Close via the ✕, the **Done** button,
+  the backdrop, or the `Esc` key.
   The dialog open state is local (not persisted). Forum category is **not**
   global — it comes from each course’s `forumCategory` in `courses.json`, with
   the Hebrew technical-help name fallbacks above when the configured label is
@@ -298,7 +324,7 @@ succeeds against localStorage. Sync errors are logged with
 
 #### Schema
 
-Five tables in the dedicated project (`supabase/schema.sql`):
+Five tables plus `kb_chunks` in the dedicated project (`supabase/schema.sql`):
 
 | Table | Key | Role |
 | --- | --- | --- |
@@ -306,25 +332,64 @@ Five tables in the dedicated project (`supabase/schema.sql`):
 | `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped), shared UX (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`) |
 | `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
 | `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
+| `kb_chunks` | uuid; unique `(source_type, source_id)` | One embedding per Q↔A (`text-embedding-3-small`, 1536 dims) |
 | `last_check_all` | singleton `id='singleton'` | Homepage “העדכון האחרון היה ב” run (`completed_at`, scanned/total/upserted, incomplete) — shared across localhost and Vercel |
 
-RAG-readiness columns on `qa_pairs` (no vectors yet):
+RAG columns on `qa_pairs` / `kb_chunks`:
 
-- `question_text` / `answer_text` — primary retrieval unit (Phase 2 embeds these whole; do not chunk)
-- `resolution_text` — question + every staff reply, for parent-child “small-to-big” generation context
-- `content_hash` — hash of `question_text || answer_text` so Phase 2 only re-embeds changed pairs
-- `lang` — `he` / `en` / `mixed` / `unknown` from the question (Hebrew FTS is weak; Phase 2 uses `simple` + `pg_trgm`)
-- `course_id` — denormalized so retrieval can filter by course in the same SQL as the vector scan
-- `answer_message_id` / `answer_selection` — citation back to the chosen staff comment (`endorsed` or `first_staff`)
+- `question_text` / `answer_text` — primary retrieval unit (embedded whole; not chunked)
+- `resolution_text` — question + every staff reply (kept for future generation context)
+- `content_hash` — hash of question+answer; embedding skipped when unchanged
+- `lang` — `he` / `en` / `mixed` / `unknown`
+- `course_id` — denormalized for in-SQL vector filters
+- `kb_chunks.embedding` — `extensions.vector(1536)`; HNSW cosine index
+- `kb_chunks.metadata` — `thread_id`, `answer_message_id`, `answer_selection`
 
-The `vector` extension is enabled (`schema extensions`) so Phase 2 can add a
-`kb_chunks` table without another extension migration. **No vector columns
-exist in Phase 1.**
+RLS is on for all tables with open `anon`/`authenticated` CRUD policies
+(internal staff tool). The **service_role / secret key must never ship to the
+browser**. Tighten policies when adding staff login.
 
-RLS is on for all five tables with open `anon`/`authenticated` CRUD policies
-(internal staff tool, same stance as course-builder). The **service_role /
-secret key must never ship to the browser**. Tighten policies when adding
-staff login.
+#### Phase 2 embeddings (built)
+
+1. After a successful course sync (or Settings **סנכרן הטמעות**), `kbEmbed`
+   loads `qa_pairs` whose `content_hash` is missing from / differs in
+   `kb_chunks`, calls `POST /api/embed`, and upserts vectors. Stale chunks
+   (deleted Q↔A) are removed.
+2. Unanswered thread cards show **שאלות דומות**: embed the student question
+   with the **same** model/API, then `rpc('match_kb_chunks')` for top-3 past
+   Q↔A (optional `course_id` filter inside SQL).
+3. New student questions are **query-time only** — not stored as corpus
+   vectors until they become a `qa_pair`.
+
+Requires server `OPENAI_API_KEY` (never `VITE_`). Missing key: poll/sync still
+works; embed/search show a clear error.
+
+#### Phase 3 draft answers (built)
+
+Unanswered thread cards also show **נסח טיוטת תשובה** (`draftAnswer.ts`):
+
+1. `threadQuestionText(thread)` → `findSimilarQa(question, { courseId,
+   matchCount: 5, matchThreshold: 0.3 })`.
+2. **Confidence gate**: if there are no hits or the top hit's similarity is
+   below `DRAFT_MIN_SIMILARITY` (`0.45`, stricter than search's `0.3`), the
+   card **refuses** — it shows the fixed sentence and does **not** call the
+   model.
+3. Otherwise, a numbered context block of the retrieved Q↔A is sent to
+   `aiChat` (reuses `POST /api/chat`, `gpt-4o`, `temperature 0.2`) with a
+   Hebrew system prompt enforcing **strict grounding**: answer only from the
+   retrieved staff answers, invent nothing, and emit the exact refusal
+   sentence if the context doesn't cover the question.
+4. The draft renders in an editable RTL `textarea` with a **העתק** button and a
+   "מבוסס על N שאלות דומות" source line. Staff copy/edit and post manually —
+   **no** Campus IL writes.
+
+Reuses the existing server `OPENAI_API_KEY` and `api/chat.ts` (no new Vercel
+route). Locally, `vite.config.ts` also serves `/api/chat` via the same Web
+`handler` as `/api/embed` (restart Vite after middleware changes). Missing key
+or retrieval failure surfaces a clear error and never blocks poll/sync.
+
+Later (not this phase): Word-doc hierarchical chunking, hybrid BM25/RRF,
+reranker, auto-posting.
 
 #### Q↔A pairing rules (`qaPairing.ts`)
 
@@ -354,29 +419,13 @@ only:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY` — server-only (Vite/Vercel); used by `/api/embed` and
+  `/api/chat`
 
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
-`002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`, and/or
-`004_last_check_all.sql`.
-
-#### Phase 2 RAG design (not built)
-
-A later phase adds a unified `kb_chunks` table (one embeddable unit per row,
-polymorphic across sources):
-
-- `source_type` (`qa_pair` | `word_doc`), `source_id`, `content`,
-  `embedding vector(N)`, `lang`, `content_hash`, `metadata`, `parent_id`
-  (Word-doc child→parent), `course_id`
-- Q↔A pairs = **whole-unit embedding** (short focused text — no chunking).
-  Word docs = **hierarchical parent-child chunking** (~150–300 token children,
-  larger parents for generation).
-- Embedding worker is **idempotent**: only rows whose `content_hash` changed.
-- Hybrid search: pgvector cosine + keyword (`simple` FTS and/or `pg_trgm`
-  given Hebrew), fused with Reciprocal Rank Fusion. Metadata filters
-  (`course_id`, `source_type`, `lang`) are pushed into the SQL `match_*`
-  function, not applied after.
-- Citations: `source_type` + `source_id` back to `qa_pairs` / `messages`.
+`002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
+`004_last_check_all.sql`, and/or `005_kb_chunks.sql`.
 
 ### Load behavior
 
@@ -489,6 +538,12 @@ Dedicated tau-support Supabase project (optional; poll still works without them)
 
 - `VITE_SUPABASE_URL` — project URL
 - `VITE_SUPABASE_ANON_KEY` — public anon key (never the service_role secret)
+
+Embeddings / similar-question search / draft answers (server-only):
+
+- `OPENAI_API_KEY` — used by `POST /api/embed` and `POST /api/chat` (never
+  prefix with `VITE_`). Both routes are available on Vercel and in the local
+  Vite middleware.
 
 **Important:** Open edX v1 login expects the POST field `email`, not
 `email_or_username`. Sending the wrong field name produces a generic Hebrew/English

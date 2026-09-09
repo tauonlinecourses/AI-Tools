@@ -20,6 +20,7 @@ import {
   syncCourseThreadsToSupabase,
   syncThreadUiStateToSupabase,
 } from "./lib/supabaseSync";
+import { embedQaPairsForCourse } from "./lib/kbEmbed";
 import {
   hydrateLastCheckAllFromSupabase,
   preferNewerLastCheckAll,
@@ -44,6 +45,7 @@ import {
   tryAcquireCheckAllLock,
   waitCheckAllGap,
   type CheckAllCursor,
+  type CheckAllPollMode,
   type CheckAllProgress,
   type CheckAllStopKind,
   type CheckAllSummary,
@@ -338,6 +340,16 @@ export default function App() {
                 console.warn(
                   `[tau-support] Backfill failed for ${courseId}: ${res.message}`
                 );
+                return;
+              }
+              if (res.ok) {
+                void embedQaPairsForCourse(courseId).then((embedRes) => {
+                  if (!embedRes.ok && !embedRes.skipped) {
+                    console.warn(
+                      `[tau-support] kb embed after backfill failed for ${courseId}: ${embedRes.message}`
+                    );
+                  }
+                });
               }
             });
           }
@@ -482,6 +494,8 @@ export default function App() {
         session?: LmsSessionCredentials;
         /** Walk every page until the watermark (single-course "טען תגובות חדשות"). */
         fetchAllNew?: boolean;
+        /** When seeding, override page size (e.g. 20 for Settings seed-all). */
+        seedPageSize?: number;
       }
     ) => {
       const currentAuth = authRef.current;
@@ -518,8 +532,17 @@ export default function App() {
       try {
         const parsedCount = Number.parseInt(currentAuth.threadCount, 10);
         const settingsPageSize = Number.isFinite(parsedCount) ? parsedCount : 3;
-        // All-new: largest LMS page size so we cover the backlog in fewer requests.
-        const pageSize = fetchAllNew ? 20 : settingsPageSize;
+        const seedPageSize =
+          typeof options?.seedPageSize === "number" &&
+          Number.isFinite(options.seedPageSize)
+            ? Math.min(20, Math.max(1, Math.floor(options.seedPageSize)))
+            : null;
+        // All-new / seed-all: largest LMS page size so we cover more in one request.
+        const pageSize = fetchAllNew
+          ? 20
+          : seed && seedPageSize != null
+            ? seedPageSize
+            : settingsPageSize;
         const course = findCourseById(courseId);
         const categoryName = course?.forumCategory.trim() || undefined;
         const sessionCreds: LmsSessionCredentials | null = sessionOverride
@@ -641,6 +664,20 @@ export default function App() {
             console.info(
               `[tau-support] Supabase synced ${res.threads} thread(s), ${res.messages} message(s) for ${courseId}`
             );
+            void embedQaPairsForCourse(courseId).then((embedRes) => {
+              if (embedRes.skipped) return;
+              if (!embedRes.ok) {
+                console.warn(
+                  `[tau-support] kb embed failed for ${courseId}: ${embedRes.message}`
+                );
+                return;
+              }
+              if ((embedRes.embedded ?? 0) > 0 || (embedRes.deleted ?? 0) > 0) {
+                console.info(
+                  `[tau-support] kb embed: ${embedRes.embedded ?? 0} upserted, ${embedRes.deleted ?? 0} deleted for ${courseId}`
+                );
+              }
+            });
           });
         }
 
@@ -701,7 +738,9 @@ export default function App() {
   }, []);
 
   const handleCheckAll = useCallback(
-    async (mode: "resume" | "restart" | "fresh" = "fresh") => {
+    async (
+      mode: "resume" | "restart" | "fresh" | "seedTop20" = "fresh"
+    ) => {
       const currentAuth = authRef.current;
       const cookieAuth = cookieAuthFrom(currentAuth);
 
@@ -762,6 +801,12 @@ export default function App() {
           existingCursor,
           queue.map((course) => course.id)
         );
+      const pollMode: CheckAllPollMode =
+        mode === "seedTop20"
+          ? "seedTop20"
+          : resume
+            ? (existingCursor?.pollMode ?? "incremental")
+            : "incremental";
       const completed = new Set(
         resume ? (existingCursor?.completedCourseIds ?? []) : []
       );
@@ -775,11 +820,13 @@ export default function App() {
       setCheckAllError(null);
       setCheckAllSummary(null);
       setSelectedId(null);
+      setSettingsOpen(false);
       setCheckAllFrozenOrder(sidebarOrderIds);
       persistCursor({
         startedAt,
         completedCourseIds: [...completed],
         status: "in_progress",
+        pollMode,
       });
 
       let totalUpserted = 0;
@@ -816,7 +863,12 @@ export default function App() {
             fetchStartedAt: Date.now(),
           });
 
-          const result = await pollCourse(course.id, { session: runSession });
+          const result = await pollCourse(course.id, {
+            session: runSession,
+            ...(pollMode === "seedTop20"
+              ? { forceSeed: true, seedPageSize: 20 }
+              : {}),
+          });
           scanned += 1;
 
           if (result.ok) {
@@ -826,6 +878,7 @@ export default function App() {
               startedAt,
               completedCourseIds: [...completed],
               status: "in_progress",
+              pollMode,
             });
           } else if ("persistError" in result && result.persistError) {
             persistStopMessage = result.message;
@@ -883,6 +936,7 @@ export default function App() {
             startedAt,
             completedCourseIds: [...completed],
             status: "incomplete",
+            pollMode,
           });
         }
 
@@ -1483,6 +1537,9 @@ export default function App() {
         onChange={handleAuthChange}
         open={settingsOpen}
         onClose={handleCloseSettings}
+        onSeedAllTop20={() => void handleCheckAll("seedTop20")}
+        seedAllBusy={checkingAll}
+        seedAllDisabled={checkingAll}
       />
     </PageLayout>
   );

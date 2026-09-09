@@ -10,6 +10,12 @@ import {
   loginWithEnvCredentials,
   parseForumThreadsRequestBody,
 } from "./server/forumThreadsCore";
+import {
+  EmbedError,
+  embedTexts,
+  parseEmbedRequestBody,
+} from "./server/embedCore";
+import { handler as chatHandler } from "@workspace/ai-client/server";
 
 function bridgeLmsEnv(env: Record<string, string>) {
   if (env.LMS_BASE_URL) process.env.LMS_BASE_URL ||= env.LMS_BASE_URL;
@@ -24,6 +30,7 @@ function bridgeLmsEnv(env: Record<string, string>) {
     process.env.LMS_JWT_SIGNATURE ||= env.LMS_JWT_SIGNATURE;
   }
   if (env.APP_PASSWORD) process.env.APP_PASSWORD ||= env.APP_PASSWORD;
+  if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY ||= env.OPENAI_API_KEY;
 }
 
 export default defineConfig(({ mode }) => {
@@ -112,6 +119,94 @@ export default defineConfig(({ mode }) => {
               const message = err instanceof Error ? err.message : String(err);
               res.end(JSON.stringify({ error: "Server error", details: message }));
             }
+          });
+
+          server.middlewares.use("/api/embed", async (req, res) => {
+            if (req.method !== "POST") {
+              res.statusCode = 405;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "Method not allowed" }));
+              return;
+            }
+
+            bridgeLmsEnv(env);
+
+            let raw = "";
+            req.on("data", (chunk) => (raw += chunk));
+            req.on("end", async () => {
+              let body: unknown = null;
+              try {
+                body = JSON.parse(raw || "{}");
+              } catch {
+                body = null;
+              }
+
+              const parsed = parseEmbedRequestBody(body);
+              if ("error" in parsed) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: parsed.error }));
+                return;
+              }
+
+              try {
+                const result = await embedTexts(parsed.texts);
+                res.statusCode = 200;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(result));
+              } catch (err: unknown) {
+                if (err instanceof EmbedError) {
+                  res.statusCode = err.statusCode;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ error: err.message }));
+                  return;
+                }
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                const message =
+                  err instanceof Error ? err.message : String(err);
+                res.end(
+                  JSON.stringify({ error: "Server error", details: message })
+                );
+              }
+            });
+          });
+
+          server.middlewares.use("/api/chat", async (req, res) => {
+            if (req.method !== "POST") {
+              res.statusCode = 405;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "Method not allowed" }));
+              return;
+            }
+
+            bridgeLmsEnv(env);
+
+            let raw = "";
+            req.on("data", (chunk) => (raw += chunk));
+            req.on("end", async () => {
+              try {
+                const webReq = new Request("http://localhost/api/chat", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: raw || "{}",
+                });
+                const webRes = await chatHandler(webReq);
+                res.statusCode = webRes.status;
+                webRes.headers.forEach((value, key) => {
+                  res.setHeader(key, value);
+                });
+                res.end(await webRes.text());
+              } catch (err: unknown) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                const message =
+                  err instanceof Error ? err.message : String(err);
+                res.end(
+                  JSON.stringify({ error: "Server error", details: message })
+                );
+              }
+            });
           });
 
           server.middlewares.use("/api/forum-threads", async (req, res) => {
