@@ -5,9 +5,7 @@ import { sanitizeCommentForest } from "../lib/commentTree";
 import { FORUM_RTL_CLASS } from "../lib/forumBody";
 import { buildForumThreadUrl } from "../lib/forumUrls";
 import {
-  findSimilarQa,
   resolveSimilarHitDisplay,
-  threadQuestionText,
   type SimilarQaHit,
 } from "../lib/kbSearch";
 import {
@@ -109,6 +107,7 @@ function draftSourceAsHit(source: DraftSource): SimilarQaHit {
     metadata: source.threadId ? { thread_id: source.threadId } : {},
     lang: null,
     courseId: null,
+    courseName: source.courseName,
     similarity: source.similarity,
   };
 }
@@ -123,7 +122,7 @@ function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-surface-500">
         <p className="min-w-0 text-right">שאלה דומה</p>
         <span className="shrink-0 rounded-full bg-surface-100 px-2 py-0.5 text-[11px] font-semibold text-surface-800">
-          דמיון {(hit.similarity * 100).toFixed(0)}%
+          {(hit.similarity * 100).toFixed(0)}% דמיון
         </span>
       </div>
       {title ? (
@@ -134,6 +133,11 @@ function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
         >
           {title}
         </h3>
+      ) : null}
+      {hit.courseName ? (
+        <p className="mt-1 text-right text-xs font-medium text-surface-600">
+          {hit.courseName}
+        </p>
       ) : null}
       {body ? (
         <p
@@ -240,9 +244,6 @@ export function ThreadCard({
     thread.id,
     categoryName
   );
-  const [similarBusy, setSimilarBusy] = useState(false);
-  const [similarError, setSimilarError] = useState<string | null>(null);
-  const [similarHits, setSimilarHits] = useState<SimilarQaHit[] | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -259,35 +260,6 @@ export function ThreadCard({
     el.style.height = `${el.scrollHeight}px`;
   }, [draft]);
 
-  async function handleFindSimilar(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    handleOpen();
-    setSimilarBusy(true);
-    setSimilarError(null);
-    setSimilarHits(null);
-    try {
-      const question = threadQuestionText(thread);
-      const res = await findSimilarQa(question, {
-        courseId,
-        matchCount: 3,
-      });
-      if (res.skipped) {
-        setSimilarError("Supabase is not configured.");
-        setSimilarHits(null);
-        return;
-      }
-      if (!res.ok) {
-        setSimilarError(res.message ?? "Search failed");
-        setSimilarHits(null);
-        return;
-      }
-      setSimilarHits(res.hits ?? []);
-    } finally {
-      setSimilarBusy(false);
-    }
-  }
-
   async function handleDraftAnswer(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -300,7 +272,7 @@ export function ThreadCard({
     setDraftSourcesOpen(false);
     setDraftCopied(false);
     try {
-      const res = await draftAnswerForThread(thread, courseId);
+      const res = await draftAnswerForThread(thread);
       if (res.skipped) {
         setDraftError("Supabase is not configured.");
         return;
@@ -422,11 +394,35 @@ export function ThreadCard({
               </span>
             </div>
           </a>
-          {/* Visual top-left in RTL: action cluster opposite the title */}
+          {/* Visual top-left in RTL: AI then check (check is furthest left) */}
           <div
             className="flex shrink-0 flex-wrap items-start justify-end gap-2"
             onClick={(e) => e.stopPropagation()}
           >
+            {needsAnswer && isSupabaseConfigured ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="!px-2"
+                disabled={draftBusy}
+                title="נסח טיוטת תשובה"
+                aria-label="נסח טיוטת תשובה"
+                onClick={(e) => void handleDraftAnswer(e)}
+              >
+                {draftBusy ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <img
+                    src="/icons/AI%20icon.png"
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 object-contain"
+                    aria-hidden
+                  />
+                )}
+              </Button>
+            ) : null}
             {wouldNeedAnswerWithoutOverride && onToggleNoAnswerNeeded ? (
               <Button
                 variant="secondary"
@@ -449,47 +445,6 @@ export function ThreadCard({
                 />
               </Button>
             ) : null}
-            {needsAnswer && isSupabaseConfigured ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={similarBusy}
-                  onClick={(e) => void handleFindSimilar(e)}
-                >
-                  {similarBusy ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Spinner size="sm" />
-                      מחפש…
-                    </span>
-                  ) : (
-                    "שאלות דומות"
-                  )}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="!px-2"
-                  disabled={draftBusy}
-                  title="נסח טיוטת תשובה"
-                  aria-label="נסח טיוטת תשובה"
-                  onClick={(e) => void handleDraftAnswer(e)}
-                >
-                  {draftBusy ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <img
-                      src="/icons/AI%20icon.png"
-                      alt=""
-                      width={16}
-                      height={16}
-                      className="h-4 w-4 object-contain"
-                      aria-hidden
-                    />
-                  )}
-                </Button>
-              </>
-            ) : null}
           </div>
         </div>
 
@@ -507,7 +462,7 @@ export function ThreadCard({
             ) : null}
             {draftRefused ? (
               <p className="rounded-control border border-surface-200 bg-white p-2 text-right text-xs text-surface-600">
-                {DRAFT_REFUSAL_SENTENCE} נסו <span className="font-semibold">שאלות דומות</span> לבדיקה ידנית.
+                {DRAFT_REFUSAL_SENTENCE}
               </p>
             ) : null}
             {draft ? (
@@ -578,29 +533,6 @@ export function ThreadCard({
                   </div>
                 ) : null}
               </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {needsAnswer &&
-        isSupabaseConfigured &&
-        (similarError || similarHits) ? (
-          <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-            {similarError ? (
-              <p className="text-xs text-danger">{similarError}</p>
-            ) : null}
-            {similarHits ? (
-              similarHits.length === 0 ? (
-                <p className="text-xs text-surface-600">
-                  לא נמצאו שאלות דומות במאגר.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-3">
-                  {similarHits.map((hit) => (
-                    <SimilarHitCard key={hit.id} hit={hit} />
-                  ))}
-                </ul>
-              )
             ) : null}
           </div>
         ) : null}

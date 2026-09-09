@@ -86,7 +86,7 @@ platform.
   (skip when `content_hash` matches); stale chunk cleanup; Settings backfill
   (**סנכרן הטמעות**).
 - `../src/lib/kbSearch.ts` — Query-time embed of a student question +
-  `match_kb_chunks` RPC (**שאלות דומות** on unanswered cards).
+  `match_kb_chunks` RPC (grounding for **נסח טיוטת תשובה** / **הצג תשובות**).
 - `../src/lib/draftAnswer.ts` — Phase 3 grounded draft: retrieve via
   `findSimilarQa`, confidence gate (`DRAFT_MIN_SIMILARITY`), strict-grounded
   `aiChat` (`/api/chat`, `gpt-4o`) or refusal (**נסח טיוטת תשובה**). No posting.
@@ -179,8 +179,10 @@ RTL split layout inspired by the campus IL forum list:
   **בדיקת שאלות חדשות**
   uses that same order (unanswered first, then catalog order) and **freezes**
   it for the run so the current row does not jump. Only the course currently
-  in queue is marked **בודק כעת** (amber row + elapsed time), including the
-  short pause before its fetch starts. No separate sidebar header line above
+  in queue is marked **בודק כעת** (amber row + elapsed time). After a course
+  finishes, that course stays highlighted and the timer **keeps counting**
+  through the inter-course gap; it resets to **0 שנ׳** only when the next
+  course’s fetch actually starts. No separate sidebar header line above
   the list.
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is
@@ -191,8 +193,10 @@ RTL split layout inspired by the campus IL forum list:
   as **בדוק הכל**), and large colorful stat boxes (total courses, unanswered,
   new activity, marked לא צרכים מענה / `noAnswerNeeded`).
   While a check-all run is active the home pane shows an animated pipeline
-  (התחברות → סריקת קורסים → סיום) with progress bar, current course, and
-  elapsed time; the sidebar **בודק כעת** markers stay. After a run finishes,
+  (התחברות → סריקת קורסים → סיום). Clicking the CTA immediately shows the
+  **התחברות** step with a spinner and **מתחבר לCampus IL** (before LMS
+  login finishes), then a progress bar, current course, and elapsed time;
+  the sidebar **בודק כעת** markers stay. After a run finishes,
   a **דוח ריצה** above the CTA shows threads saved from courses
   scanned (from the in-memory summary or persisted last-run). Selecting
   inbox/course
@@ -213,7 +217,10 @@ RTL split layout inspired by the campus IL forum list:
   includes the unanswered count too. Header height is fixed to that title +
   counts pair only (no fetch request-stats / sync status lines in the header).
 - **Toolbar / check-all:** On home the primary CTA is **בדיקת שאלות חדשות**
-  (dashboard); the header keeps **עצור** while a run is active. Inbox and
+  (dashboard); while a run is active the header shows **עצור** (finish after
+  the current course). After **עצור**, the pause screen (and header) show
+  **בטל בדיקה**, which ends the whole run immediately, clears the resume
+  cursor, and restores the idle homepage CTA — no **המשך בדיקה**. Inbox and
   course headers do not show **בדוק הכל** (courses still have
   **טען תגובות חדשות עבור קורס זה**).
   Starting a run navigates to home so the animated flow is visible.
@@ -235,9 +242,12 @@ RTL split layout inspired by the campus IL forum list:
   immediately so a crash/CAPTCHA does not lose earlier courses (and other
   browsers can hydrate). A session **run cursor** skips already-finished
   courses and remembers `pollMode` (`incremental` vs `seedTop20` from Settings
-  **טען 20 לכל הקורסים**); after a stop the primary action is **המשך בדיקה**, with
+  **טען 20 לכל הקורסים**); after a graceful **עצור** the primary action is
+  **המשך בדיקה**, with
   **בדוק הכל מחדש** as a secondary full incremental re-poll. **עצור** means
   stop after the current course (the in-flight request is not aborted).
+  **בטל בדיקה** (pause screen only) abandons the mid-flow resume state and
+  returns home to the basic form. Courses already saved stay saved.
   The run **aborts immediately** on CAPTCHA, 401, offline, or a persist
   (quota) failure. Per-course timeouts / missing category are recorded and
   the run continues. A second tab is blocked by `tau-support-check-all-lock`.
@@ -355,13 +365,13 @@ browser**. Tighten policies when adding staff login.
    loads `qa_pairs` whose `content_hash` is missing from / differs in
    `kb_chunks`, calls `POST /api/embed`, and upserts vectors. Stale chunks
    (deleted Q↔A) are removed.
-2. Unanswered thread cards show **שאלות דומות** (text) and an **AI icon**
-   button (**נסח טיוטת תשובה** via tooltip) in the header action cluster
-   (visual top-left in RTL, beside the **check** icon for **אין צורך במענה** /
-   **בטל סימון**): embed the
+2. Unanswered thread cards show an **AI icon** button
+   (**נסח טיוטת תשובה** via tooltip) in the header action cluster
+   (visual top-left in RTL; the **check** icon for **אין צורך במענה** /
+   **בטל סימון** sits furthest left). Draft retrieval embeds the
    student question with the **same** model/API, then
-   `rpc('match_kb_chunks')` for top-3 past Q↔A (optional `course_id` filter
-   inside SQL).    Hits are hydrated from `qa_pairs.question_text` /
+   `rpc('match_kb_chunks')` for top grounding Q↔A **across all courses**
+   (`filter_course_id` is left null). Hits are hydrated from `qa_pairs.question_text` /
    `answer_text` (and chunk metadata when present). Legacy
    `kb_chunks.content` (`title\\n\\nbody\\n\\nstaff`) is recovered by splitting
    at a staff-reply opening — never by taking only the first blank-line
@@ -369,10 +379,10 @@ browser**. Tighten policies when adding staff login.
    `resolveSimilarHitDisplay` also strips any leaked body prefix before
    render. Results render **below the thread body**
    (after the OP question text, before replies): each hit is laid out like a
-   mini thread card (**white** bg + thread shadow) with a **bold** title, body
-   under it, and the staff answer nested as a reply box (also white, with a
-   **צוות** chip). Full question + answer text; **דמיון N%** badge in the
-   card's visual top-left.
+   mini thread card (**white** bg + thread shadow) with a **bold** title,
+   course label, body under it, and the staff answer nested as a reply box
+   (also white, with a **צוות** chip). Full question + answer text;
+   **דמיון N%** badge in the card's visual top-left.
 3. New student questions are **query-time only** — not stored as corpus
    vectors until they become a `qa_pair`.
 
@@ -384,8 +394,8 @@ works; embed/search show a clear error.
 Unanswered thread cards also show **נסח טיוטת תשובה** in that same header
 action cluster (`draftAnswer.ts`):
 
-1. `threadQuestionText(thread)` → `findSimilarQa(question, { courseId,
-   matchCount: 5, matchThreshold: 0.3 })`.
+1. `threadQuestionText(thread)` → `findSimilarQa(question, {
+   matchCount: 5, matchThreshold: 0.3 })` (all courses; no course filter).
 2. **Confidence gate**: if there are no hits or the top hit's similarity is
    below `DRAFT_MIN_SIMILARITY` (`0.45`, stricter than search's `0.3`), the
    card **refuses** — it shows the fixed sentence and does **not** call the

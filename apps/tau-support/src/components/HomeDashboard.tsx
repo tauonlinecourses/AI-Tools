@@ -28,6 +28,8 @@ interface HomeDashboardProps {
   disabled?: boolean;
   onCheckAll: (mode: "fresh" | "resume" | "restart") => void;
   onStop: () => void;
+  /** Hard-abort from the pause screen — clears mid-run resume state. */
+  onDismissCheckAll: () => void;
 }
 
 const HEBREW_MONTHS = [
@@ -223,9 +225,12 @@ function FlowPipeline({
             {currentCourseName ? ` · ${currentCourseName}` : ""}
           </p>
         ) : stage === "auth" ? (
-          <p className="animate-pulse text-sm text-surface-600">
-            מתחברים לקמפוס IL…
-          </p>
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="md" />
+            <p className="text-sm font-medium text-surface-600">
+              מתחבר לCampus IL
+            </p>
+          </div>
         ) : progress ? (
           <div
             key={progress.courseId}
@@ -261,6 +266,7 @@ export function HomeDashboard({
   disabled,
   onCheckAll,
   onStop,
+  onDismissCheckAll,
 }: HomeDashboardProps) {
   const stage = stageFromProgress(checkingAll, progress);
   const month = currentHebrewMonth();
@@ -312,17 +318,27 @@ export function HomeDashboard({
               elapsedSeconds={elapsedSeconds}
               currentCourseName={currentCourseName}
             />
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={onStop}
-              disabled={progress?.phase === "stopping"}
-              title="הבדיקה תיעצר אחרי הקורס הנוכחי"
-            >
-              {progress?.phase === "stopping"
-                ? "עוצר אחרי הקורס הנוכחי…"
-                : "עצור"}
-            </Button>
+            {progress?.phase === "stopping" ? (
+              <div className="flex flex-col items-center gap-3">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={onDismissCheckAll}
+                  title="בטל את הבדיקה לחלוטין וחזור למסך הראשי"
+                >
+                  בטל בדיקה
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={onStop}
+                title="הבדיקה תיעצר אחרי הקורס הנוכחי"
+              >
+                עצור
+              </Button>
+            )}
           </>
         ) : (
           <div className="flex w-full max-w-md flex-col items-center gap-12 sm:gap-14">

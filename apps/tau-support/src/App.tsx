@@ -256,6 +256,12 @@ export default function App() {
   const authRef = useRef(auth);
   authRef.current = auth;
   const checkAllCancelRef = useRef(false);
+  /** Hard-dismiss from pause screen: clear mid-flow resume, skip end summary. */
+  const checkAllDiscardRef = useRef(false);
+  /** Bumped on dismiss so in-flight progress/summary updates are ignored. */
+  const checkAllRunIdRef = useRef(0);
+  /** True while a check-all async body still owns the lock (incl. after dismiss). */
+  const checkAllInFlightRef = useRef(false);
   const checkAllTabIdRef = useRef(newCheckAllTabId());
   const checkAllCourses = useMemo(() => checkAllCourseList(COURSES), []);
 
@@ -450,7 +456,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!checkingAll || checkAllProgress?.phase !== "fetching") return;
+    if (
+      !checkingAll ||
+      (checkAllProgress?.phase !== "fetching" &&
+        checkAllProgress?.phase !== "waiting")
+    ) {
+      return;
+    }
     const id = window.setInterval(() => {
       setElapsedTick((n) => n + 1);
     }, 1000);
@@ -737,6 +749,20 @@ export default function App() {
     );
   }, []);
 
+  /** From the pause screen: end the run and restore the idle homepage (no resume). */
+  const handleDismissCheckAll = useCallback(() => {
+    checkAllCancelRef.current = true;
+    checkAllDiscardRef.current = true;
+    checkAllRunIdRef.current += 1;
+    clearCheckAllCursor();
+    setCheckAllCursor(null);
+    setCheckingAll(false);
+    setCheckAllProgress(null);
+    setCheckAllFrozenOrder(null);
+    setCheckAllSummary(null);
+    setCheckAllError(null);
+  }, []);
+
   const handleCheckAll = useCallback(
     async (
       mode: "resume" | "restart" | "fresh" | "seedTop20" = "fresh"
@@ -744,13 +770,31 @@ export default function App() {
       const currentAuth = authRef.current;
       const cookieAuth = cookieAuthFrom(currentAuth);
 
+      // Fail fast on missing cookie auth before showing the connecting UI.
+      if (currentAuth.useCookies && !hasCookieAuth(cookieAuth)) {
+        setCheckAllError(AUTH_REQUIRED_MESSAGE);
+        setSettingsOpen(true);
+        return;
+      }
+
+      // A dismissed run may still be draining its in-flight poll / lock.
+      if (checkAllInFlightRef.current) {
+        return;
+      }
+
+      // Show "מתחבר לCampus IL" immediately, before the LMS login await.
+      checkAllCancelRef.current = false;
+      checkAllDiscardRef.current = false;
+      const runId = ++checkAllRunIdRef.current;
+      setCheckingAll(true);
+      setCheckAllError(null);
+      setCheckAllSummary(null);
+      setCheckAllProgress(null);
+      setSelectedId(null);
+      setSettingsOpen(false);
+
       let runSession: LmsSessionCredentials | null = null;
       if (currentAuth.useCookies) {
-        if (!hasCookieAuth(cookieAuth)) {
-          setCheckAllError(AUTH_REQUIRED_MESSAGE);
-          setSettingsOpen(true);
-          return;
-        }
         runSession = {
           csrfToken: cookieAuth.csrfToken,
           jwtHeaderPayload: cookieAuth.jwtHeaderPayload,
@@ -767,22 +811,32 @@ export default function App() {
           } catch (err) {
             const message = formatFetchError(err);
             clearRunSession();
+            setCheckingAll(false);
             setCheckAllError(message);
             return;
           }
         }
       }
 
+      if (checkAllCancelRef.current) {
+        setCheckingAll(false);
+        return;
+      }
+
       if (!runSession || !hasReusableSession(runSession)) {
+        setCheckingAll(false);
         setCheckAllError(AUTH_REQUIRED_MESSAGE);
         setSettingsOpen(true);
         return;
       }
 
       if (!tryAcquireCheckAllLock(checkAllTabIdRef.current)) {
+        setCheckingAll(false);
         setCheckAllError(checkAllStopMessage("lock"));
         return;
       }
+
+      checkAllInFlightRef.current = true;
 
       const sidebarOrderIds = unansweredFirstCourseIds(
         COURSES,
@@ -815,12 +869,6 @@ export default function App() {
           ? existingCursor.startedAt
           : new Date().toISOString();
 
-      checkAllCancelRef.current = false;
-      setCheckingAll(true);
-      setCheckAllError(null);
-      setCheckAllSummary(null);
-      setSelectedId(null);
-      setSettingsOpen(false);
       setCheckAllFrozenOrder(sidebarOrderIds);
       persistCursor({
         startedAt,
@@ -843,6 +891,13 @@ export default function App() {
           const nextCourse = pending[i + 1];
           const index = scanned + 1;
 
+          if (
+            checkAllDiscardRef.current ||
+            runId !== checkAllRunIdRef.current
+          ) {
+            break;
+          }
+
           if (checkAllCancelRef.current) {
             stopKind = "cancelled";
             break;
@@ -854,14 +909,17 @@ export default function App() {
           }
 
           refreshCheckAllLock(checkAllTabIdRef.current);
-          setElapsedTick(0);
-          setCheckAllProgress({
-            index,
-            total: queue.length,
-            courseId: course.id,
-            phase: "fetching",
-            fetchStartedAt: Date.now(),
-          });
+          const fetchStartedAt = Date.now();
+          if (runId === checkAllRunIdRef.current) {
+            setElapsedTick(0);
+            setCheckAllProgress({
+              index,
+              total: queue.length,
+              courseId: course.id,
+              phase: "fetching",
+              fetchStartedAt,
+            });
+          }
 
           const result = await pollCourse(course.id, {
             session: runSession,
@@ -869,6 +927,14 @@ export default function App() {
               ? { forceSeed: true, seedPageSize: 20 }
               : {}),
           });
+
+          if (
+            checkAllDiscardRef.current ||
+            runId !== checkAllRunIdRef.current
+          ) {
+            break;
+          }
+
           scanned += 1;
 
           if (result.ok) {
@@ -906,22 +972,41 @@ export default function App() {
           }
 
           if (nextCourse) {
-            setElapsedTick(0);
-            setCheckAllProgress({
-              index: scanned + 1,
-              total: queue.length,
-              courseId: nextCourse.id,
-              phase: "fetching",
-              fetchStartedAt: Date.now(),
-            });
+            // Keep this course on screen during the gap; timer keeps counting.
+            // It resets to 0 only when the next course's fetch starts (loop top).
+            if (runId === checkAllRunIdRef.current) {
+              setCheckAllProgress({
+                index,
+                total: queue.length,
+                courseId: course.id,
+                phase: "waiting",
+                fetchStartedAt,
+              });
+            }
             await waitCheckAllGap(CHECK_ALL_GAP_MS, () =>
               checkAllCancelRef.current
             );
+            if (
+              checkAllDiscardRef.current ||
+              runId !== checkAllRunIdRef.current
+            ) {
+              break;
+            }
             if (checkAllCancelRef.current) {
               stopKind = "cancelled";
               break;
             }
           }
+        }
+
+        // Hard-dismiss: leave homepage idle with no resume cursor / report.
+        if (
+          checkAllDiscardRef.current ||
+          runId !== checkAllRunIdRef.current
+        ) {
+          clearCheckAllCursor();
+          setCheckAllCursor(null);
+          return;
         }
 
         const incomplete = completed.size < queue.length;
@@ -970,10 +1055,16 @@ export default function App() {
                 : null
         );
       } finally {
+        checkAllInFlightRef.current = false;
+        if (checkAllDiscardRef.current) {
+          checkAllDiscardRef.current = false;
+        }
         releaseCheckAllLock(checkAllTabIdRef.current);
-        setCheckingAll(false);
-        setCheckAllProgress(null);
-        setCheckAllFrozenOrder(null);
+        if (runId === checkAllRunIdRef.current) {
+          setCheckingAll(false);
+          setCheckAllProgress(null);
+          setCheckAllFrozenOrder(null);
+        }
       }
     },
     [checkAllCourses, cookieAuthFrom, persistCursor, pollCourse]
@@ -1107,13 +1198,9 @@ export default function App() {
     checkAllCourses.map((course) => course.id)
   );
   const checkAllElapsedSeconds =
-    checkAllProgress?.phase === "fetching" &&
-    checkAllProgress.fetchStartedAt &&
-    elapsedTick >= 0
-      ? Math.max(
-          0,
-          Math.floor((Date.now() - checkAllProgress.fetchStartedAt) / 1000)
-        )
+    checkAllProgress?.phase === "fetching" ||
+    checkAllProgress?.phase === "waiting"
+      ? elapsedTick
       : undefined;
   const selectedUnansweredCount = selectedCourseId
     ? countUnanswered(selectedEntries)
@@ -1295,17 +1382,25 @@ export default function App() {
                   </div>
                 ) : null}
                 {checkingAll ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleStopCheckAll}
-                    disabled={checkAllProgress?.phase === "stopping"}
-                    title="הבדיקה תיעצר אחרי הקורס הנוכחי"
-                  >
-                    {checkAllProgress?.phase === "stopping"
-                      ? "עוצר אחרי הקורס הנוכחי…"
-                      : "עצור"}
-                  </Button>
+                  checkAllProgress?.phase === "stopping" ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleDismissCheckAll}
+                      title="בטל את הבדיקה לחלוטין וחזור למסך הראשי"
+                    >
+                      בטל בדיקה
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleStopCheckAll}
+                      title="הבדיקה תיעצר אחרי הקורס הנוכחי"
+                    >
+                      עצור
+                    </Button>
+                  )
                 ) : null}
                 {selectedCourseId ? (
                   <LoadThreadsButton
@@ -1366,6 +1461,7 @@ export default function App() {
                     disabled={inboxHydrating}
                     onCheckAll={(mode) => void handleCheckAll(mode)}
                     onStop={handleStopCheckAll}
+                    onDismissCheckAll={handleDismissCheckAll}
                   />
                 ) : showingInbox ? (
                   <div className="flex flex-col gap-3 p-4">

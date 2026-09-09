@@ -282,7 +282,7 @@ export function checkAllStopMessage(kind: CheckAllStopKind): string {
     case "persist":
       return "הבדיקה נעצרה — לא ניתן לשמור את השרשורים בדפדפן.";
     case "cancelled":
-      return "הבדיקה הופסקה. הקורסים שכבר נשמרו נשארו.";
+      return "הבדיקה הופסקה. אך אל דאגה! הקורסים שכבר נבדקו נשמרו.";
     case "lock":
       return "בדיקה כבר רצה בטאב אחר.";
   }

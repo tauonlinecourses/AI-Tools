@@ -25,6 +25,7 @@ export const DRAFT_REFUSAL_SENTENCE =
 export interface DraftSource {
   id: string;
   threadId: string | null;
+  courseName: string | null;
   similarity: number;
   questionSnippet: string;
   answerSnippet: string;
@@ -79,8 +80,7 @@ function threadIdOf(hit: SimilarQaHit): string | null {
  * draft. Returns `{ refused: true }` when nothing is similar enough.
  */
 export async function draftAnswerForThread(
-  thread: ForumThread,
-  courseId: string
+  thread: ForumThread
 ): Promise<DraftResult> {
   const question = threadQuestionText(thread);
   if (!question) {
@@ -88,7 +88,7 @@ export async function draftAnswerForThread(
   }
 
   const search = await findSimilarQa(question, {
-    courseId,
+    // Search the full KB across all courses (not just this thread's course).
     matchCount: DRAFT_CONTEXT_COUNT,
     matchThreshold: 0.3,
   });
@@ -107,6 +107,7 @@ export async function draftAnswerForThread(
   const sources: DraftSource[] = hits.map((hit) => ({
     id: hit.id,
     threadId: threadIdOf(hit),
+    courseName: hit.courseName,
     similarity: hit.similarity,
     questionSnippet: hit.questionSnippet,
     answerSnippet: hit.answerSnippet,

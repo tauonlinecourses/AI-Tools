@@ -9,6 +9,7 @@
 import { embedTexts } from "./embedClient";
 import { toPlainText } from "./qaPairing";
 import { supabase } from "./supabase";
+import { courseLabel, type CourseEntry } from "./courses";
 import type { ForumThread } from "./types";
 
 export interface SimilarQaHit {
@@ -26,6 +27,7 @@ export interface SimilarQaHit {
   metadata: Record<string, unknown>;
   lang: string | null;
   courseId: string | null;
+  courseName: string | null;
   similarity: number;
 }
 
@@ -220,6 +222,12 @@ type PairRow = {
   answer_text: string;
 };
 
+type CourseRow = {
+  id: string;
+  name: string;
+  name_he: string | null;
+};
+
 /**
  * Embed a student question and return the closest past Q↔A pairs.
  */
@@ -275,9 +283,17 @@ export async function findSimilarQa(
           .filter((id): id is string => Boolean(id))
       ),
     ];
+    const courseIds = [
+      ...new Set(
+        rows
+          .map((r) => (typeof r.course_id === "string" ? r.course_id : null))
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
 
     const pairById = new Map<string, PairRow>();
     const pairByThreadId = new Map<string, PairRow>();
+    const courseNameById = new Map<string, string>();
 
     const remember = (pair: PairRow) => {
       pairById.set(pair.id, pair);
@@ -302,6 +318,26 @@ export async function findSimilarQa(
         .in("thread_id", threadIds);
       if (!threadErr) {
         for (const pair of (byThread ?? []) as PairRow[]) remember(pair);
+      }
+    }
+
+    if (courseIds.length > 0) {
+      const { data: courses, error: courseErr } = await supabase
+        .from("courses")
+        .select("id, name, name_he")
+        .in("id", courseIds);
+      if (!courseErr) {
+        for (const course of (courses ?? []) as CourseRow[]) {
+          courseNameById.set(
+            course.id,
+            courseLabel({
+              id: course.id,
+              name: course.name,
+              nameHe: course.name_he ?? undefined,
+              forumCategory: "",
+            } satisfies CourseEntry)
+          );
+        }
       }
     }
 
@@ -334,6 +370,7 @@ export async function findSimilarQa(
         metadata: row.metadata ?? {},
         lang: row.lang,
         courseId: row.course_id,
+        courseName: row.course_id ? courseNameById.get(row.course_id) ?? null : null,
         similarity: row.similarity,
       };
     });
