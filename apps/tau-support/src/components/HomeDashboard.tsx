@@ -9,7 +9,8 @@ import {
 export interface HomeDashboardStats {
   totalCourses: number;
   unansweredCount: number;
-  newCount: number;
+  answeredCount: number;
+  totalQuestions: number;
   noAnswerNeededCount: number;
 }
 
@@ -73,6 +74,10 @@ const STAT_THEMES = {
   unanswered: {
     box: "bg-rose-100 border-rose-300 text-rose-950",
     value: "text-rose-700",
+  },
+  answered: {
+    box: "bg-amber-100 border-amber-300 text-amber-950",
+    value: "text-amber-800",
   },
   newActivity: {
     box: "bg-violet-100 border-violet-300 text-violet-950",
@@ -411,7 +416,7 @@ export function HomeDashboard({
 
       <section
         aria-label="סטטיסטיקות"
-        className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4"
       >
         <StatBox
           label="קורסים במערכת"
@@ -419,17 +424,22 @@ export function HomeDashboard({
           theme={STAT_THEMES.courses}
         />
         <StatBox
+          label={'סה"כ שאלות'}
+          value={stats.totalQuestions}
+          theme={STAT_THEMES.newActivity}
+        />
+        <StatBox
           label="שאלות ללא מענה"
           value={stats.unansweredCount}
           theme={STAT_THEMES.unanswered}
         />
         <StatBox
-          label="שאלות חדשות"
-          value={stats.newCount}
-          theme={STAT_THEMES.newActivity}
+          label="שאלות שנענו"
+          value={stats.answeredCount}
+          theme={STAT_THEMES.answered}
         />
         <StatBox
-          label="לא צרכים מענה"
+          label="לא צריכות מענה"
           value={stats.noAnswerNeededCount}
           theme={STAT_THEMES.neverPolled}
         />

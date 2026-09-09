@@ -16,6 +16,7 @@
  * - Thread UX flags (`no_answer_needed`, seen / חדש) are shared in DB.
  */
 
+import type { StoredThreadEntry } from "./threadStore";
 import { findCourseById } from "./courses";
 import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
 import { supabase } from "./supabase";
@@ -181,10 +182,18 @@ function buildMessageRows(thread: ForumThread): MessageRow[] {
 /**
  * Patch inbox UX flags on one thread row (אין צורך במענה / seen / חדש).
  * Fire-and-forget from the UI; never throws.
+ *
+ * When the threads row is missing, optionally upsert the full entry (with UI
+ * flags) so the mark can still persist.
  */
 export async function syncThreadUiStateToSupabase(
   threadId: string,
-  ui: ThreadUiState
+  ui: ThreadUiState,
+  fallback?: {
+    courseId: string;
+    entry: StoredThreadEntry;
+    lastCheckedAt?: string | null;
+  }
 ): Promise<SyncResult> {
   if (!supabase) return { ok: false, skipped: true };
 
@@ -201,6 +210,14 @@ export async function syncThreadUiStateToSupabase(
       .select("campus_thread_id");
     if (res.error) throw res.error;
     if (!res.data?.length) {
+      if (fallback?.entry) {
+        return syncCourseThreadsToSupabase(
+          fallback.courseId,
+          [fallback.entry],
+          fallback.lastCheckedAt ?? null,
+          { includeUiState: true }
+        );
+      }
       return {
         ok: false,
         message: `No threads row for ${threadId} — poll/sync the course first so UI flags can persist.`,

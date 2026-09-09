@@ -129,7 +129,10 @@ platform.
   `pollMode`: `incremental` | `seedTop20`), tab lock, inter-course gap, and
   CAPTCHA/401/offline classification.
 - `../api/forum-threads.ts` — `POST /api/forum-threads` with `{ courseId }` plus
-  optional `since`, `knownThreads`, `maxPages`. Returns threads that need upsert
+  optional `since`, `knownThreads`, `maxPages`, `collectNewUntil`. Returns threads that need upsert
+  (or unknown ids for backfill). Thread list paging reads `pagination.next` /
+  `num_pages` (Campus IL / Open edX nested envelope) and can advance `page=N`
+  when “load more” would apply.
   (seed: top page; incremental: newer than watermark only).
 - `../api/lms-login.ts` — `POST /api/lms-login` (no body). Server password-logs
   in once via `LMS_USERNAME` / `LMS_PASSWORD` and returns reusable session
@@ -190,8 +193,8 @@ RTL split layout inspired by the campus IL forum list:
   {month} 👋**, then **העדכון האחרון היה ב:** from shared Supabase
   (`last_check_all`, mirrored in `localStorage` as `tau-support-last-check-all`),
   a white **בדיקת שאלות חדשות** CTA (same flow
-  as **בדוק הכל**), and large colorful stat boxes (total courses, unanswered,
-  new activity, marked לא צרכים מענה / `noAnswerNeeded`).
+  as **בדוק הכל**), and large colorful stat boxes (total courses, total
+  questions, unanswered, answered, marked לא צריכות מענה / `noAnswerNeeded`).
   While a check-all run is active the home pane shows an animated pipeline
   (התחברות → סריקת קורסים → סיום). Clicking the CTA immediately shows the
   **התחברות** step with a spinner and **מתחבר לCampus IL** (before LMS
@@ -262,8 +265,9 @@ RTL split layout inspired by the campus IL forum list:
   selected course and walks **all** newer threads since `lastCheckedAt`
   (page size 20, up to 200 pages, stops at the watermark). **בדוק הכל** still
   uses a shorter incremental window (settings page size, up to 5 pages).
-  Settings **טען 20 לכל הקורסים** seeds each course with one page of the
-  latest 20 threads (`forceSeed`, not incremental).
+  Settings **טען 20 לכל הקורסים** backfills each course with up to 20
+  additional threads that are **not already saved** (pages past known ids
+  newest→older via `collectNewUntil`; not a re-fetch of the latest 20).
   Existing cards stay visible while syncing. Each course row shows
   **מעודכן לתאריך** as a date only (no clock time) from that course’s
   `lastCheckedAt` watermark (or — if never polled).
@@ -272,9 +276,9 @@ RTL split layout inspired by the campus IL forum list:
   opens a
   modal dialog (`AuthSettings`, `open`/`onClose` props) with page size used by
   **בדוק הכל**, cookie auth, optional **סנכרן הטמעות**, and
-  **טען 20 לכל הקורסים** (seed-all: one page of the latest 20 threads per
+  **טען 20 לכל הקורסים** (backfill: up to 20 unknown/older threads per
   catalog course, same sequential queue / lock / stop / resume as check-all,
-  with `forceSeed` + `seedPageSize: 20`). Close via the ✕, the **Done** button,
+  with `backfillOlder: 20` → `collectNewUntil` + `knownThreads`). Close via the ✕, the **Done** button,
   the backdrop, or the `Esc` key.
   The dialog open state is local (not persisted). Forum category is **not**
   global — it comes from each course’s `forumCategory` in `courses.json`, with
@@ -289,8 +293,11 @@ cache (instant paint + offline / missing-env fallback).
 
 On load the app hydrates from Supabase (`supabaseHydrate`), including shared
 thread states (**אין צורך במענה**, seen / חדש). Returning to the tab also
-re-pulls those UX flags so another browser’s marks show up on localhost.
-Local-only leftovers may fill DB defaults once and are then written back. If
+re-pulls those UX flags so another browser’s marks show up on localhost —
+but a local **אין צורך במענה** is **not** wiped by a lagging remote `false`
+(failed/pending push); those rows are re-synced, and in-flight writes skip
+the overlay. Local-only leftovers may fill DB defaults once and are then
+written back. If
 Supabase is empty but this browser already has a local cache, that cache is
 kept and **backfilled** to Supabase so other sessions can load it next time.
 If hydrate fails or env is missing, the UI keeps the localStorage cache.
@@ -311,7 +318,7 @@ Poll merge rules:
 3. **New vs updated:** unknown `thread.id` → `isNew`; known id with newer
    `last_activity_at` / higher `comment_count` → `isUpdated`. Opening a card
    clears those flags (`seenAt`).
-4. **Retention:** at most 50 threads per course (newest by activity).
+4. **Retention:** at most 200 threads per course (newest by activity).
 5. Auth cookies stay in **sessionStorage**; the thread store never holds JWTs.
 
 ### Supabase persistence (Phase 1)
@@ -406,9 +413,9 @@ action cluster (`draftAnswer.ts`):
    Hebrew system prompt enforcing **strict grounding**: answer only from the
    retrieved staff answers, invent nothing, and emit the exact refusal
    sentence if the context doesn't cover the question.
-4. The draft renders **below the thread body** (after the OP question text,
-   before similar-question results / replies) in an editable RTL `textarea`
-   (`text-base` / same as forum body) titled **טיוטת תשובה**, with the
+4. Clicking **נסח טיוטת תשובה** immediately opens the **טיוטת תשובה** box
+   under the OP with a grey pulse skeleton until the draft is ready, then
+   an editable RTL `textarea` (`text-base` / same as forum body), with the
    responsibility disclaimer under the box, a **העתק** button, a
    "מבוסס על N שאלות דומות" source line with **הצג תשובות** / **הסתר תשובות**
    to expand the grounding Q↔A cards, and staff copy/edit and post manually —
@@ -513,7 +520,11 @@ On the next poll, if that thread’s `last_activity_at` or `comment_count`
 advances, the override is cleared so the thread can show as unanswered again.
 
 Staff/TA replies (same `author_label` patterns) get an amber highlight and a
-**צוות** badge next to the author line in the reply tree. Staff/TA-authored
+**צוות** badge next to the author line in the reply tree. Non-staff replies
+show **סמן כצוות** (visual top-left of the answer box): marks the reply as
+staff locally, upserts `messages.is_staff` + `qa_pairs` to Supabase, and
+embeds the Q↔A into `kb_chunks`. Manual marks survive later LMS polls and
+reload via `messages.is_staff` on hydrate. Staff/TA-authored
 threads get the same amber card treatment and a **צוות** badge next to the
 title (and still never get **ללא מענה**). Tagged thread/reply cards keep a
 soft tint fill matching the badge color; untagged cards use a white background.

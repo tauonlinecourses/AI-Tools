@@ -22,6 +22,8 @@ export interface FetchForumThreadsOptions {
   /** Skip hydration for unchanged known threads. */
   knownThreads?: KnownThreadSnapshot[];
   maxPages?: number;
+  /** Collect this many unknown (not yet saved) threads, paging oldest-ward. */
+  collectNewUntil?: number;
 }
 
 const CLIENT_REQUEST_TIMEOUT_MS = 180_000;
@@ -113,6 +115,7 @@ export async function fetchForumThreads(
       since: options?.since?.trim() || undefined,
       knownThreads: options?.knownThreads,
       maxPages: options?.maxPages,
+      collectNewUntil: options?.collectNewUntil,
       ...(csrfToken
         ? {
             csrfToken,

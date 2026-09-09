@@ -6,11 +6,15 @@
  */
 
 import type { ForumThread } from "./types";
-import { sanitizeCommentForest } from "./commentTree";
+import {
+  markCommentAsStaffInForest,
+  preserveStaffAuthorLabels,
+  sanitizeCommentForest,
+} from "./commentTree";
 
 export const THREAD_STORE_KEY = "tau-support-thread-store-v1";
 export const THREAD_STORE_VERSION = 1;
-export const MAX_THREADS_PER_COURSE = 50;
+export const MAX_THREADS_PER_COURSE = 200;
 
 export interface KnownThreadSnapshot {
   id: string;
@@ -225,15 +229,19 @@ export function mergeCoursePoll(
       continue;
     }
 
+    const mergedComments =
+      incoming.comments !== undefined
+        ? preserveStaffAuthorLabels(
+            incoming.comments,
+            existing.thread.comments
+          )
+        : sanitizeCommentForest(existing.thread.comments);
+
     const mergedThread: ForumThread = {
       ...existing.thread,
       ...incoming,
       // Keep prior comments when the poll returned a summary without replies.
-      comments: sanitizeCommentForest(
-        incoming.comments !== undefined
-          ? incoming.comments
-          : existing.thread.comments
-      ),
+      comments: mergedComments,
       comments_error:
         incoming.comments_error !== undefined
           ? incoming.comments_error
@@ -342,6 +350,42 @@ export function setThreadNoAnswerNeeded(
                   seenAt: entry.seenAt ?? new Date().toISOString(),
                 }
               : {}),
+          },
+        },
+      },
+    },
+  };
+}
+
+/** Mark a reply as staff so the thread pairs into qa_pairs / kb_chunks. */
+export function markThreadCommentAsStaff(
+  store: ThreadStore,
+  courseId: string,
+  threadId: string,
+  commentId: string
+): ThreadStore {
+  const bucket = getCourseBucket(store, courseId);
+  const entry = bucket.threads[threadId];
+  if (!entry) return store;
+
+  const nextComments = markCommentAsStaffInForest(
+    entry.thread.comments,
+    commentId
+  );
+  return {
+    ...store,
+    courses: {
+      ...store.courses,
+      [courseId]: {
+        ...bucket,
+        threads: {
+          ...bucket.threads,
+          [threadId]: {
+            ...entry,
+            thread: {
+              ...entry.thread,
+              comments: nextComments,
+            },
           },
         },
       },

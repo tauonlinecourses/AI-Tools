@@ -173,9 +173,13 @@ function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
 function CommentBlock({
   comment,
   depth = 0,
+  onMarkAsStaff,
+  markStaffBusyId,
 }: {
   comment: ForumComment;
   depth?: number;
+  onMarkAsStaff?: (commentId: string) => void;
+  markStaffBusyId?: string | null;
 }) {
   const isStaff = isStaffAuthor(comment.author_label);
   const nest =
@@ -183,28 +187,54 @@ function CommentBlock({
   const box = isStaff
     ? "rounded-control overflow-hidden border border-amber-200 bg-amber-100 p-3"
     : "rounded-control overflow-hidden border border-surface-100 bg-white p-3";
+  const marking = markStaffBusyId === comment.id;
 
   return (
     <div dir="rtl" className={`${nest} ${box} ${FORUM_RTL_CLASS}`}>
-      <div className="mb-1 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
-        {isStaff ? (
-          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-            צוות
-          </span>
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-2 text-right text-xs text-surface-500">
+        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2">
+          {isStaff ? (
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+              צוות
+            </span>
+          ) : null}
+          <p className="min-w-0">
+            {authorLine(comment)}
+            {" · "}
+            {formatWhen(comment.created_at)}
+            {comment.endorsed ? " · Endorsed" : ""}
+          </p>
+        </div>
+        {!isStaff && onMarkAsStaff ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="!px-2 shrink-0 text-[11px]"
+            disabled={marking || Boolean(markStaffBusyId)}
+            title="סמן כצוות ושמור ל־Q&A / הטמעות"
+            aria-label="סמן כצוות"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMarkAsStaff(comment.id);
+            }}
+          >
+            {marking ? <Spinner size="sm" /> : "סמן כצוות"}
+          </Button>
         ) : null}
-        <p className="min-w-0">
-          {authorLine(comment)}
-          {" · "}
-          {formatWhen(comment.created_at)}
-          {comment.endorsed ? " · Endorsed" : ""}
-        </p>
       </div>
       <ForumBody
         rendered_body={comment.rendered_body}
         raw_body={comment.raw_body}
       />
       {comment.children?.map((child) => (
-        <CommentBlock key={child.id} comment={child} depth={depth + 1} />
+        <CommentBlock
+          key={child.id}
+          comment={child}
+          depth={depth + 1}
+          onMarkAsStaff={onMarkAsStaff}
+          markStaffBusyId={markStaffBusyId}
+        />
       ))}
     </div>
   );
@@ -221,6 +251,7 @@ export function ThreadCard({
   noAnswerNeeded = false,
   onOpen,
   onToggleNoAnswerNeeded,
+  onMarkCommentAsStaff,
 }: {
   thread: ForumThread;
   courseId: string;
@@ -233,6 +264,7 @@ export function ThreadCard({
   noAnswerNeeded?: boolean;
   onOpen?: () => void;
   onToggleNoAnswerNeeded?: () => void;
+  onMarkCommentAsStaff?: (commentId: string) => void | Promise<void>;
 }) {
   const comments = sanitizeCommentForest(thread.comments);
   const needsAnswer = threadNeedsAnswer(thread, noAnswerNeeded);
@@ -251,6 +283,7 @@ export function ThreadCard({
   const [draftSources, setDraftSources] = useState<DraftSource[]>([]);
   const [draftSourcesOpen, setDraftSourcesOpen] = useState(false);
   const [draftCopied, setDraftCopied] = useState(false);
+  const [markStaffBusyId, setMarkStaffBusyId] = useState<string | null>(null);
   const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -307,6 +340,16 @@ export function ThreadCard({
 
   function handleOpen() {
     onOpen?.();
+  }
+
+  async function handleMarkAsStaff(commentId: string) {
+    if (!onMarkCommentAsStaff || markStaffBusyId) return;
+    setMarkStaffBusyId(commentId);
+    try {
+      await onMarkCommentAsStaff(commentId);
+    } finally {
+      setMarkStaffBusyId(null);
+    }
   }
 
   const cardTone = needsAnswer
@@ -455,7 +498,7 @@ export function ThreadCard({
 
         {needsAnswer &&
         isSupabaseConfigured &&
-        (draftError || draftRefused || draft) ? (
+        (draftBusy || draftError || draftRefused || draft) ? (
           <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
             {draftError ? (
               <p className="text-xs text-danger">{draftError}</p>
@@ -464,6 +507,27 @@ export function ThreadCard({
               <p className="rounded-control border border-surface-200 bg-white p-2 text-right text-xs text-surface-600">
                 {DRAFT_REFUSAL_SENTENCE}
               </p>
+            ) : null}
+            {draftBusy && !draft ? (
+              <div
+                className="flex flex-col gap-1 rounded-control border border-surface-200 bg-white p-2"
+                aria-busy="true"
+                aria-label="טוען טיוטת תשובה"
+              >
+                <p className="min-w-0 text-right text-sm font-semibold text-surface-800">
+                  טיוטת תשובה
+                </p>
+                <div className="flex flex-col gap-2.5 rounded-control border border-surface-200 p-3">
+                  <div className="h-3.5 w-[92%] animate-pulse rounded bg-surface-200" />
+                  <div className="h-3.5 w-[78%] animate-pulse rounded bg-surface-200" />
+                  <div className="h-3.5 w-[86%] animate-pulse rounded bg-surface-200" />
+                  <div className="h-3.5 w-[64%] animate-pulse rounded bg-surface-200" />
+                  <div className="h-3.5 w-[70%] animate-pulse rounded bg-surface-200" />
+                </div>
+                <p className="text-[11px] text-surface-500">
+                  מנסח תשובה…
+                </p>
+              </div>
             ) : null}
             {draft ? (
               <div className="flex flex-col gap-1 rounded-control border border-surface-200 bg-white p-2">
@@ -543,7 +607,16 @@ export function ThreadCard({
               Replies ({comments.length})
             </p>
             {comments.map((comment) => (
-              <CommentBlock key={comment.id} comment={comment} />
+              <CommentBlock
+                key={comment.id}
+                comment={comment}
+                onMarkAsStaff={
+                  onMarkCommentAsStaff
+                    ? (id) => void handleMarkAsStaff(id)
+                    : undefined
+                }
+                markStaffBusyId={markStaffBusyId}
+              />
             ))}
           </div>
         ) : (thread.comment_count ?? 0) > 1 ? (

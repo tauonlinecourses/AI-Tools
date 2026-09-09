@@ -18,6 +18,16 @@ export function isStaffAuthor(label?: string | null): boolean {
   return STAFF_LABEL_PATTERNS.some((pattern) => pattern.test(label));
 }
 
+/**
+ * Manual “סמן כצוות” override. Keeps any existing Campus IL role text and
+ * appends a marker that `isStaffAuthor` recognizes.
+ */
+export function ensureStaffAuthorLabel(label?: string | null): string {
+  const trimmed = label?.trim() ?? "";
+  if (isStaffAuthor(trimmed)) return trimmed;
+  return trimmed ? `${trimmed} · staff` : "staff";
+}
+
 function walkComments(
   comments: ForumComment[],
   visit: (comment: ForumComment) => boolean

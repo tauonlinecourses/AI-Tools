@@ -14,6 +14,7 @@ import {
   type ThreadStore,
 } from "./threadStore";
 import type { ForumComment, ForumThread } from "./types";
+import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered";
 
 export interface HydrateResult {
   ok: boolean;
@@ -47,6 +48,7 @@ interface MessageDbRow {
   parent_id: string | null;
   author: string | null;
   author_label: string | null;
+  is_staff: boolean | null;
   endorsed: boolean;
   body_text: string | null;
   created_at: string | null;
@@ -103,12 +105,18 @@ function buildCommentForest(flat: ForumComment[]): ForumComment[] {
 
 function messageToComment(row: MessageDbRow): ForumComment {
   const raw = (row.raw ?? {}) as Partial<ForumComment>;
+  let authorLabel = row.author_label ?? raw.author_label ?? null;
+  // Manual סמן כצוות persists as messages.is_staff even when Campus IL
+  // never sent a staff role label.
+  if (row.is_staff && !isStaffAuthor(authorLabel)) {
+    authorLabel = ensureStaffAuthorLabel(authorLabel);
+  }
   return {
     ...raw,
     id: row.campus_comment_id,
     parent_id: row.parent_id,
     author: row.author ?? raw.author,
-    author_label: row.author_label ?? raw.author_label,
+    author_label: authorLabel,
     endorsed: row.endorsed,
     created_at: row.created_at ?? raw.created_at,
     raw_body: raw.raw_body ?? row.body_text ?? undefined,
@@ -221,10 +229,31 @@ export function mergeLocalUiFlags(
 /**
  * Pull only shared UX flags from Supabase and overlay onto an existing store.
  * Used after load and on window focus so localhost picks up marks made elsewhere.
+ *
+ * Does **not** clobber a local `noAnswerNeeded: true` with a remote `false` —
+ * that usually means the push had not landed yet (or failed). Those threads are
+ * returned in `needsRepush` so the caller can re-sync.
  */
 export async function applyRemoteUiFlagsToStore(
-  store: ThreadStore
-): Promise<{ ok: boolean; store: ThreadStore; marked?: number; message?: string }> {
+  store: ThreadStore,
+  options?: {
+    /** Thread ids with an in-flight local UI-flag write — skip remote overlay. */
+    pendingThreadIds?: ReadonlySet<string>;
+  }
+): Promise<{
+  ok: boolean;
+  store: ThreadStore;
+  marked?: number;
+  message?: string;
+  needsRepush?: Array<{
+    courseId: string;
+    threadId: string;
+    noAnswerNeeded: boolean;
+    seenAt: string | null;
+    isNew: boolean;
+    isUpdated: boolean;
+  }>;
+}> {
   if (!isSupabaseConfigured || !supabase) {
     return { ok: false, store, message: "Supabase not configured" };
   }
@@ -249,6 +278,15 @@ export async function applyRemoteUiFlagsToStore(
     let marked = 0;
     let changed = false;
     const courses: ThreadStore["courses"] = { ...store.courses };
+    const needsRepush: Array<{
+      courseId: string;
+      threadId: string;
+      noAnswerNeeded: boolean;
+      seenAt: string | null;
+      isNew: boolean;
+      isUpdated: boolean;
+    }> = [];
+    const pending = options?.pendingThreadIds;
 
     for (const row of rows) {
       const bucket = courses[row.course_id];
@@ -256,32 +294,64 @@ export async function applyRemoteUiFlagsToStore(
       const entry = bucket.threads[row.campus_thread_id];
       if (!entry) continue;
 
-      const noAnswerNeeded = Boolean(row.no_answer_needed);
-      const seenAt = row.seen_at ?? null;
-      const isNew = Boolean(row.is_new);
-      const isUpdated = Boolean(row.is_updated);
+      if (pending?.has(row.campus_thread_id)) {
+        if (entry.noAnswerNeeded) marked += 1;
+        continue;
+      }
+
+      const remoteNoAnswerNeeded = Boolean(row.no_answer_needed);
+      const localNoAnswerNeeded = Boolean(entry.noAnswerNeeded);
+      // Keep a local mark if remote still says false (failed / lagging push).
+      const noAnswerNeeded = remoteNoAnswerNeeded || localNoAnswerNeeded;
+      if (localNoAnswerNeeded && !remoteNoAnswerNeeded) {
+        needsRepush.push({
+          courseId: row.course_id,
+          threadId: row.campus_thread_id,
+          noAnswerNeeded: true,
+          seenAt: entry.seenAt ?? null,
+          isNew: Boolean(entry.isNew),
+          isUpdated: Boolean(entry.isUpdated),
+        });
+      }
+
+      // Prefer remote new/updated flags, but don't revive "חדש" on a locally
+      // handled (אין צורך במענה) thread when we're preserving that mark.
+      const resolvedIsNew =
+        localNoAnswerNeeded && !remoteNoAnswerNeeded
+          ? Boolean(entry.isNew)
+          : Boolean(row.is_new);
+      const resolvedIsUpdated =
+        localNoAnswerNeeded && !remoteNoAnswerNeeded
+          ? Boolean(entry.isUpdated)
+          : Boolean(row.is_updated);
+      const resolvedSeenAt =
+        localNoAnswerNeeded && !remoteNoAnswerNeeded
+          ? (entry.seenAt ?? row.seen_at ?? null)
+          : (row.seen_at ?? null);
+
       if (noAnswerNeeded) marked += 1;
 
       if (
         Boolean(entry.noAnswerNeeded) === noAnswerNeeded &&
-        (entry.seenAt ?? null) === seenAt &&
-        Boolean(entry.isNew) === isNew &&
-        Boolean(entry.isUpdated) === isUpdated
+        (entry.seenAt ?? null) === resolvedSeenAt &&
+        Boolean(entry.isNew) === resolvedIsNew &&
+        Boolean(entry.isUpdated) === resolvedIsUpdated
       ) {
         continue;
       }
 
       changed = true;
+      const latestBucket = courses[row.course_id]!;
       courses[row.course_id] = {
-        ...bucket,
+        ...latestBucket,
         threads: {
-          ...bucket.threads,
+          ...latestBucket.threads,
           [row.campus_thread_id]: {
             ...entry,
             noAnswerNeeded,
-            seenAt,
-            isNew,
-            isUpdated,
+            seenAt: resolvedSeenAt,
+            isNew: resolvedIsNew,
+            isUpdated: resolvedIsUpdated,
           },
         },
       };
@@ -291,6 +361,7 @@ export async function applyRemoteUiFlagsToStore(
       ok: true,
       store: changed ? { ...store, courses } : store,
       marked,
+      needsRepush: needsRepush.length > 0 ? needsRepush : undefined,
     };
   } catch (err) {
     const message =
@@ -317,7 +388,7 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
         "campus_thread_id,course_id,title,author,author_label,body_text,comment_count,created_at,last_activity_at,raw,synced_at,no_answer_needed,seen_at,is_new,is_updated"
       ),
       supabase.from("messages").select(
-        "campus_comment_id,thread_id,parent_id,author,author_label,endorsed,body_text,created_at,raw"
+        "campus_comment_id,thread_id,parent_id,author,author_label,is_staff,endorsed,body_text,created_at,raw"
       ),
     ]);
 

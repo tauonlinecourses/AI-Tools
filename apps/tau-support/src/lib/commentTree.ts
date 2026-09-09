@@ -1,4 +1,5 @@
 import type { ForumComment } from "./types";
+import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered";
 
 /**
  * Fingerprint of visible comment content. Used to drop API echoes where the
@@ -65,4 +66,70 @@ export function sanitizeCommentForest(
   };
 
   return walk(comments, 0, new Set(), new Set());
+}
+
+function mapCommentForest(
+  comments: ForumComment[] | undefined,
+  mapFn: (comment: ForumComment) => ForumComment
+): ForumComment[] {
+  return (comments ?? []).map((comment) => {
+    const mapped = mapFn(comment);
+    return {
+      ...mapped,
+      children: mapCommentForest(comment.children, mapFn),
+    };
+  });
+}
+
+function collectStaffLabels(
+  comments: ForumComment[] | undefined,
+  into: Map<string, string>
+): void {
+  for (const comment of comments ?? []) {
+    if (comment.id && isStaffAuthor(comment.author_label)) {
+      into.set(comment.id, comment.author_label!.trim());
+    }
+    collectStaffLabels(comment.children, into);
+  }
+}
+
+/** Mark one reply as staff for local unanswered / Q↔A pairing. */
+export function markCommentAsStaffInForest(
+  comments: ForumComment[] | undefined,
+  commentId: string
+): ForumComment[] {
+  return sanitizeCommentForest(
+    mapCommentForest(comments, (comment) =>
+      comment.id === commentId
+        ? {
+            ...comment,
+            author_label: ensureStaffAuthorLabel(comment.author_label),
+          }
+        : comment
+    )
+  );
+}
+
+/**
+ * Keep manual staff marks when a Campus IL poll returns the same comment
+ * without a staff/TA role label.
+ */
+export function preserveStaffAuthorLabels(
+  incoming: ForumComment[] | undefined,
+  existing: ForumComment[] | undefined
+): ForumComment[] {
+  if (!incoming?.length) return sanitizeCommentForest(existing);
+  const staffLabels = new Map<string, string>();
+  collectStaffLabels(existing, staffLabels);
+  if (staffLabels.size === 0) return sanitizeCommentForest(incoming);
+
+  return sanitizeCommentForest(
+    mapCommentForest(incoming, (comment) => {
+      const kept = staffLabels.get(comment.id);
+      if (kept && !isStaffAuthor(comment.author_label)) {
+        return { ...comment, author_label: kept };
+      }
+      return comment;
+    })
+  );
 }

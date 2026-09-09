@@ -245,6 +245,7 @@ export default defineConfig(({ mode }) => {
                   since: parsed.since,
                   knownThreads: parsed.knownThreads,
                   maxPages: parsed.maxPages,
+                  collectNewUntil: parsed.collectNewUntil,
                 });
                 res.statusCode = 200;
                 res.setHeader("Content-Type", "application/json");

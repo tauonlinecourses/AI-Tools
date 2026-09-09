@@ -104,6 +104,12 @@ export interface FetchForumThreadsOptions {
   knownThreads?: KnownThreadSnapshot[];
   /** Safety cap when paging with `since` (default 5). */
   maxPages?: number;
+  /**
+   * Walk pages newest→older and collect only unknown thread ids until this
+   * many are found (or pages are exhausted). Used for Settings backfill.
+   * Ignores the legacy “first page only” stop when `since` is unset.
+   */
+  collectNewUntil?: number;
 }
 
 function hasBrowserSession(session?: Partial<LmsSessionCredentials> | null): boolean {
@@ -173,6 +179,7 @@ export interface ParsedForumThreadsRequest {
   since?: string;
   knownThreads?: KnownThreadSnapshot[];
   maxPages?: number;
+  collectNewUntil?: number;
 }
 
 interface LmsAuth {
@@ -744,6 +751,14 @@ export function parseForumThreadsRequestBody(
         ? Number(maxPagesRaw)
         : undefined;
 
+  const collectNewUntilRaw = record.collectNewUntil;
+  const collectNewUntil =
+    typeof collectNewUntilRaw === "number" && Number.isFinite(collectNewUntilRaw)
+      ? collectNewUntilRaw
+      : typeof collectNewUntilRaw === "string" && collectNewUntilRaw.trim()
+        ? Number(collectNewUntilRaw)
+        : undefined;
+
   return {
     courseId,
     categoryName,
@@ -753,6 +768,9 @@ export function parseForumThreadsRequestBody(
     knownThreads:
       knownThreads && knownThreads.length > 0 ? knownThreads : undefined,
     maxPages: Number.isFinite(maxPages) ? maxPages : undefined,
+    collectNewUntil: Number.isFinite(collectNewUntil)
+      ? collectNewUntil
+      : undefined,
   };
 }
 
@@ -1268,6 +1286,43 @@ function resolveLmsUrl(url: string, apiOrigin: string): string {
   return new URL(url, apiOrigin).href;
 }
 
+/**
+ * Open edX DiscussionAPIPagination (NamespacedPageNumberPagination) returns
+ * `{ results, pagination: { next, previous, count, num_pages } }`.
+ * Older / other paginators put `next`/`count` at the top level.
+ */
+function readThreadsPageMeta(page: {
+  count?: number;
+  next?: string | null;
+  num_pages?: number;
+  pagination?: {
+    count?: number;
+    next?: string | null;
+    previous?: string | null;
+    num_pages?: number;
+  } | null;
+}): {
+  count: number | null;
+  next: string | null;
+  numPages: number | null;
+} {
+  const nested = page.pagination;
+  const countRaw = nested?.count ?? page.count;
+  const nextRaw = nested?.next ?? page.next;
+  const numPagesRaw = nested?.num_pages ?? page.num_pages;
+  return {
+    count:
+      typeof countRaw === "number" && Number.isFinite(countRaw)
+        ? countRaw
+        : null,
+    next: typeof nextRaw === "string" && nextRaw.trim() ? nextRaw : null,
+    numPages:
+      typeof numPagesRaw === "number" && Number.isFinite(numPagesRaw)
+        ? numPagesRaw
+        : null,
+  };
+}
+
 function ensurePageSize(url: string, pageSize = 100): string {
   const resolved = new URL(url, "https://courses.campus.gov.il");
   if (!resolved.searchParams.has("page_size")) {
@@ -1288,13 +1343,15 @@ async function fetchPaginatedResults<T>(
 
   while (nextUrl) {
     try {
-      const data: { results?: T[]; next?: string | null } = await lmsGetJson(
-        nextUrl,
-        auth
-      );
+      const data: {
+        results?: T[];
+        next?: string | null;
+        pagination?: { next?: string | null } | null;
+      } = await lmsGetJson(nextUrl, auth);
 
       items.push(...(data.results ?? []));
-      nextUrl = data.next ? resolveLmsUrl(data.next, apiOrigin) : null;
+      const nextLink = data.pagination?.next ?? data.next;
+      nextUrl = nextLink ? resolveLmsUrl(nextLink, apiOrigin) : null;
     } catch (err) {
       rethrowIfCaptcha(err);
       // Keep partial results when a later page fails (common with relative next URLs).
@@ -1674,11 +1731,23 @@ export async function fetchForumThreads(
     const since = options?.since?.trim() || undefined;
     const sinceMs = since ? activityTimestampMs(since) : 0;
     const useSince = Boolean(since && sinceMs > 0);
+    const collectNewUntilRaw = options?.collectNewUntil;
+    const collectNewUntil =
+      typeof collectNewUntilRaw === "number" &&
+      Number.isFinite(collectNewUntilRaw)
+        ? Math.min(50, Math.max(1, Math.floor(collectNewUntilRaw)))
+        : 0;
+    const backfillUnknown = collectNewUntil > 0;
     // Safety ceiling only — incremental polls stop at the since watermark.
     // Allow enough pages to collect *all* newer threads for a busy course.
+    // Backfill may scan many pages to find N unknown older threads.
     const maxPages = Math.min(
       200,
-      Math.max(1, options?.maxPages ?? (useSince ? 5 : 1))
+      Math.max(
+        1,
+        options?.maxPages ??
+          (backfillUnknown ? 50 : useSince ? 5 : 1)
+      )
     );
     const known = buildKnownThreadMap(options?.knownThreads);
 
@@ -1697,25 +1766,34 @@ export async function fetchForumThreads(
     let totalCount: number | null = null;
     let pagesFetched = 0;
     let reachedSinceWatermark = false;
+    let currentPage = 1;
     let nextUrl: string | null = buildThreadsUrl(
       config.apiOrigin,
       trimmedCourseId,
       pageSize,
       topicIds,
-      1
+      currentPage
     );
 
     while (nextUrl && pagesFetched < maxPages) {
       type ThreadsPage = {
         count?: number;
         next?: string | null;
+        num_pages?: number;
         results?: ForumThread[];
+        pagination?: {
+          count?: number;
+          next?: string | null;
+          previous?: string | null;
+          num_pages?: number;
+        } | null;
       };
       const page: ThreadsPage = await lmsGetJson<ThreadsPage>(nextUrl, auth);
 
       pagesFetched += 1;
-      if (totalCount === null && typeof page.count === "number") {
-        totalCount = page.count;
+      const meta = readThreadsPageMeta(page);
+      if (totalCount === null && meta.count != null) {
+        totalCount = meta.count;
       }
 
       const pageThreads = page.results ?? [];
@@ -1724,12 +1802,20 @@ export async function fetchForumThreads(
       }
 
       for (const thread of pageThreads) {
+        if (backfillUnknown && collected.length >= collectNewUntil) {
+          break;
+        }
         const activityMs = activityTimestampMs(threadActivityAt(thread));
         if (useSince && activityMs > 0 && activityMs <= sinceMs) {
           reachedSinceWatermark = true;
           break;
         }
-        if (threadNeedsUpsert(thread, known)) {
+        if (backfillUnknown) {
+          // Only threads not already saved — skip updates to known ids.
+          if (!known.has(thread.id)) {
+            collected.push(thread);
+          }
+        } else if (threadNeedsUpsert(thread, known)) {
           collected.push(thread);
         }
       }
@@ -1738,14 +1824,43 @@ export async function fetchForumThreads(
         break;
       }
 
-      // Without a since watermark, only fetch the first page (legacy top-N).
-      if (!useSince) {
+      if (backfillUnknown && collected.length >= collectNewUntil) {
         break;
       }
 
-      nextUrl = page.next
-        ? resolveLmsUrl(page.next, config.apiOrigin)
+      // Without a since watermark, only fetch the first page (legacy top-N),
+      // unless we are backfilling unknown older threads.
+      if (!useSince && !backfillUnknown) {
+        break;
+      }
+
+      // Prefer API-provided next link (nested under pagination on Campus IL /
+      // Open edX DiscussionAPIPagination). Fall back to building page=N+1
+      // when the UI would "load more" but `next` is missing.
+      let following: string | null = meta.next
+        ? resolveLmsUrl(meta.next, config.apiOrigin)
         : null;
+      if (!following) {
+        const hasMore =
+          meta.numPages != null
+            ? currentPage < meta.numPages
+            : meta.count != null
+              ? pagesFetched * pageSize < meta.count
+              : pageThreads.length >= pageSize;
+        if (hasMore) {
+          currentPage += 1;
+          following = buildThreadsUrl(
+            config.apiOrigin,
+            trimmedCourseId,
+            pageSize,
+            topicIds,
+            currentPage
+          );
+        }
+      } else {
+        currentPage += 1;
+      }
+      nextUrl = following;
     }
 
     const threads = await attachCommentsToThreads(

@@ -60,6 +60,7 @@ import {
   listGlobalInbox,
   loadThreadStore,
   markThreadSeen,
+  markThreadCommentAsStaff,
   mergeCoursePoll,
   saveThreadStore,
   setThreadNoAnswerNeeded,
@@ -263,6 +264,8 @@ export default function App() {
   /** True while a check-all async body still owns the lock (incl. after dismiss). */
   const checkAllInFlightRef = useRef(false);
   const checkAllTabIdRef = useRef(newCheckAllTabId());
+  /** Threads with an in-flight אין צורך במענה / seen write — skip focus overwrite. */
+  const pendingUiFlagThreadIdsRef = useRef(new Set<string>());
   const checkAllCourses = useMemo(() => checkAllCourseList(COURSES), []);
 
   useEffect(() => {
@@ -413,7 +416,9 @@ export default function App() {
     if (!isSupabaseConfigured) return;
 
     const refreshSharedState = () => {
-      void applyRemoteUiFlagsToStore(threadStoreRef.current).then((result) => {
+      void applyRemoteUiFlagsToStore(threadStoreRef.current, {
+        pendingThreadIds: pendingUiFlagThreadIdsRef.current,
+      }).then((result) => {
         if (!result.ok) {
           if (result.message) {
             console.warn(
@@ -428,6 +433,40 @@ export default function App() {
           console.info(
             `[tau-support] Refreshed UI flags from Supabase (${result.marked ?? 0} marked אין צורך במענה).`
           );
+        }
+        // Re-push local marks that remote still has as false (lagging / failed).
+        for (const item of result.needsRepush ?? []) {
+          pendingUiFlagThreadIdsRef.current.add(item.threadId);
+          const entry =
+            threadStoreRef.current.courses[item.courseId]?.threads[
+              item.threadId
+            ];
+          void syncThreadUiStateToSupabase(
+            item.threadId,
+            {
+              noAnswerNeeded: item.noAnswerNeeded,
+              seenAt: item.seenAt,
+              isNew: item.isNew,
+              isUpdated: item.isUpdated,
+            },
+            entry
+              ? {
+                  courseId: item.courseId,
+                  entry,
+                  lastCheckedAt:
+                    threadStoreRef.current.courses[item.courseId]
+                      ?.lastCheckedAt ?? null,
+                }
+              : undefined
+          ).then((res) => {
+            if (res.ok || res.skipped) {
+              pendingUiFlagThreadIdsRef.current.delete(item.threadId);
+            } else {
+              console.warn(
+                `[tau-support] Re-push אין צורך במענה failed for ${item.threadId}: ${res.message}`
+              );
+            }
+          });
         }
       });
 
@@ -508,6 +547,11 @@ export default function App() {
         fetchAllNew?: boolean;
         /** When seeding, override page size (e.g. 20 for Settings seed-all). */
         seedPageSize?: number;
+        /**
+         * Settings backfill: page past known ids and collect this many
+         * threads that are not already saved (older than what's stored).
+         */
+        backfillOlder?: number;
       }
     ) => {
       const currentAuth = authRef.current;
@@ -533,8 +577,16 @@ export default function App() {
 
       const bucket = getCourseBucket(threadStoreRef.current, courseId);
       const hasStored = Object.keys(bucket.threads).length > 0;
-      const seed = options?.forceSeed === true || !bucket.lastCheckedAt;
-      const fetchAllNew = options?.fetchAllNew === true && !seed;
+      const backfillOlderRaw = options?.backfillOlder;
+      const backfillOlder =
+        typeof backfillOlderRaw === "number" &&
+        Number.isFinite(backfillOlderRaw)
+          ? Math.min(50, Math.max(1, Math.floor(backfillOlderRaw)))
+          : 0;
+      const seed =
+        backfillOlder === 0 &&
+        (options?.forceSeed === true || !bucket.lastCheckedAt);
+      const fetchAllNew = options?.fetchAllNew === true && !seed && backfillOlder === 0;
 
       setSyncByCourse((prev) => ({
         ...prev,
@@ -549,12 +601,13 @@ export default function App() {
           Number.isFinite(options.seedPageSize)
             ? Math.min(20, Math.max(1, Math.floor(options.seedPageSize)))
             : null;
-        // All-new / seed-all: largest LMS page size so we cover more in one request.
-        const pageSize = fetchAllNew
-          ? 20
-          : seed && seedPageSize != null
-            ? seedPageSize
-            : settingsPageSize;
+        // All-new / seed-all / backfill: largest LMS page size so we cover more in one request.
+        const pageSize =
+          fetchAllNew || backfillOlder > 0
+            ? 20
+            : seed && seedPageSize != null
+              ? seedPageSize
+              : settingsPageSize;
         const course = findCourseById(courseId);
         const categoryName = course?.forumCategory.trim() || undefined;
         const sessionCreds: LmsSessionCredentials | null = sessionOverride
@@ -570,16 +623,24 @@ export default function App() {
         const data = await fetchForumThreads(courseId, {
           categoryName,
           pageSize,
-          maxPages: seed ? 1 : fetchAllNew ? 200 : 5,
-          ...(seed
-            ? {}
-            : {
-                since: bucket.lastCheckedAt ?? undefined,
+          maxPages: backfillOlder > 0 ? 50 : seed ? 1 : fetchAllNew ? 200 : 5,
+          ...(backfillOlder > 0
+            ? {
+                collectNewUntil: backfillOlder,
                 knownThreads: knownSnapshotsForCourse(
                   threadStoreRef.current,
                   courseId
                 ),
-              }),
+              }
+            : seed
+              ? {}
+              : {
+                  since: bucket.lastCheckedAt ?? undefined,
+                  knownThreads: knownSnapshotsForCourse(
+                    threadStoreRef.current,
+                    courseId
+                  ),
+                }),
           ...(useSession && sessionCreds
             ? {
                 csrfToken: sessionCreds.csrfToken,
@@ -598,7 +659,8 @@ export default function App() {
 
         let persistError: string | null = null;
         const mergeMeta = {
-          seed: seed && !hasStored,
+          // Backfill / first seed: don't flood “חדש” on historical threads.
+          seed: backfillOlder > 0 || (seed && !hasStored),
           forumUiOrigin: data.forumUiOrigin,
           categoryName: data.categoryName ?? categoryName,
           totalCount: data.totalCount,
@@ -924,7 +986,7 @@ export default function App() {
           const result = await pollCourse(course.id, {
             session: runSession,
             ...(pollMode === "seedTop20"
-              ? { forceSeed: true, seedPageSize: 20 }
+              ? { backfillOlder: 20 }
               : {}),
           });
 
@@ -1076,13 +1138,24 @@ export default function App() {
       threadStoreRef.current = next;
       const entry = getCourseBucket(next, courseId).threads[threadId];
       if (entry) {
-        void syncThreadUiStateToSupabase(threadId, {
-          noAnswerNeeded: Boolean(entry.noAnswerNeeded),
-          seenAt: entry.seenAt ?? null,
-          isNew: Boolean(entry.isNew),
-          isUpdated: Boolean(entry.isUpdated),
-        }).then((res) => {
-          if (!res.ok && !res.skipped) {
+        pendingUiFlagThreadIdsRef.current.add(threadId);
+        void syncThreadUiStateToSupabase(
+          threadId,
+          {
+            noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+            seenAt: entry.seenAt ?? null,
+            isNew: Boolean(entry.isNew),
+            isUpdated: Boolean(entry.isUpdated),
+          },
+          {
+            courseId,
+            entry,
+            lastCheckedAt: getCourseBucket(next, courseId).lastCheckedAt,
+          }
+        ).then((res) => {
+          if (res.ok || res.skipped) {
+            pendingUiFlagThreadIdsRef.current.delete(threadId);
+          } else {
             console.warn(
               `[tau-support] Failed to persist seen state for ${threadId}: ${res.message}`
             );
@@ -1105,13 +1178,24 @@ export default function App() {
         threadStoreRef.current = next;
         const entry = getCourseBucket(next, courseId).threads[threadId];
         if (entry) {
-          void syncThreadUiStateToSupabase(threadId, {
-            noAnswerNeeded: Boolean(entry.noAnswerNeeded),
-            seenAt: entry.seenAt ?? null,
-            isNew: Boolean(entry.isNew),
-            isUpdated: Boolean(entry.isUpdated),
-          }).then((res) => {
-            if (!res.ok && !res.skipped) {
+          pendingUiFlagThreadIdsRef.current.add(threadId);
+          void syncThreadUiStateToSupabase(
+            threadId,
+            {
+              noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+              seenAt: entry.seenAt ?? null,
+              isNew: Boolean(entry.isNew),
+              isUpdated: Boolean(entry.isUpdated),
+            },
+            {
+              courseId,
+              entry,
+              lastCheckedAt: getCourseBucket(next, courseId).lastCheckedAt,
+            }
+          ).then((res) => {
+            if (res.ok || res.skipped) {
+              pendingUiFlagThreadIdsRef.current.delete(threadId);
+            } else {
               console.warn(
                 `[tau-support] Failed to persist אין צורך במענה for ${threadId}: ${res.message}`
               );
@@ -1120,6 +1204,42 @@ export default function App() {
         }
         return next;
       });
+    },
+    []
+  );
+
+  const handleMarkCommentAsStaff = useCallback(
+    async (courseId: string, threadId: string, commentId: string) => {
+      const next = markThreadCommentAsStaff(
+        threadStoreRef.current,
+        courseId,
+        threadId,
+        commentId
+      );
+      threadStoreRef.current = next;
+      setThreadStore(next);
+      saveThreadStore(next);
+
+      const entry = getCourseBucket(next, courseId).threads[threadId];
+      if (!entry) return;
+
+      const syncRes = await syncCourseThreadsToSupabase(
+        courseId,
+        [entry],
+        getCourseBucket(next, courseId).lastCheckedAt
+      );
+      if (!syncRes.ok && !syncRes.skipped) {
+        console.warn(
+          `[tau-support] Failed to sync staff mark for ${threadId}: ${syncRes.message}`
+        );
+      }
+
+      const embedRes = await embedQaPairsForCourse(courseId);
+      if (!embedRes.ok && !embedRes.skipped) {
+        console.warn(
+          `[tau-support] kb embed after staff mark failed for ${courseId}: ${embedRes.message}`
+        );
+      }
     },
     []
   );
@@ -1212,18 +1332,25 @@ export default function App() {
   const homeStats = useMemo(() => {
     let unansweredCount = 0;
     let noAnswerNeededCount = 0;
+    let totalQuestions = 0;
     for (const course of checkAllCourses) {
       const bucket = getCourseBucket(threadStore, course.id);
       const entries = Object.values(bucket.threads);
+      totalQuestions += entries.length;
       unansweredCount += countUnanswered(entries);
       for (const entry of entries) {
         if (entry.noAnswerNeeded) noAnswerNeededCount += 1;
       }
     }
+    const answeredCount = Math.max(
+      0,
+      totalQuestions - unansweredCount - noAnswerNeededCount
+    );
     return {
       totalCourses: checkAllCourses.length,
       unansweredCount,
-      newCount: countNewAcrossStore(threadStore),
+      answeredCount,
+      totalQuestions,
       noAnswerNeededCount,
     };
   }, [checkAllCourses, threadStore]);
@@ -1545,6 +1672,13 @@ export default function App() {
                                 Boolean(entry.noAnswerNeeded)
                               )
                             }
+                            onMarkCommentAsStaff={(commentId) =>
+                              handleMarkCommentAsStaff(
+                                courseId,
+                                entry.thread.id,
+                                commentId
+                              )
+                            }
                           />
                         );
                       })
@@ -1615,6 +1749,13 @@ export default function App() {
                               selectedCourseId!,
                               entry.thread.id,
                               Boolean(entry.noAnswerNeeded)
+                            )
+                          }
+                          onMarkCommentAsStaff={(commentId) =>
+                            handleMarkCommentAsStaff(
+                              selectedCourseId!,
+                              entry.thread.id,
+                              commentId
                             )
                           }
                         />

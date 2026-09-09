@@ -33,6 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       since: parsed.since,
       knownThreads: parsed.knownThreads,
       maxPages: parsed.maxPages,
+      collectNewUntil: parsed.collectNewUntil,
     });
     return res.status(200).json(result);
   } catch (err: unknown) {
