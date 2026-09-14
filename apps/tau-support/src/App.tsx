@@ -711,12 +711,37 @@ export default function App() {
           }
         }
 
-        // Mirror the full course bucket (not only this poll's hits) so an
-        // incremental run with 0 new threads still backfills Supabase.
-        // Always pass lastCheckedAt so watermarks survive cross-browser hydrate.
-        // Content-only upsert — does not overwrite no_answer_needed / seen.
-        const courseBucket = getCourseBucket(next, courseId);
-        const toSync = Object.values(courseBucket.threads);
+        // Mirror poll hits (fresh comment forests). Prefer the fetch payload's
+        // comments so a stale empty forest cannot skip the messages upsert.
+        const pollSyncEntries = data.threads.map((fetched) => {
+          const existing = afterBucket.threads[fetched.id];
+          const fetchedComments = fetched.comments;
+          const useFetched =
+            Array.isArray(fetchedComments) && fetchedComments.length > 0;
+          const thread = {
+            ...(existing?.thread ?? fetched),
+            ...fetched,
+            comments: useFetched
+              ? fetchedComments
+              : (existing?.thread.comments ?? fetchedComments ?? []),
+            comments_error: useFetched
+              ? undefined
+              : (fetched.comments_error ?? existing?.thread.comments_error),
+          };
+          return {
+            thread,
+            fetchedAt: existing?.fetchedAt ?? new Date().toISOString(),
+            seenAt: existing?.seenAt ?? null,
+            isNew: Boolean(existing?.isNew),
+            isUpdated: Boolean(existing?.isUpdated),
+            noAnswerNeeded: Boolean(existing?.noAnswerNeeded),
+          };
+        });
+        const courseBucket = afterBucket;
+        const toSync =
+          pollSyncEntries.length > 0
+            ? pollSyncEntries
+            : Object.values(courseBucket.threads);
         if (toSync.length > 0 || courseBucket.lastCheckedAt) {
           void syncCourseThreadsToSupabase(
             courseId,
@@ -1564,11 +1589,7 @@ export default function App() {
               }
             />
 
-            <main
-              className={`flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 md:border-t-0 ${
-                showingHome ? "bg-white" : "bg-[#E8E8EA]"
-              }`}
-            >
+            <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-white md:border-t-0">
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {showingHome ? (
                   <HomeDashboard

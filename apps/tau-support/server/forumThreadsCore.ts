@@ -1445,7 +1445,9 @@ function buildCommentForest(flat: ForumComment[]): ForumComment[] {
       if (!parent.children.some((child) => child.id === item.id)) {
         parent.children.push(item);
       }
-    } else if (!parentId) {
+    } else {
+      // Top-level responses (null parent) OR orphans whose parent wasn't in
+      // this page (e.g. parent_id = thread id) — still show as roots.
       roots.push(item);
     }
   }
@@ -1701,7 +1703,20 @@ async function attachCommentsToThreads(
 
     try {
       const comments = await fetchThreadComments(apiOrigin, auth, enriched);
-      results.push({ ...enriched, comments });
+      if (comments.length === 0 && (enriched.comment_count ?? 0) > 1) {
+        results.push({
+          ...enriched,
+          comments: [],
+          comments_error:
+            "Comment API returned no replies for this thread",
+        });
+      } else {
+        results.push({
+          ...enriched,
+          comments,
+          comments_error: undefined,
+        });
+      }
     } catch (err) {
       rethrowIfCaptcha(err);
       const message =

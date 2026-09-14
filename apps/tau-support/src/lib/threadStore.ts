@@ -5,7 +5,7 @@
  * and survives when Supabase env is missing.
  */
 
-import type { ForumThread } from "./types";
+import type { ForumThread, KnownThreadSnapshot } from "./types";
 import {
   markCommentAsStaffInForest,
   preserveStaffAuthorLabels,
@@ -16,11 +16,7 @@ export const THREAD_STORE_KEY = "tau-support-thread-store-v1";
 export const THREAD_STORE_VERSION = 1;
 export const MAX_THREADS_PER_COURSE = 200;
 
-export interface KnownThreadSnapshot {
-  id: string;
-  last_activity_at?: string;
-  comment_count?: number;
-}
+export type { KnownThreadSnapshot };
 
 export interface StoredThreadEntry {
   thread: ForumThread;
@@ -231,10 +227,17 @@ export function mergeCoursePoll(
 
     const mergedComments =
       incoming.comments !== undefined
-        ? preserveStaffAuthorLabels(
-            incoming.comments,
-            existing.thread.comments
-          )
+        ? incoming.comments.length === 0 &&
+          (incoming.comment_count ?? 0) > 1 &&
+          !incoming.comments_error &&
+          (existing.thread.comments?.length ?? 0) > 0
+          ? // Keep previously loaded replies when a poll returns an empty
+            // forest without an explicit comments_error (transient miss).
+            sanitizeCommentForest(existing.thread.comments)
+          : preserveStaffAuthorLabels(
+              incoming.comments,
+              existing.thread.comments
+            )
         : sanitizeCommentForest(existing.thread.comments);
 
     const mergedThread: ForumThread = {
@@ -245,7 +248,9 @@ export function mergeCoursePoll(
       comments_error:
         incoming.comments_error !== undefined
           ? incoming.comments_error
-          : existing.thread.comments_error,
+          : incoming.comments && incoming.comments.length > 0
+            ? undefined
+            : existing.thread.comments_error,
     };
 
     if (!activityChanged) {

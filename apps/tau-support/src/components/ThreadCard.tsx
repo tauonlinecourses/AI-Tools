@@ -363,7 +363,7 @@ export function ThreadCard({
           : "!bg-white";
 
   return (
-    <Card className={`rounded-control overflow-hidden shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] ${cardTone}`}>
+    <Card className={`rounded-control overflow-hidden shadow-[4px_8px_14px_-3px_rgba(0,0,0,0.28)] ${cardTone}`}>
       <div
         dir="rtl"
         className={`flex flex-col gap-2 text-right ${FORUM_RTL_CLASS}`}

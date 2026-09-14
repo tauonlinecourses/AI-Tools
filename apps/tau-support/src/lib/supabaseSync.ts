@@ -48,6 +48,34 @@ function nullable(value?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+/** Postgres rejects null bytes in text/jsonb; Campus IL bodies sometimes include them. */
+function stripNullBytes(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const cleaned = value.replace(/\u0000/g, "");
+  return cleaned.trim() ? cleaned : null;
+}
+
+function formatSyncError(err: unknown, step?: string): string {
+  const prefix = step ? `${step}: ` : "";
+  if (err instanceof Error) return `${prefix}${err.message}`;
+  if (err && typeof err === "object") {
+    const e = err as {
+      message?: unknown;
+      details?: unknown;
+      hint?: unknown;
+      code?: unknown;
+    };
+    const parts = [
+      typeof e.message === "string" ? e.message : null,
+      typeof e.details === "string" ? e.details : null,
+      typeof e.hint === "string" ? e.hint : null,
+      e.code != null ? `code=${String(e.code)}` : null,
+    ].filter((p): p is string => Boolean(p && p.trim()));
+    if (parts.length > 0) return `${prefix}${parts.join(" | ")}`;
+  }
+  return `${prefix}Supabase sync failed`;
+}
+
 interface CourseRow {
   id: string;
   name: string;
@@ -121,10 +149,26 @@ function buildThreadContentRow(
   courseId: string,
   thread: ForumThread
 ): ThreadContentRow {
-  const bodyText = toPlainText(thread.raw_body, thread.rendered_body);
+  const bodyText =
+    stripNullBytes(toPlainText(thread.raw_body, thread.rendered_body)) ?? "";
   // Store the raw Open edX object without the hydrated comment tree — comments
   // live in the messages table, so we avoid duplicating (and bloating) them.
   const { comments: _comments, comments_error: _err, ...rawThread } = thread;
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(
+      JSON.stringify(rawThread as Record<string, unknown>).replace(
+        /\u0000/g,
+        ""
+      )
+    ) as Record<string, unknown>;
+  } catch {
+    raw = {
+      id: thread.id,
+      title: thread.title ?? null,
+      comment_count: thread.comment_count ?? null,
+    };
+  }
 
   return {
     campus_thread_id: thread.id,
@@ -138,7 +182,7 @@ function buildThreadContentRow(
     comment_count: thread.comment_count ?? null,
     created_at: nullable(thread.created_at),
     last_activity_at: nullable(threadActivityAt(thread)),
-    raw: rawThread as Record<string, unknown>,
+    raw,
     synced_at: new Date().toISOString(),
   };
 }
@@ -158,24 +202,73 @@ function buildThreadRow(
 }
 
 function buildMessageRows(thread: ForumThread): MessageRow[] {
-  return flattenComments(thread.comments).map((comment) => {
-    const bodyText = toPlainText(comment.raw_body, comment.rendered_body);
-    const { children: _children, ...rawComment } = comment;
-    return {
-      campus_comment_id: comment.id,
-      thread_id: thread.id,
-      parent_id: nullable(comment.parent_id),
-      author: nullable(comment.author),
-      author_label: nullable(comment.author_label),
-      is_staff: isStaffAuthor(comment.author_label),
-      endorsed: Boolean(comment.endorsed),
-      body_text: bodyText || null,
-      body_hash: bodyText ? hashContent(bodyText) : null,
-      created_at: nullable(comment.created_at),
-      raw: rawComment as Record<string, unknown>,
-      synced_at: new Date().toISOString(),
-    };
-  });
+  return flattenComments(thread.comments)
+    .filter((comment) => Boolean(comment?.id?.trim()))
+    .map((comment) => {
+      const bodyText =
+        stripNullBytes(toPlainText(comment.raw_body, comment.rendered_body)) ??
+        "";
+      // Keep raw small — full HTML forests blow past PostgREST body limits when
+      // upserting a whole course's messages in one request.
+      const slimRaw: Record<string, unknown> = {
+        id: comment.id,
+        parent_id: comment.parent_id ?? null,
+        author: comment.author ?? null,
+        author_label: comment.author_label ?? null,
+        endorsed: Boolean(comment.endorsed),
+        child_count: comment.child_count ?? 0,
+        created_at: comment.created_at ?? null,
+        raw_body: stripNullBytes(comment.raw_body ?? null),
+      };
+      return {
+        campus_comment_id: comment.id.trim(),
+        thread_id: thread.id,
+        parent_id: nullable(comment.parent_id),
+        author: nullable(comment.author),
+        author_label: nullable(comment.author_label),
+        is_staff: isStaffAuthor(comment.author_label),
+        endorsed: Boolean(comment.endorsed),
+        body_text: bodyText || null,
+        body_hash: bodyText ? hashContent(bodyText) : null,
+        created_at: nullable(comment.created_at),
+        raw: slimRaw,
+        synced_at: new Date().toISOString(),
+      };
+    });
+}
+
+/** Postgres ON CONFLICT rejects duplicate constrained keys in one INSERT. */
+function dedupeMessageRows(rows: MessageRow[]): MessageRow[] {
+  const byId = new Map<string, MessageRow>();
+  for (const row of rows) {
+    byId.set(row.campus_comment_id, row);
+  }
+  return [...byId.values()];
+}
+
+const MESSAGE_UPSERT_BATCH = 40;
+
+async function upsertMessageBatches(
+  rows: MessageRow[]
+): Promise<{ error: unknown | null }> {
+  const unique = dedupeMessageRows(rows);
+  for (let i = 0; i < unique.length; i += MESSAGE_UPSERT_BATCH) {
+    const chunk = unique.slice(i, i + MESSAGE_UPSERT_BATCH);
+    const msgRes = await supabase!
+      .from("messages")
+      .upsert(chunk, { onConflict: "campus_comment_id" });
+    if (msgRes.error) {
+      return {
+        error: {
+          message: `${msgRes.error.message} (message batch ${i / MESSAGE_UPSERT_BATCH + 1}, ${chunk.length} rows)`,
+          details: msgRes.error.details,
+          hint: msgRes.error.hint,
+          code: msgRes.error.code,
+        },
+      };
+    }
+  }
+  return { error: null };
 }
 
 /**
@@ -317,7 +410,9 @@ export async function syncCourseThreadsToSupabase(
     const courseRes = await supabase
       .from("courses")
       .upsert(courseRow, { onConflict: "id" });
-    if (courseRes.error) throw courseRes.error;
+    if (courseRes.error) {
+      throw new Error(formatSyncError(courseRes.error, "courses"));
+    }
 
     // 2. Threads (skip empty upsert — still allow watermark-only course update).
     //    Content-only upsert leaves no_answer_needed / seen columns untouched.
@@ -325,41 +420,73 @@ export async function syncCourseThreadsToSupabase(
       const threadRes = await supabase
         .from("threads")
         .upsert(threadRows, { onConflict: "campus_thread_id" });
-      if (threadRes.error) throw threadRes.error;
+      if (threadRes.error) {
+        throw new Error(formatSyncError(threadRes.error, "threads"));
+      }
     }
 
     // 3. Messages (before qa_pairs — answer_message_id references them).
-    if (messageRows.length > 0) {
-      const msgRes = await supabase
-        .from("messages")
-        .upsert(messageRows, { onConflict: "campus_comment_id" });
-      if (msgRes.error) throw msgRes.error;
+    //    Batched + deduped: Postgres rejects ON CONFLICT when the same
+    //    campus_comment_id appears twice in one INSERT (echoed replies).
+    const uniqueMessages = dedupeMessageRows(messageRows);
+    if (uniqueMessages.length > 0) {
+      const msgRes = await upsertMessageBatches(uniqueMessages);
+      if (msgRes.error) {
+        throw new Error(formatSyncError(msgRes.error, "messages"));
+      }
+    } else {
+      const expected = entries.filter(
+        (e) =>
+          (e.thread.comment_count ?? 0) > 1 &&
+          (e.thread.comments?.length ?? 0) === 0
+      ).length;
+      if (expected > 0) {
+        console.warn(
+          `[tau-support] Supabase sync: ${expected} thread(s) still missing local replies — messages not written.`
+        );
+      }
     }
 
     // 4. Q↔A pairs (upsert qualifying, delete stale).
-    if (qaRows.length > 0) {
+    //    Do not fail the whole sync if Q↔A write fails after messages succeeded.
+    let qaPairsWritten = 0;
+    let qaWarning: string | undefined;
+    const uniqueQaRows = (() => {
+      const byThread = new Map<string, QaPairRow>();
+      for (const row of qaRows) byThread.set(row.thread_id, row);
+      return [...byThread.values()];
+    })();
+    if (uniqueQaRows.length > 0) {
       const qaRes = await supabase
         .from("qa_pairs")
-        .upsert(qaRows, { onConflict: "thread_id" });
-      if (qaRes.error) throw qaRes.error;
+        .upsert(uniqueQaRows, { onConflict: "thread_id" });
+      if (qaRes.error) {
+        qaWarning = formatSyncError(qaRes.error, "qa_pairs");
+        console.warn(`[tau-support] ${qaWarning}`);
+      } else {
+        qaPairsWritten = uniqueQaRows.length;
+      }
     }
     if (qaDeleteThreadIds.length > 0) {
       const delRes = await supabase
         .from("qa_pairs")
         .delete()
         .in("thread_id", qaDeleteThreadIds);
-      if (delRes.error) throw delRes.error;
+      if (delRes.error) {
+        const warning = formatSyncError(delRes.error, "qa_pairs.delete");
+        qaWarning = qaWarning ? `${qaWarning}; ${warning}` : warning;
+        console.warn(`[tau-support] ${warning}`);
+      }
     }
 
     return {
       ok: true,
       threads: threadRows.length,
-      messages: messageRows.length,
-      qaPairs: qaRows.length,
+      messages: uniqueMessages.length,
+      qaPairs: qaPairsWritten,
+      message: qaWarning,
     };
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Supabase sync failed";
-    return { ok: false, message };
+    return { ok: false, message: formatSyncError(err) };
   }
 }

@@ -502,6 +502,12 @@ If `comment_count > 1` but replies failed to load, the thread is **not**
 counted as unanswered, and the card shows a notice that replies were expected
 but none were returned. When `comment_count <= 1` (no real replies), that
 notice is omitted.
+
+Incremental **טען תגובות חדשות** only fetches threads that are new or have
+newer `last_activity_at` / higher `comment_count` than the local snapshot.
+Merge refuses to overwrite an existing non-empty reply forest with an empty
+one unless `comments_error` is set. Supabase message upserts are deduped and
+batched.
 Unanswered threads get a clearer red highlight (solid `red-100` fill, same
 hue as before) and a **ללא מענה** badge to the
 **left** of the title in the main list; the sidebar badge is the count of such
