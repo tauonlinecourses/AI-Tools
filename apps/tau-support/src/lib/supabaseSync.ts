@@ -16,14 +16,13 @@
  * - Thread UX flags (`no_answer_needed`, seen / חדש) are shared in DB.
  */
 
-import type { StoredThreadEntry } from "./threadStore";
-import { findCourseById } from "./courses";
-import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
-import { supabase } from "./supabase";
 import {
   threadActivityAt,
   type StoredThreadEntry,
 } from "./threadStore";
+import { findCourseById } from "./courses";
+import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
+import { supabase } from "./supabase";
 import type { ForumThread } from "./types";
 import { isStaffAuthor } from "./unanswered";
 
