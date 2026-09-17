@@ -96,6 +96,10 @@ platform.
   `source_id='{docId}::{index}'`); falls back to embedding the title when
   no common questions are set; Settings backfill
   (**סנכרן הטמעות מסמכי מידע**).
+- `../src/lib/suggestInfoDocQuestions.ts` — Suggests `common_questions` for
+  a topic: `findSimilarQa` over forum `qa_pair` chunks for the title+body,
+  then grounded `aiChat` (`/api/chat`, JSON) for Hebrew example phrasings
+  (**הצע שאלות לדוגמה** in the editor).
 - `../src/lib/kbSearch.ts` — Query-time embed of a student question +
   `match_kb_chunks` RPC, hydrate `answered_at`, over-fetch +
   `recencyAdjustedScore` re-rank (grounding for **נסח טיוטת תשובה** /
@@ -149,8 +153,9 @@ platform.
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
   `ForumBody`, including pasted images) with **עריכה** / **מחיקה**.
-- `../src/components/InfoDocEditor.tsx` — Title + body editor; paste-only
-  image upload (Ctrl+V → Storage → `![](url)` at caret).
+- `../src/components/InfoDocEditor.tsx` — Title + body + common-questions
+  editor; paste-only image upload (Ctrl+V → Storage → `![](url)` at caret);
+  **הצע שאלות לדוגמה** fills questions via RAG + chat.
 - `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
   for that singleton.
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`, optional
@@ -223,7 +228,9 @@ RTL split layout inspired by the campus IL forum list:
   paste images (Ctrl+V) into the body textbox; the app uploads the blob to the
   public Supabase Storage bucket `info-doc-images` and inserts a markdown
   `![](publicUrl)` at the caret. Viewing uses `ForumBody` so images render
-  inline. Saving writes to `info_docs` and triggers a non-blocking
+  inline. Staff fill **דוגמאות לשאלות** (or click **הצע שאלות לדוגמה** to
+  retrieve similar forum Q↔A and generate Hebrew phrasings via `/api/chat`).
+  Saving writes to `info_docs` and triggers a non-blocking
   `embedInfoDocs()` into `kb_chunks` (`source_type='info_doc'`).
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is

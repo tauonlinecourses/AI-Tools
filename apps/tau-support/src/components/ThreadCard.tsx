@@ -180,15 +180,17 @@ function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
         answer ? (
           <div
             dir="rtl"
-            className={`mr-0 mt-3 overflow-hidden rounded-control border border-amber-200 border-r-2 bg-amber-100 p-3 pr-3 text-right ${FORUM_RTL_CLASS}`}
+            className={`mr-0 mt-3 overflow-hidden rounded-control border border-surface-200 p-3 text-right ${FORUM_RTL_CLASS}`}
           >
             <div className="mb-2 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
-              <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+              <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[11px] font-semibold text-surface-800">
                 מידע
               </span>
               <p className="min-w-0">תוכן המסמך</p>
             </div>
-            <ForumBody raw_body={answer} />
+            <div className="text-base [&_.forum-body]:!text-base [&_h2]:!mt-2 [&_h2]:!mb-1 [&_h2]:!text-base [&_h2]:!font-semibold [&_h3]:!mt-2 [&_h3]:!mb-1 [&_h3]:!text-base [&_h3]:!font-semibold [&_h4]:!text-base [&_h4]:!font-semibold [&_p]:!text-base [&_li]:!text-base [&_span]:!text-base">
+              <ForumBody raw_body={answer} />
+            </div>
           </div>
         ) : null
       ) : (

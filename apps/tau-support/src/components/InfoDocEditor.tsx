@@ -14,7 +14,9 @@ import {
 } from "../lib/infoDocHtml";
 import { uploadPastedImage } from "../lib/infoDocImages";
 import type { InfoDoc } from "../lib/infoDocs";
+import { normalizeCommonQuestions } from "../lib/infoDocs";
 import { FORUM_BODY_CLASS } from "../lib/forumBody";
+import { suggestInfoDocQuestions } from "../lib/suggestInfoDocQuestions";
 
 interface InfoDocEditorProps {
   /** null = creating a new topic */
@@ -109,6 +111,8 @@ export function InfoDocEditor({
   );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const initialIdRef = useRef<string | null | undefined>(undefined);
 
@@ -122,6 +126,7 @@ export function InfoDocEditor({
       initial?.commonQuestions?.length ? [...initial.commonQuestions] : [""]
     );
     setUploadError(null);
+    setSuggestError(null);
     if (editorRef.current) {
       editorRef.current.innerHTML = bodyToEditorHtml(initial?.body ?? "");
     }
@@ -145,6 +150,38 @@ export function InfoDocEditor({
       return prev.filter((_, i) => i !== index);
     });
   }, []);
+
+  const handleSuggestQuestions = useCallback(() => {
+    const body = editorHtmlToBody(editorRef.current?.innerHTML ?? "");
+    setSuggestBusy(true);
+    setSuggestError(null);
+    void (async () => {
+      try {
+        const result = await suggestInfoDocQuestions({ title, body });
+        if (result.skipped) {
+          setSuggestError(
+            "Supabase לא מוגדר — לא ניתן להציע שאלות מהמאגר."
+          );
+          return;
+        }
+        if (!result.ok || !result.questions?.length) {
+          setSuggestError(result.message ?? "הצעת השאלות נכשלה");
+          return;
+        }
+        // Keep existing filled questions; append new suggestions without dupes.
+        setCommonQuestions((prev) => {
+          const kept = normalizeCommonQuestions(prev);
+          const merged = normalizeCommonQuestions([
+            ...kept,
+            ...result.questions!,
+          ]);
+          return merged.length > 0 ? merged : [""];
+        });
+      } finally {
+        setSuggestBusy(false);
+      }
+    })();
+  }, [title]);
 
   const insertHtmlAtCursor = useCallback((html: string) => {
     const el = editorRef.current;
@@ -251,7 +288,9 @@ export function InfoDocEditor({
     // no-op: we read innerHTML on save
   }, []);
 
-  const canSave = title.trim().length > 0 && !busy && !uploading;
+  const canSave =
+    title.trim().length > 0 && !busy && !uploading && !suggestBusy;
+  const canSuggest = !busy && !uploading && !suggestBusy;
 
   return (
     <div dir="rtl" className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
@@ -260,7 +299,12 @@ export function InfoDocEditor({
           {initial ? "עריכת נושא" : "נושא חדש"}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={busy || suggestBusy}
+          >
             ביטול
           </Button>
           <Button
@@ -286,7 +330,7 @@ export function InfoDocEditor({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="לדוגמה: איפוס סיסמה"
-        disabled={busy}
+        disabled={busy || suggestBusy}
       />
 
       <div className="flex flex-col gap-1.5">
@@ -305,13 +349,17 @@ export function InfoDocEditor({
                 value={q}
                 onChange={(e) => updateCommonQuestion(i, e.target.value)}
                 placeholder={`לדוגמה: למה הסרטונים לא עובדים?`}
-                disabled={busy}
+                disabled={busy || suggestBusy}
                 className="min-w-0 flex-1 rounded-control border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => removeCommonQuestion(i)}
-                disabled={busy || (commonQuestions.length === 1 && !q.trim())}
+                disabled={
+                  busy ||
+                  suggestBusy ||
+                  (commonQuestions.length === 1 && !q.trim())
+                }
                 className="shrink-0 rounded-control border border-surface-200 px-2 py-2 text-xs text-surface-600 hover:bg-rose-50 hover:text-rose-800 disabled:opacity-40"
                 title="הסר שאלה"
               >
@@ -319,14 +367,35 @@ export function InfoDocEditor({
               </button>
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addCommonQuestion}
-            disabled={busy}
-            className="self-start rounded-control border border-dashed border-surface-300 px-2.5 py-1.5 text-xs font-semibold text-surface-700 hover:bg-sky-50 hover:text-sky-950 disabled:opacity-40"
-          >
-            + הוסף שאלה נפוצה
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={addCommonQuestion}
+              disabled={busy || suggestBusy}
+              className="self-start rounded-control border border-dashed border-surface-300 px-2.5 py-1.5 text-xs font-semibold text-surface-700 hover:bg-sky-50 hover:text-sky-950 disabled:opacity-40"
+            >
+              + הוסף שאלה נפוצה
+            </button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!canSuggest}
+              onClick={handleSuggestQuestions}
+              title="מציע שאלות לפי תוכן הנושא ושאלות דומות מהפורום"
+            >
+              {suggestBusy ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size="sm" />
+                  מציע…
+                </span>
+              ) : (
+                "הצע שאלות לדוגמה"
+              )}
+            </Button>
+          </div>
+          {suggestError ? (
+            <p className="text-xs text-danger">{suggestError}</p>
+          ) : null}
         </div>
       </div>
 
@@ -342,7 +411,7 @@ export function InfoDocEditor({
           role="textbox"
           aria-multiline
           aria-label="תוכן הנושא"
-          contentEditable={!busy && !uploading}
+          contentEditable={!busy && !uploading && !suggestBusy}
           suppressContentEditableWarning
           dir="rtl"
           onPaste={handlePaste}
