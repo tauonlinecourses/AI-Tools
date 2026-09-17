@@ -7,9 +7,20 @@ import {
   type CourseCacheEntry,
 } from "./components/CourseSidebar";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { InfoDocEditor } from "./components/InfoDocEditor";
+import { InfoDocsSidebar } from "./components/InfoDocsSidebar";
+import { InfoDocView } from "./components/InfoDocView";
 import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
 import { fetchForumThreads, fetchLmsLogin, hasReusableSession, type LmsSessionCredentials } from "./lib/api";
+import { embedInfoDocs } from "./lib/infoDocEmbed";
+import {
+  createInfoDoc,
+  deleteInfoDoc,
+  listInfoDocs,
+  updateInfoDoc,
+  type InfoDoc,
+} from "./lib/infoDocs";
 import {
   applyRemoteUiFlagsToStore,
   hydrateThreadStoreFromSupabase,
@@ -92,14 +103,14 @@ function readStoredAuth() {
   try {
     const storedCookiesPref = sessionStorage.getItem(SESSION_STORAGE_KEY);
     return {
-      useCookies: storedCookiesPref === null ? true : storedCookiesPref === "1",
+      useCookies: storedCookiesPref === null ? false : storedCookiesPref === "1",
       csrfToken: sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "",
       jwtHeaderPayload: sessionStorage.getItem(JWT_PAYLOAD_STORAGE_KEY) ?? "",
       jwtSignature: sessionStorage.getItem(JWT_SIGNATURE_STORAGE_KEY) ?? "",
     };
   } catch {
     return {
-      useCookies: true,
+      useCookies: false,
       csrfToken: "",
       jwtHeaderPayload: "",
       jwtSignature: "",
@@ -249,6 +260,17 @@ export default function App() {
   );
   const [elapsedTick, setElapsedTick] = useState(0);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
+  const [docsMode, setDocsMode] = useState(false);
+  const [infoDocs, setInfoDocs] = useState<InfoDoc[]>([]);
+  const [infoDocsLoading, setInfoDocsLoading] = useState(false);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  /** null = viewing; 'new' = creating; string id = editing that topic */
+  const [infoDocEditMode, setInfoDocEditMode] = useState<"new" | string | null>(
+    null
+  );
+  const [infoDocSaveBusy, setInfoDocSaveBusy] = useState(false);
+  const [infoDocDeleteBusy, setInfoDocDeleteBusy] = useState(false);
+  const [infoDocError, setInfoDocError] = useState<string | null>(null);
 
   const threadStoreRef = useRef(threadStore);
   threadStoreRef.current = threadStore;
@@ -1269,6 +1291,147 @@ export default function App() {
     []
   );
 
+  const refreshInfoDocs = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setInfoDocs([]);
+      return;
+    }
+    setInfoDocsLoading(true);
+    setInfoDocError(null);
+    try {
+      const result = await listInfoDocs();
+      if (!result.ok) {
+        if (!result.skipped) {
+          setInfoDocError(result.message ?? "טעינת הנושאים נכשלה");
+        }
+        return;
+      }
+      setInfoDocs(result.docs ?? []);
+    } finally {
+      setInfoDocsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!docsMode) return;
+    void refreshInfoDocs();
+  }, [docsMode, refreshInfoDocs]);
+
+  const handleToggleDocsMode = useCallback(() => {
+    setDocsMode((prev) => {
+      const next = !prev;
+      if (next) {
+        // Docs mode is entered from the homepage only.
+        setSelectedId(null);
+      } else {
+        setInfoDocEditMode(null);
+        setInfoDocError(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectTopic = useCallback((id: string) => {
+    setSelectedTopicId(id);
+    setInfoDocEditMode(null);
+    setInfoDocError(null);
+  }, []);
+
+  const handleAddTopic = useCallback(() => {
+    setSelectedTopicId(null);
+    setInfoDocEditMode("new");
+    setInfoDocError(null);
+  }, []);
+
+  const handleEditTopic = useCallback(() => {
+    if (!selectedTopicId) return;
+    setInfoDocEditMode(selectedTopicId);
+    setInfoDocError(null);
+  }, [selectedTopicId]);
+
+  const handleCancelInfoDocEdit = useCallback(() => {
+    setInfoDocEditMode(null);
+    setInfoDocError(null);
+  }, []);
+
+  const handleSaveInfoDoc = useCallback(
+    async (input: {
+      title: string;
+      body: string;
+      commonQuestions: string[];
+    }) => {
+      setInfoDocSaveBusy(true);
+      setInfoDocError(null);
+      try {
+        const isNew = infoDocEditMode === "new";
+        const result = isNew
+          ? await createInfoDoc(input)
+          : typeof infoDocEditMode === "string"
+            ? await updateInfoDoc(infoDocEditMode, input)
+            : { ok: false as const, message: "אין מצב עריכה פעיל" };
+
+        if (!result.ok || !result.doc) {
+          setInfoDocError(
+            result.skipped
+              ? "Supabase לא מוגדר"
+              : result.message ?? "שמירת הנושא נכשלה"
+          );
+          return;
+        }
+
+        setInfoDocs((prev) => {
+          if (isNew) return [...prev, result.doc!];
+          return prev.map((d) => (d.id === result.doc!.id ? result.doc! : d));
+        });
+        setSelectedTopicId(result.doc.id);
+        setInfoDocEditMode(null);
+
+        void embedInfoDocs().then((embedRes) => {
+          if (!embedRes.ok && !embedRes.skipped) {
+            console.warn(
+              `[tau-support] info_doc embed failed: ${embedRes.message}`
+            );
+          } else if (
+            embedRes.ok &&
+            ((embedRes.embedded ?? 0) > 0 || (embedRes.deleted ?? 0) > 0)
+          ) {
+            console.info(
+              `[tau-support] info_doc embed: ${embedRes.embedded ?? 0} upserted, ${embedRes.deleted ?? 0} deleted`
+            );
+          }
+        });
+      } finally {
+        setInfoDocSaveBusy(false);
+      }
+    },
+    [infoDocEditMode]
+  );
+
+  const handleDeleteTopic = useCallback(async () => {
+    if (!selectedTopicId) return;
+    const confirmed = window.confirm("למחוק את הנושא לצמיתות?");
+    if (!confirmed) return;
+
+    setInfoDocDeleteBusy(true);
+    setInfoDocError(null);
+    try {
+      const result = await deleteInfoDoc(selectedTopicId);
+      if (!result.ok) {
+        setInfoDocError(
+          result.skipped
+            ? "Supabase לא מוגדר"
+            : result.message ?? "מחיקת הנושא נכשלה"
+        );
+        return;
+      }
+      setInfoDocs((prev) => prev.filter((d) => d.id !== selectedTopicId));
+      setSelectedTopicId(null);
+      setInfoDocEditMode(null);
+    } finally {
+      setInfoDocDeleteBusy(false);
+    }
+  }, [selectedTopicId]);
+
   function handleAuthChange(patch: Partial<AuthSettingsValues>) {
     setAuth((prev) => ({ ...prev, ...patch }));
   }
@@ -1353,6 +1516,16 @@ export default function App() {
   const selectedNewCount = selectedCourseId
     ? countNewForCourse(threadStore, selectedCourseId)
     : 0;
+  const selectedInfoDoc =
+    selectedTopicId != null
+      ? infoDocs.find((d) => d.id === selectedTopicId) ?? null
+      : null;
+  const editingInfoDoc =
+    infoDocEditMode === "new"
+      ? null
+      : typeof infoDocEditMode === "string"
+        ? infoDocs.find((d) => d.id === infoDocEditMode) ?? null
+        : null;
 
   const homeStats = useMemo(() => {
     let unansweredCount = 0;
@@ -1435,10 +1608,32 @@ export default function App() {
             <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">
               <div
                 className={`min-w-0 flex-1 text-right ${
-                  showingHome ? "flex h-full items-center" : ""
+                  showingHome && !docsMode ? "flex h-full items-center" : ""
                 }`}
               >
-                {showingHome ? (
+                {docsMode ? (
+                  <>
+                    <p className="truncate text-sm font-semibold leading-5 text-surface-900">
+                      מסמך מידע שימושי
+                    </p>
+                    <p
+                      className="mt-0.5 truncate text-xs leading-4 text-surface-600"
+                      dir="rtl"
+                    >
+                      <span className="font-semibold text-surface-900">
+                        {infoDocs.length}
+                      </span>{" "}
+                      נושאים
+                      {infoDocEditMode
+                        ? infoDocEditMode === "new"
+                          ? " · יצירת נושא חדש"
+                          : " · עריכה"
+                        : selectedInfoDoc
+                          ? ` · ${selectedInfoDoc.title}`
+                          : ""}
+                    </p>
+                  </>
+                ) : showingHome ? (
                   <p className="w-full truncate text-lg font-semibold leading-none text-surface-900 sm:text-xl">
                     דף הבית
                   </p>
@@ -1500,7 +1695,26 @@ export default function App() {
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {showingInbox ? (
+                {showingHome || docsMode ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleToggleDocsMode}
+                    title={
+                      docsMode
+                        ? "חזרה למצב שרשורים"
+                        : "מסמך מידע שימושי"
+                    }
+                    className={
+                      docsMode
+                        ? "!border-sky-400 !bg-sky-100 !font-semibold !text-sky-950"
+                        : undefined
+                    }
+                  >
+                    מסמך מידע שימושי
+                  </Button>
+                ) : null}
+                {!docsMode && showingInbox ? (
                   <div
                     className="flex items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
                     role="group"
@@ -1533,7 +1747,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-                {checkingAll ? (
+                {!docsMode && checkingAll ? (
                   checkAllProgress?.phase === "stopping" ? (
                     <Button
                       variant="secondary"
@@ -1554,7 +1768,7 @@ export default function App() {
                     </Button>
                   )
                 ) : null}
-                {selectedCourseId ? (
+                {!docsMode && selectedCourseId ? (
                   <LoadThreadsButton
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
@@ -1570,28 +1784,79 @@ export default function App() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <CourseSidebar
-              courses={COURSES}
-              selectedId={selectedId}
-              cache={sidebarCache}
-              inboxNewCount={inboxNewCount}
-              onSelectInbox={handleSelectInbox}
-              onSelect={handleSelectCourse}
-              frozenCourseIds={checkAllFrozenOrder}
-              checkAll={
-                checkAllProgress
-                  ? {
-                      courseId: checkAllProgress.courseId,
-                      phase: checkAllProgress.phase,
-                      elapsedSeconds: checkAllElapsedSeconds,
-                    }
-                  : null
-              }
-            />
+            {docsMode ? (
+              <InfoDocsSidebar
+                docs={infoDocs}
+                selectedId={
+                  infoDocEditMode === "new" ? null : selectedTopicId
+                }
+                onSelect={handleSelectTopic}
+                onAdd={handleAddTopic}
+                loading={infoDocsLoading}
+              />
+            ) : (
+              <CourseSidebar
+                courses={COURSES}
+                selectedId={selectedId}
+                cache={sidebarCache}
+                inboxNewCount={inboxNewCount}
+                onSelectInbox={handleSelectInbox}
+                onSelect={handleSelectCourse}
+                frozenCourseIds={checkAllFrozenOrder}
+                checkAll={
+                  checkAllProgress
+                    ? {
+                        courseId: checkAllProgress.courseId,
+                        phase: checkAllProgress.phase,
+                        elapsedSeconds: checkAllElapsedSeconds,
+                      }
+                    : null
+                }
+              />
+            )}
 
             <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-white md:border-t-0">
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {showingHome ? (
+                {docsMode ? (
+                  !isSupabaseConfigured ? (
+                    <div
+                      dir="rtl"
+                      className="p-4 text-right text-sm text-surface-600"
+                    >
+                      מסמכי המידע דורשים Supabase. הגדירו{" "}
+                      <span dir="ltr">VITE_SUPABASE_URL</span> ו-{" "}
+                      <span dir="ltr">VITE_SUPABASE_ANON_KEY</span>.
+                    </div>
+                  ) : infoDocEditMode != null ? (
+                    <InfoDocEditor
+                      initial={
+                        infoDocEditMode === "new" ? null : editingInfoDoc
+                      }
+                      busy={infoDocSaveBusy}
+                      error={infoDocError}
+                      onSave={handleSaveInfoDoc}
+                      onCancel={handleCancelInfoDocEdit}
+                    />
+                  ) : (
+                    <>
+                      {infoDocError ? (
+                        <div
+                          dir="rtl"
+                          className="border-b border-danger bg-red-50 p-3 text-right text-sm text-danger"
+                        >
+                          {infoDocError}
+                        </div>
+                      ) : null}
+                      <InfoDocView
+                        doc={selectedInfoDoc}
+                        loading={infoDocsLoading}
+                        deleting={infoDocDeleteBusy}
+                        onEdit={handleEditTopic}
+                        onDelete={() => void handleDeleteTopic()}
+                      />
+                    </>
+                  )
+                ) : showingHome ? (
                   <HomeDashboard
                     stats={homeStats}
                     lastRun={lastCheckAllRun}

@@ -4,6 +4,10 @@ import {
   countPendingEmbeddings,
   embedAllPendingQaPairs,
 } from "../lib/kbEmbed";
+import {
+  countPendingInfoDocEmbeddings,
+  embedInfoDocs,
+} from "../lib/infoDocEmbed";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 export interface AuthSettingsValues {
@@ -57,6 +61,13 @@ export function AuthSettings({
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [embedBusy, setEmbedBusy] = useState(false);
   const [embedMessage, setEmbedMessage] = useState<string | null>(null);
+  const [infoDocPendingCount, setInfoDocPendingCount] = useState<number | null>(
+    null
+  );
+  const [infoDocEmbedBusy, setInfoDocEmbedBusy] = useState(false);
+  const [infoDocEmbedMessage, setInfoDocEmbedMessage] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -70,6 +81,7 @@ export function AuthSettings({
   useEffect(() => {
     if (!open || !isSupabaseConfigured) {
       setPendingCount(null);
+      setInfoDocPendingCount(null);
       return;
     }
     let cancelled = false;
@@ -79,6 +91,14 @@ export function AuthSettings({
         setPendingCount(res.count);
       } else {
         setPendingCount(null);
+      }
+    });
+    void countPendingInfoDocEmbeddings().then((res) => {
+      if (cancelled) return;
+      if (res.ok && typeof res.count === "number") {
+        setInfoDocPendingCount(res.count);
+      } else {
+        setInfoDocPendingCount(null);
       }
     });
     return () => {
@@ -107,6 +127,30 @@ export function AuthSettings({
       );
     } finally {
       setEmbedBusy(false);
+    }
+  }
+
+  async function handleInfoDocEmbedBackfill() {
+    setInfoDocEmbedBusy(true);
+    setInfoDocEmbedMessage(null);
+    try {
+      const res = await embedInfoDocs();
+      if (res.skipped) {
+        setInfoDocEmbedMessage("Supabase is not configured.");
+        return;
+      }
+      if (!res.ok) {
+        setInfoDocEmbedMessage(res.message ?? "Embedding failed");
+        return;
+      }
+      setInfoDocPendingCount(0);
+      setInfoDocEmbedMessage(
+        `Embedded ${res.embedded ?? 0} topic(s)` +
+          ((res.deleted ?? 0) > 0 ? `, removed ${res.deleted} stale` : "") +
+          "."
+      );
+    } finally {
+      setInfoDocEmbedBusy(false);
     }
   }
 
@@ -269,6 +313,39 @@ export function AuthSettings({
                 </Button>
                 {embedMessage ? (
                   <p className="text-xs text-surface-700">{embedMessage}</p>
+                ) : null}
+              </div>
+
+              <p className="mt-4 text-sm font-semibold text-surface-900">
+                הטמעות מסמכי מידע
+              </p>
+              <p className="mt-1 text-xs text-surface-600">
+                מסנכרן את נושאי מסמך המידע השימושי לטבלת הווקטורים (לשימוש בטיוטות
+                תשובה).
+                {infoDocPendingCount !== null
+                  ? ` ממתינים להטמעה: ${infoDocPendingCount}.`
+                  : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={infoDocEmbedBusy}
+                  onClick={() => void handleInfoDocEmbedBackfill()}
+                >
+                  {infoDocEmbedBusy ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner size="sm" />
+                      מסנכרן…
+                    </span>
+                  ) : (
+                    "סנכרן הטמעות מסמכי מידע"
+                  )}
+                </Button>
+                {infoDocEmbedMessage ? (
+                  <p className="text-xs text-surface-700">
+                    {infoDocEmbedMessage}
+                  </p>
                 ) : null}
               </div>
             </div>

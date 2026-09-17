@@ -1,10 +1,12 @@
 -- TAU Support — Phase 1 schema (Campus IL forum persistence + Q↔A pairs)
 -- Source of truth for the dedicated tau-support Supabase project.
--- The applyable copy lives in migrations/001_init.sql (identical). Apply that
--- against a fresh project; keep this file in sync as the canonical reference.
+-- The applyable copy lives in migrations/001_init.sql (identical for Phase 1).
+-- Later migrations (002–006) add columns / info_docs / kb_chunks updates —
+-- keep this file in sync as the canonical full schema reference.
 --
 -- Phase 1: durable store for polled threads/messages + deterministic Q↔A pairs.
--- Phase 2: kb_chunks holds embeddings (see below / migrations/002_kb_chunks.sql).
+-- Phase 2: kb_chunks holds embeddings (qa_pair + info_doc).
+-- Info docs: official staff topics + Storage bucket for pasted images.
 
 -- ============================================================
 -- EXTENSIONS
@@ -83,11 +85,25 @@ create table if not exists qa_pairs (
   updated_at        timestamptz not null default now()
 );
 
--- Phase 2: one embeddable unit per row (whole Q↔A pair; word_doc later).
+-- Official staff info-doc topics (browse UI + RAG grounding).
+create table if not exists info_docs (
+  id           uuid primary key default gen_random_uuid(),
+  title        text not null,
+  body         text not null default '',
+  position     int not null default 0,
+  lang         text,
+  content_hash text,
+  -- Example student questions used for retrieval (embed these, not the full body).
+  common_questions text[] not null default '{}'::text[],
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+-- Phase 2: one embeddable unit per row (whole Q↔A pair or info_doc topic).
 create table if not exists kb_chunks (
   id           uuid primary key default gen_random_uuid(),
-  source_type  text not null check (source_type in ('qa_pair')),
-  source_id    text not null,   -- qa_pairs.id::text
+  source_type  text not null check (source_type in ('qa_pair', 'info_doc')),
+  source_id    text not null,   -- qa_pairs.id::text or info_docs.id::text
   course_id    text references courses(id) on delete cascade,
   content      text not null,
   content_hash text not null,
@@ -120,6 +136,8 @@ create index if not exists idx_threads_no_answer_needed
 create index if not exists idx_messages_thread_id     on messages(thread_id);
 create index if not exists idx_qa_pairs_course_id     on qa_pairs(course_id);
 create index if not exists idx_qa_pairs_content_hash  on qa_pairs(content_hash);
+create index if not exists idx_info_docs_position      on info_docs(position);
+create index if not exists idx_info_docs_content_hash on info_docs(content_hash);
 create index if not exists idx_kb_chunks_course_id     on kb_chunks(course_id);
 create index if not exists idx_kb_chunks_content_hash  on kb_chunks(content_hash);
 create index if not exists kb_chunks_embedding_hnsw
@@ -148,6 +166,11 @@ create trigger qa_pairs_updated_at
 before update on qa_pairs
 for each row execute function set_updated_at();
 
+drop trigger if exists info_docs_updated_at on info_docs;
+create trigger info_docs_updated_at
+before update on info_docs
+for each row execute function set_updated_at();
+
 drop trigger if exists last_check_all_updated_at on last_check_all;
 create trigger last_check_all_updated_at
 before update on last_check_all
@@ -170,6 +193,7 @@ alter table courses  enable row level security;
 alter table threads  enable row level security;
 alter table messages enable row level security;
 alter table qa_pairs enable row level security;
+alter table info_docs enable row level security;
 alter table kb_chunks enable row level security;
 alter table last_check_all enable row level security;
 
@@ -189,6 +213,10 @@ drop policy if exists "anon_authenticated_all" on qa_pairs;
 create policy "anon_authenticated_all" on qa_pairs
   for all to anon, authenticated using (true) with check (true);
 
+drop policy if exists "anon_authenticated_all" on info_docs;
+create policy "anon_authenticated_all" on info_docs
+  for all to anon, authenticated using (true) with check (true);
+
 drop policy if exists "anon_authenticated_all" on kb_chunks;
 create policy "anon_authenticated_all" on kb_chunks
   for all to anon, authenticated using (true) with check (true);
@@ -198,17 +226,19 @@ create policy "anon_authenticated_all" on last_check_all
   for all to anon, authenticated using (true) with check (true);
 
 -- ============================================================
--- Phase 2 similarity search (cosine); course filter pushed into SQL
+-- Phase 2 similarity search (cosine); course + source_type filters in SQL
 -- ============================================================
 create or replace function match_kb_chunks (
   query_embedding extensions.vector(1536),
   match_count int default 5,
   filter_course_id text default null,
-  match_threshold float default 0.3
+  match_threshold float default 0.3,
+  filter_source_types text[] default null
 )
 returns table (
   id uuid,
   source_id text,
+  source_type text,
   content text,
   metadata jsonb,
   lang text,
@@ -222,6 +252,7 @@ as $$
   select
     kb.id,
     kb.source_id,
+    kb.source_type,
     kb.content,
     kb.metadata,
     kb.lang,
@@ -230,10 +261,52 @@ as $$
   from kb_chunks kb
   where
     (filter_course_id is null or kb.course_id = filter_course_id)
+    and (filter_source_types is null or kb.source_type = any(filter_source_types))
     and (1 - (kb.embedding <=> query_embedding)) > match_threshold
   order by kb.embedding <=> query_embedding
   limit least(match_count, 50);
 $$;
 
-grant execute on function match_kb_chunks(extensions.vector, int, text, float)
+grant execute on function match_kb_chunks(extensions.vector, int, text, float, text[])
   to anon, authenticated;
+
+-- ============================================================
+-- Storage bucket for pasted info-doc images (public read)
+-- ============================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'info-doc-images',
+  'info-doc-images',
+  true,
+  10485760,
+  array['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "info_doc_images_public_read" on storage.objects;
+create policy "info_doc_images_public_read"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'info-doc-images');
+
+drop policy if exists "info_doc_images_anon_insert" on storage.objects;
+create policy "info_doc_images_anon_insert"
+  on storage.objects for insert
+  to anon, authenticated
+  with check (bucket_id = 'info-doc-images');
+
+drop policy if exists "info_doc_images_anon_update" on storage.objects;
+create policy "info_doc_images_anon_update"
+  on storage.objects for update
+  to anon, authenticated
+  using (bucket_id = 'info-doc-images')
+  with check (bucket_id = 'info-doc-images');
+
+drop policy if exists "info_doc_images_anon_delete" on storage.objects;
+create policy "info_doc_images_anon_delete"
+  on storage.objects for delete
+  to anon, authenticated
+  using (bucket_id = 'info-doc-images');

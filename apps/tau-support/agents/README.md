@@ -85,11 +85,27 @@ platform.
 - `../src/lib/kbEmbed.ts` — Idempotent upsert of `qa_pairs` → `kb_chunks`
   (skip when `content_hash` matches); stale chunk cleanup; Settings backfill
   (**סנכרן הטמעות**).
+- `../src/lib/infoDocs.ts` — CRUD for official staff info-doc topics
+  (`info_docs` table): list / create / update / delete / reorder; computes
+  `content_hash` from title+body+`common_questions`.
+- `../src/lib/infoDocImages.ts` — Paste-to-upload images into the public
+  Supabase Storage bucket `info-doc-images`; returns a public URL for
+  markdown `![](url)` insertion in the topic body.
+- `../src/lib/infoDocEmbed.ts` — Idempotent upsert of each
+  `common_question` → `kb_chunks` (`source_type='info_doc'`,
+  `source_id='{docId}::{index}'`); falls back to embedding the title when
+  no common questions are set; Settings backfill
+  (**סנכרן הטמעות מסמכי מידע**).
 - `../src/lib/kbSearch.ts` — Query-time embed of a student question +
-  `match_kb_chunks` RPC (grounding for **נסח טיוטת תשובה** / **הצג תשובות**).
+  `match_kb_chunks` RPC, hydrate `answered_at`, over-fetch +
+  `recencyAdjustedScore` re-rank (grounding for **נסח טיוטת תשובה** /
+  **הצג תשובות דומות**). Supports `filter_source_types` so ThreadCard
+  similar-answers stays QA-only while drafts include info docs.
 - `../src/lib/draftAnswer.ts` — Phase 3 grounded draft: retrieve via
-  `findSimilarQa`, confidence gate (`DRAFT_MIN_SIMILARITY`), strict-grounded
-  `aiChat` (`/api/chat`, `gpt-4o`) or refusal (**נסח טיוטת תשובה**). No posting.
+  `findSimilarQa` (qa_pairs **and** info_docs), confidence gate
+  (`DRAFT_MIN_SIMILARITY` on max raw cosine), dated context block +
+  prefer-info-doc / prefer-newer rule, strict-grounded `aiChat`
+  (`/api/chat`, `gpt-4o`) or refusal (**נסח טיוטת תשובה**). No posting.
 - `../server/embedCore.ts` — OpenAI `text-embedding-3-small` (1536 dims).
 - `../api/embed.ts` — Vercel `POST /api/embed` (also wired in Vite middleware).
 - `../api/chat.ts` — Vercel re-export of `@workspace/ai-client/vercel`
@@ -123,6 +139,18 @@ platform.
   across localhost / Vercel).
 - `../supabase/migrations/005_kb_chunks.sql` — Phase 2 vector table +
   `match_kb_chunks` RPC.
+- `../supabase/migrations/006_info_docs.sql` — `info_docs` table, extends
+  `kb_chunks.source_type` to include `info_doc`, updates `match_kb_chunks`
+  (returns `source_type` + optional `filter_source_types`), and creates the
+  public `info-doc-images` Storage bucket + policies.
+- `../supabase/migrations/007_info_doc_common_questions.sql` — Adds
+  `info_docs.common_questions text[]` for question-shaped RAG retrieval.
+- `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
+  **מסמך מידע שימושי** mode is on (**הוספת נושא**).
+- `../src/components/InfoDocView.tsx` — Read-only topic body (via
+  `ForumBody`, including pasted images) with **עריכה** / **מחיקה**.
+- `../src/components/InfoDocEditor.tsx` — Title + body editor; paste-only
+  image upload (Ctrl+V → Storage → `![](url)` at caret).
 - `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
   for that singleton.
 - `../src/lib/checkAllRun.ts` — Check-all cursor (`sessionStorage`, optional
@@ -187,6 +215,16 @@ RTL split layout inspired by the campus IL forum list:
   through the inter-course gap; it resets to **0 שנ׳** only when the next
   course’s fetch actually starts. No separate sidebar header line above
   the list.
+- **מסמך מידע שימושי mode:** A header toolbar toggle (**מסמך מידע שימושי**)
+  swaps the right sidebar into an `InfoDocsSidebar` of official topics and the
+  main pane into an `InfoDocView` / `InfoDocEditor`. Clicking the button again
+  restores the normal courses/threads view (`selectedId` is preserved). Topics
+  support full CRUD (**הוספת נושא** / **עריכה** / **מחיקה**). In the editor, staff
+  paste images (Ctrl+V) into the body textbox; the app uploads the blob to the
+  public Supabase Storage bucket `info-doc-images` and inserts a markdown
+  `![](publicUrl)` at the caret. Viewing uses `ForumBody` so images render
+  inline. Saving writes to `info_docs` and triggers a non-blocking
+  `embedInfoDocs()` into `kb_chunks` (`source_type='info_doc'`).
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is
   **home** (`HomeDashboard`): friendly greeting **שלום אחראי/ת תמיכה של חודש
@@ -275,7 +313,8 @@ RTL split layout inspired by the campus IL forum list:
   strip** (visual left of **דף הבית**; `SettingsIcon` in `App.tsx`). Clicking it
   opens a
   modal dialog (`AuthSettings`, `open`/`onClose` props) with page size used by
-  **בדוק הכל**, cookie auth, optional **סנכרן הטמעות**, and
+  **בדוק הכל**, cookie auth, optional **סנכרן הטמעות** (Q↔A) and
+  **סנכרן הטמעות מסמכי מידע** (info docs), and
   **טען 20 לכל הקורסים** (backfill: up to 20 unknown/older threads per
   catalog course, same sequential queue / lock / stop / resume as check-all,
   with `backfillOlder: 20` → `collectNewUntil` + `knownThreads`). Close via the ✕, the **Done** button,
@@ -341,7 +380,7 @@ succeeds against localStorage. Sync errors are logged with
 
 #### Schema
 
-Five tables plus `kb_chunks` in the dedicated project (`supabase/schema.sql`):
+Five tables plus `kb_chunks` / `info_docs` in the dedicated project (`supabase/schema.sql`):
 
 | Table | Key | Role |
 | --- | --- | --- |
@@ -349,18 +388,21 @@ Five tables plus `kb_chunks` in the dedicated project (`supabase/schema.sql`):
 | `threads` | `campus_thread_id` | OP / question, plain `body_text` + `body_hash`, `raw` jsonb (comment tree stripped), shared UX (`no_answer_needed`, `seen_at`, `is_new`, `is_updated`) |
 | `messages` | `campus_comment_id` | Flattened reply forest (`parent_id`, `is_staff`, `endorsed`, `body_text` + `body_hash`) |
 | `qa_pairs` | uuid; unique `thread_id` | One student Q ↔ staff A pair per answered thread |
-| `kb_chunks` | uuid; unique `(source_type, source_id)` | One embedding per Q↔A (`text-embedding-3-small`, 1536 dims) |
+| `info_docs` | uuid | Official staff info topics (title + markdown body, `position`, `content_hash`) for browse UI + RAG |
+| `kb_chunks` | uuid; unique `(source_type, source_id)` | One embedding per Q↔A **or** info_doc (`text-embedding-3-small`, 1536 dims); `source_type` ∈ `qa_pair` \| `info_doc` |
 | `last_check_all` | singleton `id='singleton'` | Homepage “העדכון האחרון היה ב” run (`completed_at`, scanned/total/upserted, incomplete) — shared across localhost and Vercel |
 
-RAG columns on `qa_pairs` / `kb_chunks`:
+RAG columns on `qa_pairs` / `info_docs` / `kb_chunks`:
 
-- `question_text` / `answer_text` — primary retrieval unit (embedded whole; not chunked)
+- `question_text` / `answer_text` — primary retrieval unit for Q↔A (embedded whole; not chunked)
+- `info_docs.title` / `info_docs.body` — primary retrieval unit for info topics (embedded as `title\n\n---\n\nbody`)
 - `resolution_text` — question + every staff reply (kept for future generation context)
-- `content_hash` — hash of question+answer; embedding skipped when unchanged
+- `content_hash` — hash of embeddable content; embedding skipped when unchanged
 - `lang` — `he` / `en` / `mixed` / `unknown`
-- `course_id` — denormalized for in-SQL vector filters
+- `course_id` — denormalized for in-SQL vector filters (null for info docs — global)
 - `kb_chunks.embedding` — `extensions.vector(1536)`; HNSW cosine index
-- `kb_chunks.metadata` — `thread_id`, `answer_message_id`, `answer_selection`
+- `kb_chunks.metadata` — for Q↔A: `thread_id`, `answer_message_id`, …; for info docs: `title`, `kind: 'info_doc'`, `body`
+- Storage bucket `info-doc-images` — public; paste-to-upload from the SPA
 
 RLS is on for all tables with open `anon`/`authenticated` CRUD policies
 (internal staff tool). The **service_role / secret key must never ship to the
@@ -371,25 +413,40 @@ browser**. Tighten policies when adding staff login.
 1. After a successful course sync (or Settings **סנכרן הטמעות**), `kbEmbed`
    loads `qa_pairs` whose `content_hash` is missing from / differs in
    `kb_chunks`, calls `POST /api/embed`, and upserts vectors. Stale chunks
-   (deleted Q↔A) are removed.
+   (deleted Q↔A) are removed. Saving an info-doc topic (or Settings
+   **סנכרן הטמעות מסמכי מידע**) does the same for `info_docs` →
+   `kb_chunks` with `source_type='info_doc'`.
 2. Unanswered thread cards show an **AI icon** button
    (**נסח טיוטת תשובה** via tooltip) in the header action cluster
    (visual top-left in RTL; the **check** icon for **אין צורך במענה** /
    **בטל סימון** sits furthest left). Draft retrieval embeds the
    student question with the **same** model/API, then
-   `rpc('match_kb_chunks')` for top grounding Q↔A **across all courses**
-   (`filter_course_id` is left null). Hits are hydrated from `qa_pairs.question_text` /
-   `answer_text` (and chunk metadata when present). Legacy
+   `rpc('match_kb_chunks')` for a **candidate pool** of grounding Q↔A
+   **and** info-doc topics **across all courses** (`filter_course_id` is
+   left null; drafts pass `filter_source_types: ['qa_pair','info_doc']`;
+   ThreadCard **הצג תשובות דומות** stays QA-only via
+   `filter_source_types: ['qa_pair']`; pool size
+   `min(50, max(requested×4, 20))`). Hits are hydrated from
+   `qa_pairs.question_text` / `answer_text` / `answered_at` (fallback
+   `created_at`) or from `info_docs.title` / `body`, plus chunk metadata
+   when present. Legacy
    `kb_chunks.content` (`title\\n\\nbody\\n\\nstaff`) is recovered by splitting
    at a staff-reply opening — never by taking only the first blank-line
    segment as the question (that put the OP body into **תשובה**).
    `resolveSimilarHitDisplay` also strips any leaked body prefix before
-   render. Results render **below the thread body**
+   render. After hydration, hits are **re-ranked** by
+   `recencyAdjustedScore` = raw cosine × `exp(-ageDays / RECENCY_HALF_LIFE_DAYS)`
+   (`RECENCY_HALF_LIFE_DAYS = 180`), then truncated to the requested
+   `matchCount`. Raw cosine stays on each hit for the UI badge and draft
+   confidence gate. Results render **below the thread body**
    (after the OP question text, before replies): each hit is laid out like a
-   mini thread card (**white** bg + thread shadow) with a **bold** title,
-   Hebrew course name (`name_he`, else English `name`), body under it, and the
-   staff answer nested as a reply box
-   (also white, with a **צוות** chip). Full question + answer text;
+   mini thread card (**white** bg, **border-2** `surface-300` + thread shadow)
+   with a **bold** title,
+   Hebrew course name (`name_he`, else English `name`), optional answer
+   date, body under it, and the staff answer nested as a reply box
+   (**amber** `bg-amber-100` / `border-amber-200`, same as thread staff
+   comments, with a **צוות** chip — or **מידע** for info-doc hits). Full
+   question + answer text;
    **דמיון N%** badge in the card's visual top-left.
 3. New student questions are **query-time only** — not stored as corpus
    vectors until they become a `qa_pair`.
@@ -403,21 +460,43 @@ Unanswered thread cards also show **נסח טיוטת תשובה** in that same 
 action cluster (`draftAnswer.ts`):
 
 1. `threadQuestionText(thread)` → `findSimilarQa(question, {
-   matchCount: 5, matchThreshold: 0.3 })` (all courses; no course filter).
-2. **Confidence gate**: if there are no hits or the top hit's similarity is
-   below `DRAFT_MIN_SIMILARITY` (`0.45`, stricter than search's `0.3`), the
-   card **refuses** — it shows the fixed sentence and does **not** call the
-   model.
-3. Otherwise, a numbered context block of the retrieved Q↔A is sent to
+   matchCount: 5, matchThreshold: 0.3,
+   filterSourceTypes: ['qa_pair', 'info_doc'] })` (all courses + info docs;
+   over-fetches then re-ranks by recency-adjusted score — see Phase 2).
+2. **Confidence gate**: if there are no hits or the **max raw cosine**
+   among returned hits is below `DRAFT_MIN_SIMILARITY` (`0.45`, stricter
+   than search's `0.3`), the card **refuses** — it shows the fixed sentence
+   and does **not** call the model. (Gate uses raw similarity, not the
+   decayed re-rank score, so an older but highly similar hit still clears
+   the gate even when a newer hit is ordered first.)
+3. Otherwise, a numbered context block of the retrieved Q↔A **and**
+   info-doc topics (each line includes similarity % and date when known;
+   info docs are labeled **מסמך מידע שימושי**) is sent to
    `aiChat` (reuses `POST /api/chat`, `gpt-4o`, `temperature 0.2`) with a
    Hebrew system prompt enforcing **strict grounding**: answer only from the
-   retrieved staff answers, invent nothing, and emit the exact refusal
-   sentence if the context doesn't cover the question.
+   retrieved staff answers **and official info docs**, invent nothing,
+   prefer **info docs** over conflicting staff answers, else prefer the
+   **newer dated** staff answer, write **body only** (no greeting /
+   sign-off), and emit the exact refusal sentence if the context doesn't
+   cover the question. On success, `wrapDraftBody` adds the fixed template:
+   ```
+   שלום,
+   תודה שפנית אלינו.
+
+   {body}
+
+   בהצלחה בהמשך הלמידה!
+   [שם אחראי תמיכה], צוות מערכות למידה
+   ```
+   (`[שם אחראי תמיכה]` is left for staff to replace with their name;
+   the **העתק** button stays disabled until that placeholder is gone.)
 4. Clicking **נסח טיוטת תשובה** immediately opens the **טיוטת תשובה** box
    under the OP with a grey pulse skeleton until the draft is ready, then
    an editable RTL `textarea` (`text-base` / same as forum body), with the
-   responsibility disclaimer under the box, a **העתק** button, a
-   "מבוסס על N שאלות דומות" source line with **הצג תשובות** / **הסתר תשובות**
+   responsibility disclaimer under the box, a **העתק** button (disabled
+   while `[שם אחראי תמיכה]` remains), a
+   "מבוסס על N שאלות דומות" source line with **הצג תשובות דומות** /
+   **הסתר תשובות דומות**
    to expand the grounding Q↔A cards, and staff copy/edit and post manually —
    **no** Campus IL writes.
 
@@ -427,7 +506,7 @@ route). Locally, `vite.config.ts` also serves `/api/chat` via the same Web
 or retrieval failure surfaces a clear error and never blocks poll/sync.
 
 Later (not this phase): Word-doc hierarchical chunking, hybrid BM25/RRF,
-reranker, auto-posting.
+cross-encoder reranker, auto-posting.
 
 #### Q↔A pairing rules (`qaPairing.ts`)
 
@@ -463,7 +542,8 @@ only:
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
-`004_last_check_all.sql`, and/or `005_kb_chunks.sql`.
+`004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`, and/or
+`007_info_doc_common_questions.sql`.
 
 ### Load behavior
 
@@ -475,15 +555,16 @@ or whatever you were reading); the inbox updates as each course merges.
 Unanswered **counts appear on sidebar rows only after** that course has threads
 in the store (otherwise “—”).
 
-By default **Use browser cookies** is on. Paste from DevTools → Cookies →
+By default **Use browser cookies** is off, so auth uses `LMS_USERNAME` /
+`LMS_PASSWORD` from the server env (e.g. Vercel). For **בדוק הכל** in that
+mode the client calls **`POST /api/lms-login` once** (password stays on the
+server), then reuses the returned session on each course poll. Single-course
+**טען תגובות חדשות** still logs in per request when cookies are off. Enable
+**Use browser cookies** and paste from DevTools → Cookies →
 `courses.campus.gov.il`: `csrftoken`, `edx-jwt-cookie-header-payload`, and
-`edx-jwt-cookie-signature` (there is often **no** `sessionid`). Uncheck the
-box to use `LMS_USERNAME` / `LMS_PASSWORD` on the server instead. For
-**בדוק הכל** in that mode the client calls **`POST /api/lms-login` once**
-(password stays on the server), then reuses the returned session on each
-course poll. Single-course **טען תגובות חדשות** still logs in per request when
-cookies are off. The server resolves the category to Open edX topic ids via
-`/api/discussion/v1/course_topics/`, then fetches matching threads.
+`edx-jwt-cookie-signature` (there is often **no** `sessionid`) when you need
+cookie-based auth instead. The server resolves the category to Open edX topic
+ids via `/api/discussion/v1/course_topics/`, then fetches matching threads.
 
 ### Unanswered highlighting
 

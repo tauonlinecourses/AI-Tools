@@ -78,4 +78,4 @@ export function toForumHtml(rendered?: string, raw?: string): string {
 export const FORUM_RTL_CLASS = "text-right";
 
 export const FORUM_BODY_CLASS =
-  "forum-body text-base font-normal text-surface-800 leading-relaxed text-right [&_p]:my-1 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded [&_img]:block [&_a]:text-blue-700 [&_a]:underline";
+  "forum-body text-base font-normal text-surface-800 leading-relaxed text-right whitespace-pre-wrap [&_p]:my-1 [&_p]:whitespace-pre-wrap [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded [&_img]:block [&_a]:text-blue-700 [&_a]:underline [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-lg [&_h3]:font-bold [&_h4]:mt-2 [&_h4]:text-base [&_h4]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pe-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pe-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold [&_em]:italic";

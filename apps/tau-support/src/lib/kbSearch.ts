@@ -7,13 +7,22 @@
  */
 
 import { embedTexts } from "./embedClient";
+import { parseInfoDocIdFromSourceId } from "./infoDocEmbed";
 import { toPlainText } from "./qaPairing";
 import { supabase } from "./supabase";
 import type { ForumThread } from "./types";
 
+/** Half-life (days) for exponential recency decay after cosine retrieval. */
+export const RECENCY_HALF_LIFE_DAYS = 180;
+
+/** RPC hard cap on match_kb_chunks limit. */
+const MATCH_COUNT_CAP = 50;
+
 export interface SimilarQaHit {
   id: string;
   sourceId: string;
+  /** 'qa_pair' (forum Q↔A) or 'info_doc' (official topic). */
+  sourceType: "qa_pair" | "info_doc";
   content: string;
   /** Full question text (title + body), for draft context. */
   questionSnippet: string;
@@ -27,7 +36,10 @@ export interface SimilarQaHit {
   lang: string | null;
   courseId: string | null;
   courseName: string | null;
+  /** Raw cosine similarity from match_kb_chunks (not decayed). */
   similarity: number;
+  /** ISO timestamp of staff answer (`answered_at`, else `created_at`). */
+  answeredAt: string | null;
 }
 
 export interface SimilarQaResult {
@@ -160,6 +172,19 @@ export function cleanStaffAnswer(
  * client left the OP body inside answerSnippet.
  */
 export function resolveSimilarHitDisplay(hit: SimilarQaHit): SimilarHitDisplay {
+  // Info docs store HTML in answerSnippet — do not run Q↔A recovery on them.
+  if (hit.sourceType === "info_doc") {
+    const title = (hit.questionTitle || hit.questionSnippet || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return {
+      title,
+      body: "",
+      answer: (hit.answerSnippet ?? "").trim(),
+    };
+  }
+
   const content = (hit.content ?? "").trim();
   const storedQ = (hit.questionSnippet ?? "").trim();
   const storedA = (hit.answerSnippet ?? "").trim();
@@ -214,11 +239,69 @@ export function threadQuestionText(thread: ForumThread): string {
   return [title, body].filter(Boolean).join("\n\n").trim();
 }
 
+/**
+ * Cosine similarity × exponential time decay.
+ * Missing dates get no recency boost (treated as infinitely old).
+ */
+export function recencyAdjustedScore(
+  similarity: number,
+  answeredAt: string | null | undefined,
+  nowMs: number = Date.now(),
+  halfLifeDays: number = RECENCY_HALF_LIFE_DAYS
+): number {
+  if (!answeredAt) {
+    return similarity * Math.exp(-1e6 / halfLifeDays);
+  }
+  const ts = Date.parse(answeredAt);
+  if (Number.isNaN(ts)) {
+    return similarity * Math.exp(-1e6 / halfLifeDays);
+  }
+  const ageDays = Math.max(0, (nowMs - ts) / (24 * 60 * 60 * 1000));
+  return similarity * Math.exp(-ageDays / halfLifeDays);
+}
+
+/**
+ * Extra rank weight for official info-doc topics vs past forum Q↔A.
+ * Applied only to ranking (UI still shows raw cosine %).
+ */
+export const INFO_DOC_RANK_MULTIPLIER = 1.35;
+
+/** Ranking score used to order mixed Q↔A + info-doc hits. */
+export function rankingScore(
+  hit: Pick<SimilarQaHit, "similarity" | "answeredAt" | "sourceType">,
+  nowMs: number = Date.now()
+): number {
+  const base = recencyAdjustedScore(hit.similarity, hit.answeredAt, nowMs);
+  return hit.sourceType === "info_doc" ? base * INFO_DOC_RANK_MULTIPLIER : base;
+}
+
+function candidatePoolSize(requested: number): number {
+  return Math.min(MATCH_COUNT_CAP, Math.max(requested * 4, 20));
+}
+
+function pairAnsweredAt(pair: PairRow | undefined): string | null {
+  if (!pair) return null;
+  const answered = pair.answered_at?.trim();
+  if (answered) return answered;
+  const created = pair.created_at?.trim();
+  return created || null;
+}
+
 type PairRow = {
   id: string;
   thread_id: string;
   question_text: string;
   answer_text: string;
+  answered_at: string | null;
+  created_at: string | null;
+};
+
+type InfoDocRow = {
+  id: string;
+  title: string;
+  body: string;
+  updated_at: string | null;
+  created_at: string | null;
 };
 
 type CourseRow = {
@@ -228,7 +311,11 @@ type CourseRow = {
 };
 
 /**
- * Embed a student question and return the closest past Q↔A pairs.
+ * Embed a student question and return the closest past Q↔A pairs
+ * and/or info-doc topics (depending on `filterSourceTypes`).
+ *
+ * Default `filterSourceTypes: ['qa_pair']` keeps ThreadCard
+ * "הצג תשובות דומות" QA-only. Drafts pass both types.
  */
 export async function findSimilarQa(
   questionText: string,
@@ -236,6 +323,8 @@ export async function findSimilarQa(
     courseId?: string;
     matchCount?: number;
     matchThreshold?: number;
+    /** Defaults to `['qa_pair']`. Pass `null` or both types for mixed grounding. */
+    filterSourceTypes?: Array<"qa_pair" | "info_doc"> | null;
   }
 ): Promise<SimilarQaResult> {
   if (!supabase) return { ok: false, skipped: true };
@@ -251,11 +340,18 @@ export async function findSimilarQa(
       return { ok: false, message: "No embedding returned" };
     }
 
+    const requestedCount = opts?.matchCount ?? 3;
+    const filterSourceTypes =
+      opts?.filterSourceTypes === undefined
+        ? (["qa_pair"] as Array<"qa_pair" | "info_doc">)
+        : opts.filterSourceTypes;
+
     const { data, error } = await supabase.rpc("match_kb_chunks", {
       query_embedding: queryEmbedding,
-      match_count: opts?.matchCount ?? 3,
+      match_count: candidatePoolSize(requestedCount),
       filter_course_id: opts?.courseId ?? null,
       match_threshold: opts?.matchThreshold ?? 0.3,
+      filter_source_types: filterSourceTypes,
     });
 
     if (error) {
@@ -265,6 +361,7 @@ export async function findSimilarQa(
     const rows = (data ?? []) as Array<{
       id: string;
       source_id: string;
+      source_type?: string | null;
       content: string;
       metadata: Record<string, unknown> | null;
       lang: string | null;
@@ -292,6 +389,7 @@ export async function findSimilarQa(
 
     const pairById = new Map<string, PairRow>();
     const pairByThreadId = new Map<string, PairRow>();
+    const infoDocById = new Map<string, InfoDocRow>();
     const courseNameById = new Map<string, string>();
 
     const remember = (pair: PairRow) => {
@@ -300,11 +398,42 @@ export async function findSimilarQa(
       if (pair.thread_id) pairByThreadId.set(pair.thread_id, pair);
     };
 
-    if (sourceIds.length > 0) {
+    const pairSelect =
+      "id, thread_id, question_text, answer_text, answered_at, created_at";
+
+    const qaSourceIds = sourceIds.filter((id) =>
+      rows.some(
+        (r) =>
+          String(r.source_id) === id &&
+          (r.source_type === "qa_pair" ||
+            r.source_type == null ||
+            metaString(r.metadata, "kind") !== "info_doc")
+      )
+    );
+
+    // Resolve parent info_doc ids from metadata or `uuid::index` source_id.
+    const infoDocIds = [
+      ...new Set(
+        rows
+          .filter(
+            (r) =>
+              r.source_type === "info_doc" ||
+              metaString(r.metadata, "kind") === "info_doc"
+          )
+          .map((r) => {
+            const fromMeta = metaString(r.metadata, "info_doc_id");
+            if (fromMeta) return fromMeta;
+            return parseInfoDocIdFromSourceId(String(r.source_id));
+          })
+          .filter(Boolean)
+      ),
+    ];
+
+    if (qaSourceIds.length > 0) {
       const { data: pairs, error: pairErr } = await supabase
         .from("qa_pairs")
-        .select("id, thread_id, question_text, answer_text")
-        .in("id", sourceIds);
+        .select(pairSelect)
+        .in("id", qaSourceIds);
       if (!pairErr) {
         for (const pair of (pairs ?? []) as PairRow[]) remember(pair);
       }
@@ -313,10 +442,23 @@ export async function findSimilarQa(
     if (threadIds.length > 0) {
       const { data: byThread, error: threadErr } = await supabase
         .from("qa_pairs")
-        .select("id, thread_id, question_text, answer_text")
+        .select(pairSelect)
         .in("thread_id", threadIds);
       if (!threadErr) {
         for (const pair of (byThread ?? []) as PairRow[]) remember(pair);
+      }
+    }
+
+    if (infoDocIds.length > 0) {
+      const { data: docs, error: docsErr } = await supabase
+        .from("info_docs")
+        .select("id, title, body, updated_at, created_at")
+        .in("id", infoDocIds);
+      if (!docsErr) {
+        for (const doc of (docs ?? []) as InfoDocRow[]) {
+          infoDocById.set(doc.id, doc);
+          infoDocById.set(doc.id.toLowerCase(), doc);
+        }
       }
     }
 
@@ -334,7 +476,59 @@ export async function findSimilarQa(
       }
     }
 
+    const nowMs = Date.now();
     const hits: SimilarQaHit[] = rows.map((row) => {
+      const metaKind = metaString(row.metadata, "kind");
+      const sourceType: "qa_pair" | "info_doc" =
+        row.source_type === "info_doc" || metaKind === "info_doc"
+          ? "info_doc"
+          : "qa_pair";
+
+      if (sourceType === "info_doc") {
+        const docId =
+          metaString(row.metadata, "info_doc_id") ??
+          parseInfoDocIdFromSourceId(String(row.source_id));
+        const doc =
+          infoDocById.get(docId) ??
+          infoDocById.get(docId.toLowerCase());
+        const title =
+          (doc?.title ?? metaString(row.metadata, "title") ?? "").trim();
+        const body =
+          (doc?.body ?? metaString(row.metadata, "body") ?? "").trim();
+        // Fall back to delimited content if hydration missed.
+        let question = title;
+        let answer = body;
+        if (!question && !answer) {
+          const delim = "\n\n---\n\n";
+          const idx = (row.content ?? "").indexOf(delim);
+          if (idx >= 0) {
+            question = row.content.slice(0, idx).trim();
+            answer = row.content.slice(idx + delim.length).trim();
+          } else {
+            question = (row.content ?? "").trim();
+          }
+        }
+        return {
+          id: row.id,
+          sourceId: row.source_id,
+          sourceType: "info_doc",
+          content: row.content,
+          questionSnippet: question,
+          questionTitle: question,
+          questionBody: "",
+          answerSnippet: answer,
+          metadata: {
+            ...(row.metadata ?? {}),
+            info_doc_id: docId,
+          },
+          lang: row.lang,
+          courseId: row.course_id,
+          courseName: null,
+          similarity: row.similarity,
+          answeredAt: doc?.updated_at ?? doc?.created_at ?? null,
+        };
+      }
+
       const metaQ = metaString(row.metadata, "question_text");
       const metaA = metaString(row.metadata, "answer_text");
       const threadId = metaString(row.metadata, "thread_id");
@@ -355,6 +549,7 @@ export async function findSimilarQa(
       return {
         id: row.id,
         sourceId: row.source_id,
+        sourceType: "qa_pair",
         content: row.content,
         questionSnippet: question,
         questionTitle: title,
@@ -363,12 +558,33 @@ export async function findSimilarQa(
         metadata: row.metadata ?? {},
         lang: row.lang,
         courseId: row.course_id,
-        courseName: row.course_id ? courseNameById.get(row.course_id) ?? null : null,
+        courseName: row.course_id
+          ? courseNameById.get(row.course_id) ?? null
+          : null,
         similarity: row.similarity,
+        answeredAt: pairAnsweredAt(pair),
       };
     });
 
-    return { ok: true, hits };
+    hits.sort(
+      (a, b) => rankingScore(b, nowMs) - rankingScore(a, nowMs)
+    );
+
+    // Keep at most one info_doc hit per parent topic (best score wins).
+    const seenInfoDocs = new Set<string>();
+    const deduped: SimilarQaHit[] = [];
+    for (const hit of hits) {
+      if (hit.sourceType === "info_doc") {
+        const docId =
+          metaString(hit.metadata, "info_doc_id") ??
+          parseInfoDocIdFromSourceId(hit.sourceId);
+        if (seenInfoDocs.has(docId)) continue;
+        seenInfoDocs.add(docId);
+      }
+      deduped.push(hit);
+    }
+
+    return { ok: true, hits: deduped.slice(0, requestedCount) };
   } catch (err) {
     return {
       ok: false,

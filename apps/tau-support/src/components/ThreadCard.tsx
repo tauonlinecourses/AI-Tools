@@ -11,6 +11,7 @@ import {
 import {
   DRAFT_REFUSAL_SENTENCE,
   draftAnswerForThread,
+  draftHasSigneePlaceholder,
   type DraftSource,
 } from "../lib/draftAnswer";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -95,10 +96,26 @@ function CopiedCheckIcon({ className }: { className?: string }) {
   );
 }
 
+function draftSourcesSummary(sources: DraftSource[]): string {
+  const infoDocCount = sources.filter((s) => s.sourceType === "info_doc").length;
+  const qaCount = sources.length - infoDocCount;
+  const parts: string[] = [];
+  if (infoDocCount > 0) {
+    parts.push("מידע מקובץ מידע שימושי");
+  }
+  if (qaCount > 0) {
+    parts.push(
+      qaCount === 1 ? "1 שאלה דומה" : `${qaCount} שאלות דומות`
+    );
+  }
+  return parts.length > 0 ? `מבוסס על ${parts.join(" ו")}` : "מבוסס על מקורות מהמאגר";
+}
+
 function draftSourceAsHit(source: DraftSource): SimilarQaHit {
   return {
     id: source.id,
     sourceId: source.id,
+    sourceType: source.sourceType ?? "qa_pair",
     content: source.content,
     questionSnippet: source.questionSnippet,
     questionTitle: source.questionTitle,
@@ -109,20 +126,40 @@ function draftSourceAsHit(source: DraftSource): SimilarQaHit {
     courseId: null,
     courseName: source.courseName,
     similarity: source.similarity,
+    answeredAt: source.answeredAt,
   };
+}
+
+/** Display answer date as DD.MM.YYYY. */
+function formatHitDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
 function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
   const { title, body, answer } = resolveSimilarHitDisplay(hit);
+  const answeredDate = formatHitDate(hit.answeredAt);
+  const isInfoDoc = hit.sourceType === "info_doc";
   return (
     <li
       dir="rtl"
-      className={`rounded-control overflow-hidden border border-surface-100 bg-white p-3 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] text-right ${FORUM_RTL_CLASS}`}
+      className={`rounded-control overflow-hidden border-2 border-surface-300 bg-white p-3 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] text-right ${FORUM_RTL_CLASS}`}
     >
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-surface-500">
-        <p className="min-w-0 text-right">שאלה דומה</p>
-        <span className="shrink-0 rounded-full bg-surface-100 px-2 py-0.5 text-[11px] font-semibold text-surface-800">
-          {(hit.similarity * 100).toFixed(0)}% דמיון
+        <p className="min-w-0 text-right">
+          {isInfoDoc ? "מסמך מידע שימושי" : "שאלה דומה"}
+        </p>
+        <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {answeredDate ? (
+            <span className="text-[11px] text-surface-500">{answeredDate}</span>
+          ) : null}
+          <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[11px] font-semibold text-surface-800">
+            {(hit.similarity * 100).toFixed(0)}% דמיון
+          </span>
         </span>
       </div>
       {title ? (
@@ -139,33 +176,52 @@ function SimilarHitCard({ hit }: { hit: SimilarQaHit }) {
           {hit.courseName}
         </p>
       ) : null}
-      {body ? (
-        <p
-          dir="rtl"
-          className="mt-1 whitespace-pre-wrap text-right text-sm font-normal text-surface-800"
-        >
-          {body}
-        </p>
-      ) : null}
-      {answer ? (
-        <div
-          dir="rtl"
-          className={`mr-4 mt-3 overflow-hidden rounded-control border border-surface-100 border-r-2 bg-white p-3 pr-3 text-right ${FORUM_RTL_CLASS}`}
-        >
-          <div className="mb-1 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
-            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-              צוות
-            </span>
-            <p className="min-w-0">תשובה</p>
-          </div>
-          <p
+      {isInfoDoc ? (
+        answer ? (
+          <div
             dir="rtl"
-            className="whitespace-pre-wrap text-right text-sm font-normal text-surface-800"
+            className={`mr-0 mt-3 overflow-hidden rounded-control border border-amber-200 border-r-2 bg-amber-100 p-3 pr-3 text-right ${FORUM_RTL_CLASS}`}
           >
-            {answer}
-          </p>
-        </div>
-      ) : null}
+            <div className="mb-2 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
+              <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                מידע
+              </span>
+              <p className="min-w-0">תוכן המסמך</p>
+            </div>
+            <ForumBody raw_body={answer} />
+          </div>
+        ) : null
+      ) : (
+        <>
+          {body ? (
+            <p
+              dir="rtl"
+              className="mt-1 whitespace-pre-wrap text-right text-sm font-normal text-surface-800"
+            >
+              {body}
+            </p>
+          ) : null}
+          {answer ? (
+            <div
+              dir="rtl"
+              className={`mr-4 mt-3 overflow-hidden rounded-control border border-amber-200 border-r-2 bg-amber-100 p-3 pr-3 text-right ${FORUM_RTL_CLASS}`}
+            >
+              <div className="mb-1 flex flex-wrap items-center justify-start gap-2 text-right text-xs text-surface-500">
+                <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                  צוות
+                </span>
+                <p className="min-w-0">תשובה</p>
+              </div>
+              <p
+                dir="rtl"
+                className="whitespace-pre-wrap text-right text-sm font-normal text-surface-800"
+              >
+                {answer}
+              </p>
+            </div>
+          ) : null}
+        </>
+      )}
     </li>
   );
 }
@@ -328,7 +384,7 @@ export function ThreadCard({
   async function handleCopyDraft(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!draft) return;
+    if (!draft || draftHasSigneePlaceholder(draft)) return;
     try {
       await navigator.clipboard.writeText(draft);
       setDraftCopied(true);
@@ -361,6 +417,9 @@ export function ThreadCard({
         : isNew || isUpdated
           ? "!bg-blue-100 !border-blue-300"
           : "!bg-white";
+
+  const draftCopyBlocked =
+    draft != null && draftHasSigneePlaceholder(draft);
 
   return (
     <Card className={`rounded-control overflow-hidden shadow-[4px_8px_14px_-3px_rgba(0,0,0,0.28)] ${cardTone}`}>
@@ -546,9 +605,22 @@ export function ThreadCard({
                   />
                   <button
                     type="button"
-                    className="absolute left-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-control text-surface-600 hover:bg-surface-100 hover:text-surface-900"
-                    title={draftCopied ? "הועתק" : "העתק"}
-                    aria-label={draftCopied ? "הועתק" : "העתק"}
+                    disabled={draftCopyBlocked}
+                    className="absolute left-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-control text-surface-600 hover:bg-surface-100 hover:text-surface-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-surface-600"
+                    title={
+                      draftCopyBlocked
+                        ? "החליפו את [שם אחראי תמיכה] בשמכם לפני ההעתקה"
+                        : draftCopied
+                          ? "הועתק"
+                          : "העתק"
+                    }
+                    aria-label={
+                      draftCopyBlocked
+                        ? "העתקה חסומה — יש להחליף את שם אחראי התמיכה"
+                        : draftCopied
+                          ? "הועתק"
+                          : "העתק"
+                    }
                     onClick={(e) => void handleCopyDraft(e)}
                   >
                     {draftCopied ? (
@@ -564,9 +636,9 @@ export function ThreadCard({
                 </p>
                 {draftSources.length > 0 ? (
                   <div className="flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center justify-start gap-x-2 gap-y-1 text-[11px] text-surface-500">
+                    <div className="flex flex-wrap items-center justify-start gap-x-2 gap-y-1 text-sm text-surface-600">
                       <p>
-                        מבוסס על {draftSources.length} שאלות דומות
+                        {draftSourcesSummary(draftSources)}
                         {" · "}
                         {draftSources
                           .map((s) => `${(s.similarity * 100).toFixed(0)}%`)
@@ -581,7 +653,9 @@ export function ThreadCard({
                           setDraftSourcesOpen((open) => !open);
                         }}
                       >
-                        {draftSourcesOpen ? "הסתר תשובות" : "הצג תשובות"}
+                        {draftSourcesOpen
+                          ? "הסתר תשובות דומות"
+                          : "הצג תשובות דומות"}
                       </button>
                     </div>
                     {draftSourcesOpen ? (
