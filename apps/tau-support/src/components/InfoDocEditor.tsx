@@ -293,8 +293,8 @@ export function InfoDocEditor({
   const canSuggest = !busy && !uploading && !suggestBusy;
 
   return (
-    <div dir="rtl" className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+    <div dir="rtl" className="flex flex-col gap-4 p-4 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-surface-900">
           {initial ? "עריכת נושא" : "נושא חדש"}
         </h2>
@@ -399,7 +399,7 @@ export function InfoDocEditor({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-surface-800">
           תוכן
           <span className="ms-2 font-normal text-surface-500">
@@ -416,7 +416,7 @@ export function InfoDocEditor({
           dir="rtl"
           onPaste={handlePaste}
           onInput={onEditorInput}
-          className={`min-h-[16rem] w-full flex-1 overflow-y-auto rounded-control border border-surface-200 bg-white px-3 py-2 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:opacity-60 ${FORUM_BODY_CLASS} [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-lg [&_h3]:font-bold [&_h4]:mt-2 [&_h4]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pe-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pe-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold`}
+          className={`min-h-[16rem] w-full rounded-control border border-surface-200 bg-white px-3 py-2 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:opacity-60 ${FORUM_BODY_CLASS} [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-lg [&_h3]:font-bold [&_h4]:mt-2 [&_h4]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pe-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pe-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold`}
         />
         {uploading ? (
           <p className="inline-flex items-center gap-2 text-xs text-surface-600">

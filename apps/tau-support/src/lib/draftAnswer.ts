@@ -16,6 +16,12 @@ import type { ForumThread } from "./types";
 
 /** Minimum top-hit cosine similarity required to attempt a draft. */
 export const DRAFT_MIN_SIMILARITY = 0.45;
+/**
+ * Slightly lower bar for official info docs: FAQ `common_questions` are short
+ * while email pastes are narrative, so raw cosine is often a bit lower even
+ * when the topic is clearly the same (e.g. 93% progress vs "למה לא 100%").
+ */
+export const DRAFT_MIN_SIMILARITY_INFO_DOC = 0.38;
 /** How many past Q↔A pairs to feed as grounding context. */
 export const DRAFT_CONTEXT_COUNT = 5;
 
@@ -198,23 +204,50 @@ function threadIdOf(hit: SimilarQaHit): string | null {
   return typeof raw === "string" ? raw : null;
 }
 
+/** Cap length sent to embedding retrieval (long email pastes dilute cosine). */
+const MAX_RETRIEVAL_QUERY_CHARS = 2000;
+
+function retrievalQueryText(questionText: string): string {
+  const trimmed = questionText.trim();
+  if (trimmed.length <= MAX_RETRIEVAL_QUERY_CHARS) return trimmed;
+  return trimmed.slice(0, MAX_RETRIEVAL_QUERY_CHARS);
+}
+
+function clearsDraftConfidenceGate(hits: SimilarQaHit[]): boolean {
+  if (hits.length === 0) return false;
+  const maxQa = Math.max(
+    0,
+    ...hits.filter((h) => h.sourceType !== "info_doc").map((h) => h.similarity)
+  );
+  const maxInfo = Math.max(
+    0,
+    ...hits.filter((h) => h.sourceType === "info_doc").map((h) => h.similarity)
+  );
+  return (
+    maxQa >= DRAFT_MIN_SIMILARITY || maxInfo >= DRAFT_MIN_SIMILARITY_INFO_DOC
+  );
+}
+
 /**
- * Retrieve similar past Q↔A, gate on confidence, and generate a grounded
- * draft. Returns `{ refused: true }` when nothing is similar enough.
+ * Retrieve similar past Q↔A / info docs, gate on confidence, and generate a
+ * grounded draft for arbitrary question text (forum thread or pasted email).
+ * Returns `{ refused: true }` when nothing is similar enough.
  */
-export async function draftAnswerForThread(
-  thread: ForumThread
+export async function draftAnswerForQuestion(
+  questionText: string
 ): Promise<DraftResult> {
-  const question = threadQuestionText(thread);
+  const question = questionText.trim();
   if (!question) {
     return { ok: false, message: "Empty question text" };
   }
 
-  const search = await findSimilarQa(question, {
-    // Search the full KB across all courses + info docs (not just this thread's course).
+  const search = await findSimilarQa(retrievalQueryText(question), {
+    // Search the full KB across all courses + info docs.
     matchCount: DRAFT_CONTEXT_COUNT,
     matchThreshold: 0.3,
     filterSourceTypes: ["qa_pair", "info_doc"],
+    // Email / narrative pastes → short FAQ-shaped search question first.
+    rewriteWithAi: true,
   });
 
   if (search.skipped) return { ok: true, skipped: true };
@@ -223,9 +256,7 @@ export async function draftAnswerForThread(
   }
 
   const hits = search.hits ?? [];
-  const maxSimilarity =
-    hits.length > 0 ? Math.max(...hits.map((h) => h.similarity)) : 0;
-  if (hits.length === 0 || maxSimilarity < DRAFT_MIN_SIMILARITY) {
+  if (!clearsDraftConfidenceGate(hits)) {
     return { ok: true, refused: true };
   }
 
@@ -276,4 +307,14 @@ export async function draftAnswerForThread(
       message: err instanceof Error ? err.message : "Draft generation failed",
     };
   }
+}
+
+/**
+ * Retrieve similar past Q↔A, gate on confidence, and generate a grounded
+ * draft. Returns `{ refused: true }` when nothing is similar enough.
+ */
+export async function draftAnswerForThread(
+  thread: ForumThread
+): Promise<DraftResult> {
+  return draftAnswerForQuestion(threadQuestionText(thread));
 }

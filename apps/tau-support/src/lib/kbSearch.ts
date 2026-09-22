@@ -9,6 +9,7 @@
 import { embedTexts } from "./embedClient";
 import { parseInfoDocIdFromSourceId } from "./infoDocEmbed";
 import { toPlainText } from "./qaPairing";
+import { rewriteQuestionForRetrieval } from "./rewriteRetrievalQuery";
 import { supabase } from "./supabase";
 import type { ForumThread } from "./types";
 
@@ -240,6 +241,89 @@ export function threadQuestionText(thread: ForumThread): string {
 }
 
 /**
+ * Strip email/support-paste noise so embeddings match FAQ-shaped
+ * `common_questions` better. Keeps the problem statement.
+ *
+ * Example:
+ * "היי שמי אדוה … אני סיימתי … ההתקדמות … 93 אחוז"
+ * → "סיימתי … ההתקדמות … 93 אחוז"
+ */
+export function normalizeQuestionForRetrieval(text: string): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+
+  // Leading greetings
+  t = t.replace(/^(?:היי|הי|שלום|בוקר טוב|ערב טוב)\b[\s,.-]*/u, "");
+
+  // "שמי First Last" / "קוראים לי Name" (1–3 name tokens)
+  t = t.replace(
+    /^(?:שמי|קוראים לי)\s+[\u0590-\u05FFa-zA-Z'’-]+(?:\s+[\u0590-\u05FFa-zA-Z'’-]+){0,2}\s*/u,
+    ""
+  );
+
+  // Leading "אני" before a first-person verb / statement
+  t = t.replace(/^אני\s+/u, "");
+
+  // Soft-trim trailing thanks / signatures (single line pastes)
+  t = t.replace(/\s+(?:תודה(?: רבה)?|בברכה|בבקשה)\s*[.!]*\s*$/u, "");
+
+  return t.trim() || text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Build one or more retrieval queries from a student message.
+ * Prefer an AI-rewritten FAQ-shaped query when provided; keep regex cleanup
+ * and light heuristics as fallbacks.
+ */
+export function buildRetrievalQueries(
+  questionText: string,
+  opts?: { aiRewritten?: string | null }
+): string[] {
+  const original = questionText.replace(/\s+/g, " ").trim();
+  if (!original) return [];
+
+  const cleaned = normalizeQuestionForRetrieval(original);
+  const queries: string[] = [];
+  const push = (q: string) => {
+    const t = q.trim();
+    if (!t) return;
+    if (queries.some((x) => x === t)) return;
+    queries.push(t);
+  };
+
+  // AI rewrite first — strongest match to short common_questions.
+  if (opts?.aiRewritten?.trim()) {
+    push(opts.aiRewritten.trim());
+  }
+
+  push(cleaned);
+  // If cleaning removed intro noise, also try the original
+  // (short forum titles may need the full string).
+  if (cleaned !== original && original.length <= 500) {
+    push(original);
+  }
+
+  // Prefer the problem-bearing clause when the paste is a long narrative.
+  const progressClause = cleaned.match(
+    /(?:כתוב לי ש|מראה לי ש|מופיע לי ש|אבל |ו)?(?:ההתקדמות|ההשלמה|הגרף|האחוז|הוי|וי ירוק|סימן ירוק)[^.?!]*[.?!]?/u
+  );
+  if (progressClause?.[0]) {
+    push(progressClause[0].replace(/^[ו\s]+/u, "").trim());
+  }
+
+  // Narrative "progress is 93%" pastes ↔ FAQ "why not 100%?" shape.
+  if (
+    /\d{1,3}\s*(?:%|אחוז)/u.test(cleaned) &&
+    /התקדמות|השלמה|גרף/u.test(cleaned)
+  ) {
+    push("למה זה לא מראה לי 100% בהתקדמות בקורס?");
+    push("ההתקדמות בקורס לא מגיעה ל־100% השלמה");
+  }
+
+  return queries;
+}
+
+/**
  * Cosine similarity × exponential time decay.
  * Missing dates get no recency boost (treated as infinitely old).
  */
@@ -271,8 +355,53 @@ export function rankingScore(
   hit: Pick<SimilarQaHit, "similarity" | "answeredAt" | "sourceType">,
   nowMs: number = Date.now()
 ): number {
-  const base = recencyAdjustedScore(hit.similarity, hit.answeredAt, nowMs);
-  return hit.sourceType === "info_doc" ? base * INFO_DOC_RANK_MULTIPLIER : base;
+  // Official topics should not "age out" like forum answers. Missing/old
+  // updated_at used to crush info_doc scores via recency decay (~0), so they
+  // never survived the top-N cut when mixed with qa_pairs.
+  if (hit.sourceType === "info_doc") {
+    return hit.similarity * INFO_DOC_RANK_MULTIPLIER;
+  }
+  return recencyAdjustedScore(hit.similarity, hit.answeredAt, nowMs);
+}
+
+/**
+ * When both source types are requested, keep a share of slots for info docs
+ * so strong forum hits cannot crowd out official topics entirely.
+ */
+function selectTopHits(
+  hits: SimilarQaHit[],
+  requestedCount: number,
+  filterSourceTypes: Array<"qa_pair" | "info_doc"> | null
+): SimilarQaHit[] {
+  const wantsInfo =
+    filterSourceTypes == null || filterSourceTypes.includes("info_doc");
+  const wantsQa =
+    filterSourceTypes == null || filterSourceTypes.includes("qa_pair");
+
+  if (!wantsInfo || !wantsQa || requestedCount <= 1) {
+    return hits.slice(0, requestedCount);
+  }
+
+  const infoDocs = hits.filter((h) => h.sourceType === "info_doc");
+  const qaPairs = hits.filter((h) => h.sourceType !== "info_doc");
+  if (infoDocs.length === 0 || qaPairs.length === 0) {
+    return hits.slice(0, requestedCount);
+  }
+
+  const infoSlots = Math.min(
+    infoDocs.length,
+    Math.max(1, Math.ceil(requestedCount / 2))
+  );
+  const selectedInfo = infoDocs.slice(0, infoSlots);
+  const selectedQa = qaPairs.slice(0, requestedCount - selectedInfo.length);
+  const stillRoom = requestedCount - selectedInfo.length - selectedQa.length;
+  const extraInfo = infoDocs.slice(infoSlots, infoSlots + stillRoom);
+
+  const selectedIds = new Set(
+    [...selectedInfo, ...extraInfo, ...selectedQa].map((h) => h.id)
+  );
+  // Preserve ranking order among the chosen set.
+  return hits.filter((h) => selectedIds.has(h.id)).slice(0, requestedCount);
 }
 
 function candidatePoolSize(requested: number): number {
@@ -316,6 +445,9 @@ type CourseRow = {
  *
  * Default `filterSourceTypes: ['qa_pair']` keeps ThreadCard
  * "הצג תשובות דומות" QA-only. Drafts pass both types.
+ *
+ * Long email / narrative pastes can be AI-rewritten into FAQ-shaped
+ * retrieval queries (`rewriteWithAi`) plus regex cleanup fallbacks.
  */
 export async function findSimilarQa(
   questionText: string,
@@ -325,18 +457,30 @@ export async function findSimilarQa(
     matchThreshold?: number;
     /** Defaults to `['qa_pair']`. Pass `null` or both types for mixed grounding. */
     filterSourceTypes?: Array<"qa_pair" | "info_doc"> | null;
+    /**
+     * When true, call /api/chat to rewrite the paste into a short search
+     * question before embedding. Used by draft / email flows.
+     */
+    rewriteWithAi?: boolean;
   }
 ): Promise<SimilarQaResult> {
   if (!supabase) return { ok: false, skipped: true };
-  const text = questionText.trim();
-  if (!text) {
+
+  let aiRewritten: string | null = null;
+  if (opts?.rewriteWithAi) {
+    aiRewritten = await rewriteQuestionForRetrieval(questionText);
+  }
+
+  const queries = buildRetrievalQueries(questionText, { aiRewritten }).map(
+    (q) => (q.length > 2000 ? q.slice(0, 2000) : q)
+  );
+  if (queries.length === 0) {
     return { ok: false, message: "Empty question text" };
   }
 
   try {
-    const { embeddings } = await embedTexts([text]);
-    const queryEmbedding = embeddings[0];
-    if (!queryEmbedding) {
+    const { embeddings } = await embedTexts(queries);
+    if (!embeddings.length || embeddings.some((e) => !e)) {
       return { ok: false, message: "No embedding returned" };
     }
 
@@ -345,20 +489,10 @@ export async function findSimilarQa(
       opts?.filterSourceTypes === undefined
         ? (["qa_pair"] as Array<"qa_pair" | "info_doc">)
         : opts.filterSourceTypes;
+    const matchThreshold = opts?.matchThreshold ?? 0.3;
+    const poolSize = candidatePoolSize(requestedCount);
 
-    const { data, error } = await supabase.rpc("match_kb_chunks", {
-      query_embedding: queryEmbedding,
-      match_count: candidatePoolSize(requestedCount),
-      filter_course_id: opts?.courseId ?? null,
-      match_threshold: opts?.matchThreshold ?? 0.3,
-      filter_source_types: filterSourceTypes,
-    });
-
-    if (error) {
-      return { ok: false, message: error.message };
-    }
-
-    const rows = (data ?? []) as Array<{
+    type MatchRow = {
       id: string;
       source_id: string;
       source_type?: string | null;
@@ -367,7 +501,32 @@ export async function findSimilarQa(
       lang: string | null;
       course_id: string | null;
       similarity: number;
-    }>;
+    };
+
+    // Best cosine wins when the same chunk matches multiple query variants.
+    const rowById = new Map<string, MatchRow>();
+    for (const queryEmbedding of embeddings) {
+      const { data, error } = await supabase.rpc("match_kb_chunks", {
+        query_embedding: queryEmbedding,
+        match_count: poolSize,
+        filter_course_id: opts?.courseId ?? null,
+        match_threshold: matchThreshold,
+        filter_source_types: filterSourceTypes,
+      });
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+      for (const row of (data ?? []) as MatchRow[]) {
+        const prev = rowById.get(row.id);
+        if (!prev || row.similarity > prev.similarity) {
+          rowById.set(row.id, row);
+        }
+      }
+    }
+
+    const rows = [...rowById.values()].sort(
+      (a, b) => b.similarity - a.similarity
+    );
 
     const sourceIds = [
       ...new Set(rows.map((r) => String(r.source_id)).filter(Boolean)),
@@ -584,7 +743,10 @@ export async function findSimilarQa(
       deduped.push(hit);
     }
 
-    return { ok: true, hits: deduped.slice(0, requestedCount) };
+    return {
+      ok: true,
+      hits: selectTopHits(deduped, requestedCount, filterSourceTypes),
+    };
   } catch (err) {
     return {
       ok: false,

@@ -7,6 +7,7 @@ import {
   type CourseCacheEntry,
 } from "./components/CourseSidebar";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { EmailQuestionPage } from "./components/EmailQuestionPage";
 import { InfoDocEditor } from "./components/InfoDocEditor";
 import { InfoDocsSidebar } from "./components/InfoDocsSidebar";
 import { InfoDocView } from "./components/InfoDocView";
@@ -261,6 +262,7 @@ export default function App() {
   const [elapsedTick, setElapsedTick] = useState(0);
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [docsMode, setDocsMode] = useState(false);
+  const [emailMode, setEmailMode] = useState(false);
   const [infoDocs, setInfoDocs] = useState<InfoDoc[]>([]);
   const [infoDocsLoading, setInfoDocsLoading] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -827,14 +829,23 @@ export default function App() {
 
   const handleSelectCourse = useCallback((courseId: string) => {
     // Selection only shows the local store — fetch via טען תגובות חדשות or בדוק הכל.
+    setEmailMode(false);
+    setDocsMode(false);
+    setInfoDocEditMode(null);
     setSelectedId(courseId);
   }, []);
 
   const handleSelectHome = useCallback(() => {
+    setEmailMode(false);
+    setDocsMode(false);
+    setInfoDocEditMode(null);
     setSelectedId(null);
   }, []);
 
   const handleSelectInbox = useCallback(() => {
+    setEmailMode(false);
+    setDocsMode(false);
+    setInfoDocEditMode(null);
     setSelectedId(INBOX_SELECTION);
   }, []);
 
@@ -1322,10 +1333,24 @@ export default function App() {
       const next = !prev;
       if (next) {
         // Docs mode is entered from the homepage only.
+        setEmailMode(false);
         setSelectedId(null);
       } else {
         setInfoDocEditMode(null);
         setInfoDocError(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleEmailMode = useCallback(() => {
+    setEmailMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setDocsMode(false);
+        setInfoDocEditMode(null);
+        setInfoDocError(null);
+        setSelectedId(null);
       }
       return next;
     });
@@ -1571,7 +1596,7 @@ export default function App() {
                 type="button"
                 onClick={handleSelectHome}
                 className={`flex h-full min-h-full w-full items-center gap-2 py-2.5 pe-12 ps-3 text-right transition-colors ${
-                  showingHome
+                  showingHome && !docsMode && !emailMode
                     ? "bg-sky-100 text-sky-950"
                     : "text-surface-900 hover:bg-sky-50"
                 }`}
@@ -1608,7 +1633,9 @@ export default function App() {
             <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">
               <div
                 className={`min-w-0 flex-1 text-right ${
-                  showingHome && !docsMode ? "flex h-full items-center" : ""
+                  showingHome && !docsMode && !emailMode
+                    ? "flex h-full items-center"
+                    : ""
                 }`}
               >
                 {docsMode ? (
@@ -1631,6 +1658,15 @@ export default function App() {
                         : selectedInfoDoc
                           ? ` · ${selectedInfoDoc.title}`
                           : ""}
+                    </p>
+                  </>
+                ) : emailMode ? (
+                  <>
+                    <p className="truncate text-sm font-semibold leading-5 text-surface-900">
+                      הדבקת שאלה מהמייל
+                    </p>
+                    <p className="mt-0.5 truncate text-xs leading-4 text-surface-600">
+                      ניסוח תשובה ממסמכי מידע ומשאלות דומות בפורומים
                     </p>
                   </>
                 ) : showingHome ? (
@@ -1695,26 +1731,45 @@ export default function App() {
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {showingHome || docsMode ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleToggleDocsMode}
-                    title={
-                      docsMode
-                        ? "חזרה למצב שרשורים"
-                        : "מסמך מידע שימושי"
-                    }
-                    className={
-                      docsMode
-                        ? "!border-sky-400 !bg-sky-100 !font-semibold !text-sky-950"
-                        : undefined
-                    }
-                  >
-                    מסמך מידע שימושי
-                  </Button>
+                {showingHome || docsMode || emailMode ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleToggleEmailMode}
+                      title={
+                        emailMode
+                          ? "חזרה לדף הבית"
+                          : "הדבקת שאלה מהמייל"
+                      }
+                      className={
+                        emailMode
+                          ? "!border-sky-400 !bg-sky-100 !font-semibold !text-sky-950"
+                          : undefined
+                      }
+                    >
+                      הדבקת שאלה מהמייל
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleToggleDocsMode}
+                      title={
+                        docsMode
+                          ? "חזרה למצב שרשורים"
+                          : "מסמך מידע שימושי"
+                      }
+                      className={
+                        docsMode
+                          ? "!border-sky-400 !bg-sky-100 !font-semibold !text-sky-950"
+                          : undefined
+                      }
+                    >
+                      מסמך מידע שימושי
+                    </Button>
+                  </>
                 ) : null}
-                {!docsMode && showingInbox ? (
+                {!docsMode && !emailMode && showingInbox ? (
                   <div
                     className="flex items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
                     role="group"
@@ -1747,7 +1802,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-                {!docsMode && checkingAll ? (
+                {!docsMode && !emailMode && checkingAll ? (
                   checkAllProgress?.phase === "stopping" ? (
                     <Button
                       variant="secondary"
@@ -1768,7 +1823,7 @@ export default function App() {
                     </Button>
                   )
                 ) : null}
-                {!docsMode && selectedCourseId ? (
+                {!docsMode && !emailMode && selectedCourseId ? (
                   <LoadThreadsButton
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
@@ -1856,6 +1911,8 @@ export default function App() {
                       />
                     </>
                   )
+                ) : emailMode ? (
+                  <EmailQuestionPage />
                 ) : showingHome ? (
                   <HomeDashboard
                     stats={homeStats}

@@ -102,14 +102,32 @@ platform.
   (**הצע שאלות לדוגמה** in the editor).
 - `../src/lib/kbSearch.ts` — Query-time embed of a student question +
   `match_kb_chunks` RPC, hydrate `answered_at`, over-fetch +
-  `recencyAdjustedScore` re-rank (grounding for **נסח טיוטת תשובה** /
-  **הצג תשובות דומות**). Supports `filter_source_types` so ThreadCard
-  similar-answers stays QA-only while drafts include info docs.
+  `rankingScore` re-rank (grounding for **נסח טיוטת תשובה** /
+  **הצג תשובות דומות** / **יצירת תשובה**). Supports `filter_source_types`
+  and optional `rewriteWithAi` (AI FAQ rewrite before embed). Similar-answers
+  stays QA-only while drafts include info docs.
+- `../src/lib/rewriteRetrievalQuery.ts` — `/api/chat` rewrite of a full
+  student paste into one short Hebrew FAQ-shaped search question (used when
+  `findSimilarQa({ rewriteWithAi: true })`). Falls back to regex cleanup if
+  the model call fails.
 - `../src/lib/draftAnswer.ts` — Phase 3 grounded draft: retrieve via
   `findSimilarQa` (qa_pairs **and** info_docs), confidence gate
-  (`DRAFT_MIN_SIMILARITY` on max raw cosine), dated context block +
-  prefer-info-doc / prefer-newer rule, strict-grounded `aiChat`
-  (`/api/chat`, `gpt-4o`) or refusal (**נסח טיוטת תשובה**). No posting.
+  (`DRAFT_MIN_SIMILARITY` on max raw cosine for forum Q↔A;
+  `DRAFT_MIN_SIMILARITY_INFO_DOC` slightly lower for official topics), dated
+  context block + prefer-info-doc / prefer-newer rule, strict-grounded `aiChat`
+  (`/api/chat`, `gpt-4o`) or refusal. Shared entry points:
+  `draftAnswerForQuestion(text)` (email paste + general) and
+  `draftAnswerForThread` (**נסח טיוטת תשובה**). No posting.
+  Email / narrative pastes are AI-rewritten into a short FAQ-shaped search
+  question (`rewriteQuestionForRetrieval`) before embedding, with regex
+  cleanup + progress paraphrases as fallbacks, so they can match short
+  `common_questions`.
+- `../src/components/SimilarHitCard.tsx` — Shared source card for draft
+  grounding (מסמך מידע שימושי / שאלה דומה מהפורום) used by ThreadCard and
+  EmailQuestionPage.
+- `../src/components/EmailQuestionPage.tsx` — **הדבקת שאלה מהמייל** page:
+  paste email question text → same RAG draft as forum threads → editable
+  answer + sources list.
 - `../server/embedCore.ts` — OpenAI `text-embedding-3-small` (1536 dims).
 - `../api/embed.ts` — Vercel `POST /api/embed` (also wired in Vite middleware).
 - `../api/chat.ts` — Vercel re-export of `@workspace/ai-client/vercel`
@@ -152,9 +170,11 @@ platform.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
-  `ForumBody`, including pasted images) with **עריכה** / **מחיקה**.
+  `ForumBody`, including pasted images) with **עריכה** / **מחיקה**. The
+  **דוגמאות לשאלות** box is collapsed by default (title only); click to expand.
 - `../src/components/InfoDocEditor.tsx` — Title + body + common-questions
-  editor; paste-only image upload (Ctrl+V → Storage → `![](url)` at caret);
+  editor; body grows with content (no inner scroll — same page scroll as
+  view); paste-only image upload (Ctrl+V → Storage → `![](url)` at caret);
   **הצע שאלות לדוגמה** fills questions via RAG + chat.
 - `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
   for that singleton.
@@ -228,10 +248,19 @@ RTL split layout inspired by the campus IL forum list:
   paste images (Ctrl+V) into the body textbox; the app uploads the blob to the
   public Supabase Storage bucket `info-doc-images` and inserts a markdown
   `![](publicUrl)` at the caret. Viewing uses `ForumBody` so images render
-  inline. Staff fill **דוגמאות לשאלות** (or click **הצע שאלות לדוגמה** to
+  inline.   Staff fill **דוגמאות לשאלות** in the editor (or click **הצע שאלות לדוגמה** to
   retrieve similar forum Q↔A and generate Hebrew phrasings via `/api/chat`).
-  Saving writes to `info_docs` and triggers a non-blocking
+  In the read-only view the questions box starts closed (title only) and
+  expands on click. Saving writes to `info_docs` and triggers a non-blocking
   `embedInfoDocs()` into `kb_chunks` (`source_type='info_doc'`).
+- **הדבקת שאלה מהמייל mode:** A header toolbar toggle (**הדבקת שאלה מהמייל**,
+  next to info-docs, available from home) opens `EmailQuestionPage` in the
+  main pane while keeping the course sidebar. Staff paste a support-email
+  question and click **יצירת תשובה** — same `draftAnswerForQuestion` RAG path as
+  forum drafts (info docs + similar forum Q↔A). The page shows an editable
+  draft (copy blocked until the signee placeholder is replaced) and a sources
+  list labeled מסמך מידע שימושי / שאלה דומה מהפורום. Mutually exclusive with
+  docs mode; selecting home / inbox / a course exits email mode.
 - **Main pane:** soft light grey area (`#E8E8EA`) for inbox/course threads;
   white on **home**. Default selection is
   **home** (`HomeDashboard`): friendly greeting **שלום אחראי/ת תמיכה של חודש
@@ -441,9 +470,13 @@ browser**. Tighten policies when adding staff login.
    at a staff-reply opening — never by taking only the first blank-line
    segment as the question (that put the OP body into **תשובה**).
    `resolveSimilarHitDisplay` also strips any leaked body prefix before
-   render. After hydration, hits are **re-ranked** by
-   `recencyAdjustedScore` = raw cosine × `exp(-ageDays / RECENCY_HALF_LIFE_DAYS)`
-   (`RECENCY_HALF_LIFE_DAYS = 180`), then truncated to the requested
+   render. After hydration, hits are **re-ranked** by `rankingScore`:
+   forum Q↔A use `recencyAdjustedScore` = raw cosine ×
+   `exp(-ageDays / RECENCY_HALF_LIFE_DAYS)` (`RECENCY_HALF_LIFE_DAYS = 180`);
+   **info_doc** hits use raw cosine × `INFO_DOC_RANK_MULTIPLIER` (1.35) with
+   **no recency decay** (official topics must not age out). When both source
+   types are requested, selection **reserves ~half the slots** for info docs
+   so strong forum hits cannot crowd them out. Then truncated to the requested
    `matchCount`. Raw cosine stays on each hit for the UI badge and draft
    confidence gate. Results render **below the thread body**
    (after the OP question text, before replies): each hit is laid out like a

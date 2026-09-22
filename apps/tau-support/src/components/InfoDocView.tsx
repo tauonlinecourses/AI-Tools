@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button, Spinner } from "@workspace/ui";
 import { ForumBody } from "./ForumBody";
 import type { InfoDoc } from "../lib/infoDocs";
@@ -17,6 +18,13 @@ export function InfoDocView({
   onEdit,
   onDelete,
 }: InfoDocViewProps) {
+  const [questionsOpen, setQuestionsOpen] = useState(false);
+
+  // Each topic starts with the questions box collapsed.
+  useEffect(() => {
+    setQuestionsOpen(false);
+  }, [doc?.id]);
+
   if (loading && !doc) {
     return (
       <div className="flex h-full min-h-[280px] items-center justify-center gap-2 text-sm text-surface-600">
@@ -68,26 +76,48 @@ export function InfoDocView({
         </div>
       </header>
 
-      <section aria-label="דוגמאות לשאלות" className="rounded-control border border-surface-200 bg-surface-50 px-3 py-3">
-        <p className="text-xs font-semibold text-surface-700">דוגמאות לשאלות</p>
-        {doc.commonQuestions.length > 0 ? (
-          <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-surface-800">
-            {doc.commonQuestions.map((q) => (
-              <li key={q}>{q}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1.5 text-sm text-amber-900">
-            הוסיפו שאלות לדוגמה
-            <button
-              type="button"
-              onClick={onEdit}
-              className="ms-1 font-semibold underline-offset-2 hover:underline"
-            >
-              (עריכה)
-            </button>
-          </p>
-        )}
+      <section
+        aria-label="דוגמאות לשאלות"
+        className="rounded-control border border-surface-200 bg-surface-50"
+      >
+        <button
+          type="button"
+          aria-expanded={questionsOpen}
+          onClick={() => setQuestionsOpen((open) => !open)}
+          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-start text-xs font-semibold text-surface-700 hover:bg-surface-100/70"
+        >
+          <span>דוגמאות לשאלות</span>
+          <span
+            aria-hidden
+            className={`inline-block text-[0.65rem] text-surface-500 transition-transform ${
+              questionsOpen ? "rotate-180" : ""
+            }`}
+          >
+            ▼
+          </span>
+        </button>
+        {questionsOpen ? (
+          <div className="border-t border-surface-200 px-3 py-2.5">
+            {doc.commonQuestions.length > 0 ? (
+              <ul className="list-inside list-disc space-y-1 text-sm text-surface-800">
+                {doc.commonQuestions.map((q) => (
+                  <li key={q}>{q}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-amber-900">
+                הוסיפו שאלות לדוגמה
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="ms-1 font-semibold underline-offset-2 hover:underline"
+                >
+                  (עריכה)
+                </button>
+              </p>
+            )}
+          </div>
+        ) : null}
       </section>
 
       {doc.body.trim() ? (
