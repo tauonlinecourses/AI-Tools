@@ -68,7 +68,7 @@ platform.
   `knownThreads` (hydrate only new/updated ids). Exports
   `loginWithEnvCredentials` for one-shot password login.
 - `../src/lib/courses.json` — Course catalog (`id`, `name`, optional `nameHe`,
-  **`forumCategory`**) used by the course hub sidebar. Edit this JSON file to
+  **`forumCategory`**, optional **`forumTopicId`**) used by the course hub sidebar. Edit this JSON file to
   add courses and set each course’s technical-help forum name.
 - `../src/lib/courses.ts` — Thin helpers that load `courses.json`.
 - `../src/lib/threadStore.ts` — In-memory inbox + `localStorage` write-through
@@ -222,11 +222,14 @@ RTL split layout inspired by the campus IL forum list:
   visual left of that strip.
   The scrollable list starts with **פיד של כל הקורסים** (global inbox) plus all
   courses from
-  `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**).
+  `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**,
+  optional **`forumTopicId`**).
   Add courses by editing that JSON file. Each course’s technical-help forum
   name (`forumCategory`, matching the campus IL URL after `/category/`) can
   differ per course and is used when polling (not shown on the sidebar row).
-  If the configured name is missing in that course, polling also tries
+  When **`forumTopicId`** is set, polls filter by that Open edX topic id
+  directly and **skip** the flaky `/course_topics/` lookup. Otherwise, if the
+  configured name is missing in that course, polling also tries
   **פורום בעיות טכניות** and **בעיות טכניות**, and uses whichever name
   matches for topic filtering and thread URLs.
   Inbox and course rows show **חדש** counts from the local store. Courses with
@@ -382,16 +385,25 @@ Poll merge rules:
 1. **First poll** for a course (no `lastCheckedAt`): fetch the top page, seed
    the store **without** flooding “חדש” badges, set the watermark.
 2. **Later polls** (`בדוק הכל` / **טען תגובות חדשות**): send `since=lastCheckedAt`
-   and known thread snapshots. The server walks pages until activity ≤
-   watermark, skips unchanged known ids, and hydrates comments only for
-   new/updated threads. **טען תגובות חדשות** keeps walking until the watermark
-   (all new threads for that course); **בדוק הכל** uses a shorter page budget.
+   and known thread snapshots (`last_activity_at`, `comment_count`, and
+   `loaded_comment_count`). The server walks pages until it hits an
+   **unchanged** thread at/below the watermark, skips unchanged known ids, and
+   hydrates comments only for new/updated threads. Activity time is the
+   **latest** of `last_activity_at` / `updated_at` / `modified_at` /
+   `created_at` (Campus IL often omits or freezes `last_activity_at` while
+   `updated_at` still advances with new replies). Threads that still need an
+   upsert — higher `comment_count`, newer activity, or saved with
+   `loaded_comment_count === 0` while the LMS reports replies — are collected
+   even when their reported activity is older than `since`, so a missed staff
+   answer is healed on the next poll instead of being skipped forever.
+   **טען תגובות חדשות** keeps walking until the watermark (all new threads for
+   that course); **בדוק הכל** uses a shorter page budget.
    The client **merges** into the in-memory store + localStorage immediately
    after each course (does not replace; does not wait for the whole check-all
    run), then mirrors the course bucket to Supabase (including
    `courses.last_checked_at`).
 3. **New vs updated:** unknown `thread.id` → `isNew`; known id with newer
-   `last_activity_at` / higher `comment_count` → `isUpdated`. Opening a card
+   activity / higher `comment_count` → `isUpdated`. Opening a card
    clears those flags (`seenAt`).
 4. **Retention:** at most 200 threads per course (newest by activity).
 5. Auth cookies stay in **sessionStorage**; the thread store never holds JWTs.
@@ -603,8 +615,11 @@ server), then reuses the returned session on each course poll. Single-course
 **Use browser cookies** and paste from DevTools → Cookies →
 `courses.campus.gov.il`: `csrftoken`, `edx-jwt-cookie-header-payload`, and
 `edx-jwt-cookie-signature` (there is often **no** `sessionid`) when you need
-cookie-based auth instead. The server resolves the category to Open edX topic
-ids via `/api/discussion/v1/course_topics/`, then fetches matching threads.
+cookie-based auth instead. Category → topic resolution prefers a configured
+`forumTopicId` from `courses.json` (skips `/course_topics/`). Otherwise the
+server looks up topic ids via `/api/discussion/v1/course_topics/` (retries on
+opaque Campus IL 500s, caches successes in-process, and can fall back to
+`topic_id` values from already-stored threads), then fetches matching threads.
 
 ### Unanswered highlighting
 

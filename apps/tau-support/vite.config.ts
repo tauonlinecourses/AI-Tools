@@ -240,6 +240,7 @@ export default defineConfig(({ mode }) => {
               try {
                 const result = await fetchForumThreads(parsed.courseId, {
                   categoryName: parsed.categoryName,
+                  topicId: parsed.topicId,
                   pageSize: parsed.pageSize,
                   session: parsed.session,
                   since: parsed.since,

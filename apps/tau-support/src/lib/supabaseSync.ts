@@ -437,7 +437,7 @@ export async function syncCourseThreadsToSupabase(
     } else {
       const expected = entries.filter(
         (e) =>
-          (e.thread.comment_count ?? 0) > 1 &&
+          (e.thread.comment_count ?? 0) > 0 &&
           (e.thread.comments?.length ?? 0) === 0
       ).length;
       if (expected > 0) {

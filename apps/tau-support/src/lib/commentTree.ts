@@ -13,6 +13,21 @@ export function commentSignature(comment: ForumComment): string {
   return `${author}\u0000${body}`;
 }
 
+/** Flattened reply count (responses + nested comments). */
+export function countCommentsInForest(
+  comments: ForumComment[] | undefined
+): number {
+  let count = 0;
+  const walk = (nodes: ForumComment[] | undefined) => {
+    for (const node of nodes ?? []) {
+      count += 1;
+      walk(node.children);
+    }
+  };
+  walk(comments);
+  return count;
+}
+
 /**
  * Strip cycles / self-echoes from a comment forest so the UI never renders the
  * same reply nested inside itself. Safe to run on cached localStorage trees

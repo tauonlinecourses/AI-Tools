@@ -12,6 +12,8 @@ export interface LmsSessionCredentials {
 
 export interface FetchForumThreadsOptions {
   categoryName?: string;
+  /** Stable Campus IL topic_id — skips flaky /course_topics/ lookup. */
+  topicId?: string;
   pageSize?: number;
   csrfToken?: string;
   sessionId?: string;
@@ -111,6 +113,7 @@ export async function fetchForumThreads(
     body: JSON.stringify({
       courseId,
       categoryName: options?.categoryName?.trim() || undefined,
+      topicId: options?.topicId?.trim() || undefined,
       pageSize: options?.pageSize,
       since: options?.since?.trim() || undefined,
       knownThreads: options?.knownThreads,

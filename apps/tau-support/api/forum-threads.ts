@@ -28,6 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const result = await fetchForumThreads(parsed.courseId, {
       categoryName: parsed.categoryName,
+      topicId: parsed.topicId,
       pageSize: parsed.pageSize,
       session: parsed.session,
       since: parsed.since,

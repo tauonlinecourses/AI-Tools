@@ -20,6 +20,12 @@ export interface CourseEntry {
    * "פורום בעיות טכניות" and "בעיות טכניות".
    */
   forumCategory: string;
+  /**
+   * Optional stable Campus IL `topic_id` for `forumCategory`. When set, the
+   * poll skips `/course_topics/` (which intermittently returns 500 on Campus
+   * IL) and filters threads by this id directly.
+   */
+  forumTopicId?: string;
 }
 
 export const COURSES: CourseEntry[] = coursesJson;

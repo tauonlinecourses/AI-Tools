@@ -51,6 +51,14 @@ export interface KnownThreadSnapshot {
   id: string;
   last_activity_at?: string;
   comment_count?: number;
+  /**
+   * How many reply nodes the client currently has stored. When this is 0 but
+   * the LMS listing still reports comment_count > 0, re-fetch even if the
+   * activity watermark has already moved past the thread.
+   */
+  loaded_comment_count?: number;
+  /** Campus IL topic_id from a previously stored thread (category fallback). */
+  topic_id?: string;
 }
 
 export interface FetchForumThreadsResult {
@@ -174,6 +182,7 @@ function buildManualCookieJar(session: LmsSessionCredentials): {
 export interface ParsedForumThreadsRequest {
   courseId: string;
   categoryName?: string;
+  topicId?: string;
   pageSize?: number;
   session?: LmsSessionCredentials;
   since?: string;
@@ -680,6 +689,11 @@ export function parseForumThreadsRequestBody(
       ? record.categoryName.trim()
       : undefined;
 
+  const topicId =
+    typeof record.topicId === "string" && record.topicId.trim()
+      ? record.topicId.trim()
+      : undefined;
+
   const pageSizeRaw = record.pageSize;
   const pageSize =
     typeof pageSizeRaw === "number" && Number.isFinite(pageSizeRaw)
@@ -739,6 +753,15 @@ export function parseForumThreadsRequestBody(
             Number.isFinite(item.comment_count)
               ? item.comment_count
               : undefined,
+          loaded_comment_count:
+            typeof item.loaded_comment_count === "number" &&
+            Number.isFinite(item.loaded_comment_count)
+              ? Math.max(0, Math.floor(item.loaded_comment_count))
+              : undefined,
+          topic_id:
+            typeof item.topic_id === "string" && item.topic_id.trim()
+              ? item.topic_id.trim()
+              : undefined,
         }))
         .filter((item) => item.id)
     : undefined;
@@ -762,6 +785,7 @@ export function parseForumThreadsRequestBody(
   return {
     courseId,
     categoryName,
+    topicId,
     pageSize: Number.isFinite(pageSize) ? pageSize : undefined,
     session,
     since,
@@ -1116,19 +1140,59 @@ function findTopicIdsByCategoryName(
   return [];
 }
 
+/** Successful category → topic id resolutions for this Node process. */
+const topicIdCache = new Map<
+  string,
+  { categoryName: string; topicIds: string[] }
+>();
+
+function topicCacheKey(courseId: string, categoryName: string): string {
+  return `${courseId}\0${normalizeTopicName(categoryName)}`;
+}
+
+function topicIdsFromKnownThreads(
+  knownThreads?: KnownThreadSnapshot[]
+): string[] {
+  const ids = new Set<string>();
+  for (const item of knownThreads ?? []) {
+    const topicId = item.topic_id?.trim();
+    if (topicId) ids.add(topicId);
+  }
+  return [...ids];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchCourseTopicGroups(
   apiOrigin: string,
   courseId: string,
   auth: LmsAuth
 ): Promise<DiscussionTopic[][]> {
   const url = `${apiOrigin}/api/discussion/v1/course_topics/${encodeURIComponent(courseId)}/`;
-  const res = await lmsFetch(url, {
-    headers: authHeaders(auth),
-  });
+  const maxAttempts = 3;
+  let lastStatus = 0;
+  let lastBody = "";
 
-  const body = await readLmsResponseBody(res);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await lmsFetch(url, {
+      headers: authHeaders(auth),
+    });
 
-  if (!res.ok) {
+    const body = await readLmsResponseBody(res);
+    lastStatus = res.status;
+    lastBody = body;
+
+    if (res.ok) {
+      const data = parseLmsJsonBody<{
+        courseware_topics?: DiscussionTopic[];
+        non_courseware_topics?: DiscussionTopic[];
+      }>(body, url);
+
+      return [data.courseware_topics ?? [], data.non_courseware_topics ?? []];
+    }
+
     if (isCaptchaChallenge(body)) {
       throw new CaptchaBlockedError();
     }
@@ -1142,18 +1206,29 @@ async function fetchCourseTopicGroups(
         401
       );
     }
+    if (res.status === 403) {
+      throw new ForumThreadsError(
+        `Could not load forum categories (403). ${body.slice(0, 200)}`,
+        403
+      );
+    }
+
+    // Campus IL intermittently returns opaque 500s on course_topics — retry.
+    if (res.status >= 500 && attempt < maxAttempts) {
+      await sleep(400 * attempt);
+      continue;
+    }
+
     throw new ForumThreadsError(
       `Could not load forum categories (${res.status}). ${body.slice(0, 200)}`,
-      res.status === 403 ? 403 : 502
+      502
     );
   }
 
-  const data = parseLmsJsonBody<{
-    courseware_topics?: DiscussionTopic[];
-    non_courseware_topics?: DiscussionTopic[];
-  }>(body, url);
-
-  return [data.courseware_topics ?? [], data.non_courseware_topics ?? []];
+  throw new ForumThreadsError(
+    `Could not load forum categories (${lastStatus}). ${lastBody.slice(0, 200)}`,
+    502
+  );
 }
 
 async function resolveTopicIds(
@@ -1171,21 +1246,47 @@ async function resolveTopicIds(
     return { topicIds: [] };
   }
 
-  const groups = await fetchCourseTopicGroups(apiOrigin, courseId, auth);
-  const candidates = categoryNameCandidates(categoryName);
+  const cacheKey = topicCacheKey(courseId, categoryName);
+  const cached = topicIdCache.get(cacheKey);
+  const knownTopicIds = topicIdsFromKnownThreads(options.knownThreads);
 
-  for (const candidate of candidates) {
-    const topicIds = findTopicIdsByCategoryName(groups, candidate);
-    if (topicIds.length > 0) {
-      return { categoryName: candidate, topicIds };
+  try {
+    const groups = await fetchCourseTopicGroups(apiOrigin, courseId, auth);
+    const candidates = categoryNameCandidates(categoryName);
+
+    for (const candidate of candidates) {
+      const topicIds = findTopicIdsByCategoryName(groups, candidate);
+      if (topicIds.length > 0) {
+        const resolved = { categoryName: candidate, topicIds };
+        topicIdCache.set(cacheKey, resolved);
+        topicIdCache.set(topicCacheKey(courseId, candidate), resolved);
+        return resolved;
+      }
     }
-  }
 
-  const tried = candidates.map((name) => `"${name}"`).join(", ");
-  throw new ForumThreadsError(
-    `No forum category named ${tried} was found in this course. Check spelling or leave the category empty to search all forums.`,
-    404
-  );
+    const tried = candidates.map((name) => `"${name}"`).join(", ");
+    throw new ForumThreadsError(
+      `No forum category named ${tried} was found in this course. Check spelling or leave the category empty to search all forums.`,
+      404
+    );
+  } catch (err) {
+    rethrowIfCaptcha(err);
+    if (err instanceof ForumThreadsError && err.statusCode === 401) {
+      throw err;
+    }
+    if (err instanceof ForumThreadsError && err.statusCode === 404) {
+      throw err;
+    }
+
+    // Campus IL course_topics is flaky (opaque 500). Prefer cached / known ids.
+    if (cached?.topicIds.length) {
+      return cached;
+    }
+    if (knownTopicIds.length > 0) {
+      return { categoryName, topicIds: knownTopicIds };
+    }
+    throw err;
+  }
 }
 
 function buildThreadsUrl(
@@ -1209,13 +1310,29 @@ function buildThreadsUrl(
   return `${apiOrigin}/api/discussion/v1/threads/?${params.toString()}`;
 }
 
+/**
+ * Best-effort activity time. Campus IL sometimes omits `last_activity_at` or
+ * leaves it stuck at `created_at` while `updated_at` advances with new replies,
+ * so we take the latest of the known timestamp fields.
+ */
 function threadActivityAt(thread: ForumThread): string | undefined {
-  return (
-    thread.last_activity_at ??
-    thread.updated_at ??
-    thread.modified_at ??
-    thread.created_at
-  );
+  const candidates = [
+    thread.last_activity_at,
+    thread.updated_at,
+    thread.modified_at,
+    thread.created_at,
+  ];
+  let best: string | undefined;
+  let bestMs = 0;
+  for (const value of candidates) {
+    if (typeof value !== "string" || !value.trim()) continue;
+    const ms = Date.parse(value);
+    if (!Number.isNaN(ms) && ms >= bestMs) {
+      bestMs = ms;
+      best = value;
+    }
+  }
+  return best;
 }
 
 function activityTimestampMs(iso?: string | null): number {
@@ -1247,7 +1364,14 @@ function threadNeedsUpsert(
 
   const incomingCount = thread.comment_count ?? 0;
   const knownCount = prev.comment_count ?? 0;
-  return incomingCount > knownCount;
+  if (incomingCount > knownCount) return true;
+
+  // Heal threads saved without replies after the watermark moved on (common
+  // when Campus IL omits/stales last_activity_at on the listing payload).
+  const loaded = prev.loaded_comment_count ?? 0;
+  if (incomingCount > 0 && loaded === 0) return true;
+
+  return false;
 }
 
 async function lmsGetJson<T>(
@@ -1703,7 +1827,7 @@ async function attachCommentsToThreads(
 
     try {
       const comments = await fetchThreadComments(apiOrigin, auth, enriched);
-      if (comments.length === 0 && (enriched.comment_count ?? 0) > 1) {
+      if (comments.length === 0 && (enriched.comment_count ?? 0) > 0) {
         results.push({
           ...enriched,
           comments: [],
@@ -1821,17 +1945,28 @@ export async function fetchForumThreads(
           break;
         }
         const activityMs = activityTimestampMs(threadActivityAt(thread));
-        if (useSince && activityMs > 0 && activityMs <= sinceMs) {
-          reachedSinceWatermark = true;
-          break;
-        }
+        const pastWatermark =
+          useSince && activityMs > 0 && activityMs <= sinceMs;
+
         if (backfillUnknown) {
           // Only threads not already saved — skip updates to known ids.
           if (!known.has(thread.id)) {
             collected.push(thread);
           }
-        } else if (threadNeedsUpsert(thread, known)) {
+          continue;
+        }
+
+        const needs = threadNeedsUpsert(thread, known);
+        if (needs) {
           collected.push(thread);
+        }
+        // Stop only on an unchanged thread at/below the watermark. Threads that
+        // still need an upsert (e.g. higher comment_count, or saved with zero
+        // loaded replies) are collected even when their reported activity is
+        // older than `since` — Campus IL often omits/stales last_activity_at.
+        if (pastWatermark && !needs) {
+          reachedSinceWatermark = true;
+          break;
         }
       }
 

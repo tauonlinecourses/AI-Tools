@@ -634,6 +634,7 @@ export default function App() {
               : settingsPageSize;
         const course = findCourseById(courseId);
         const categoryName = course?.forumCategory.trim() || undefined;
+        const topicId = course?.forumTopicId?.trim() || undefined;
         const sessionCreds: LmsSessionCredentials | null = sessionOverride
           ? sessionOverride
           : currentAuth.useCookies
@@ -646,6 +647,7 @@ export default function App() {
 
         const data = await fetchForumThreads(courseId, {
           categoryName,
+          topicId,
           pageSize,
           maxPages: backfillOlder > 0 ? 50 : seed ? 1 : fetchAllNew ? 200 : 5,
           ...(backfillOlder > 0

@@ -5,6 +5,7 @@
  * and survives when Supabase env is missing.
  */
 
+import { countCommentsInForest } from "./commentTree";
 import type { ForumThread, KnownThreadSnapshot } from "./types";
 import {
   markCommentAsStaffInForest,
@@ -50,13 +51,29 @@ export function emptyThreadStore(): ThreadStore {
   return { version: THREAD_STORE_VERSION, courses: {} };
 }
 
+/**
+ * Best-effort activity time. Campus IL sometimes omits `last_activity_at` or
+ * leaves it stuck at `created_at` while `updated_at` advances with new replies,
+ * so we take the latest of the known timestamp fields.
+ */
 export function threadActivityAt(thread: ForumThread): string | undefined {
-  return (
-    thread.last_activity_at ??
-    thread.updated_at ??
-    thread.modified_at ??
-    thread.created_at
-  );
+  const candidates = [
+    thread.last_activity_at,
+    thread.updated_at,
+    thread.modified_at,
+    thread.created_at,
+  ];
+  let best: string | undefined;
+  let bestMs = 0;
+  for (const value of candidates) {
+    if (typeof value !== "string" || !value.trim()) continue;
+    const ms = Date.parse(value);
+    if (!Number.isNaN(ms) && ms >= bestMs) {
+      bestMs = ms;
+      best = value;
+    }
+  }
+  return best;
 }
 
 export function activityTimestampMs(iso?: string | null): number {
@@ -142,11 +159,20 @@ export function knownSnapshotsForCourse(
   courseId: string
 ): KnownThreadSnapshot[] {
   const bucket = getCourseBucket(store, courseId);
-  return Object.values(bucket.threads).map((entry) => ({
-    id: entry.thread.id,
-    last_activity_at: threadActivityAt(entry.thread),
-    comment_count: entry.thread.comment_count,
-  }));
+  return Object.values(bucket.threads).map((entry) => {
+    const topicRaw = entry.thread.topic_id;
+    const topic_id =
+      typeof topicRaw === "string" && topicRaw.trim()
+        ? topicRaw.trim()
+        : undefined;
+    return {
+      id: entry.thread.id,
+      last_activity_at: threadActivityAt(entry.thread),
+      comment_count: entry.thread.comment_count,
+      loaded_comment_count: countCommentsInForest(entry.thread.comments),
+      ...(topic_id ? { topic_id } : {}),
+    };
+  });
 }
 
 function pruneCourseThreads(

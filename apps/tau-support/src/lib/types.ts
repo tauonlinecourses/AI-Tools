@@ -58,5 +58,13 @@ export interface KnownThreadSnapshot {
   id: string;
   last_activity_at?: string;
   comment_count?: number;
+  /**
+   * How many reply nodes we currently have stored for this thread.
+   * Used to re-fetch threads that were saved without comments when Campus IL
+   * activity timestamps were missing/stale and the poll watermark moved on.
+   */
+  loaded_comment_count?: number;
+  /** Campus IL topic_id from a previously stored thread (category fallback). */
+  topic_id?: string;
 }
 

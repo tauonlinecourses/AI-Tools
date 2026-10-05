@@ -3,174 +3,203 @@
     "id": "course-v1:TAU+ACD_RFP5_Brain_most_wonderful_machine_HE+2022_1",
     "name": "The Brain — The Most Wonderful Machine of All",
     "nameHe": "המוח — המכונה המופלאה מכולן",
-    "forumCategory": "פורום בעיות טכניות"
+    "forumCategory": "פורום בעיות טכניות",
+    "forumTopicId": "f098c72b35f59492894139fc8cdd35358345fec8"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_JusticeEvolution_HE+2022_1",
     "name": "Economic Growth and Distributive Justice",
     "nameHe": "צמיחה כלכלית וצדק חלוקתי",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "d4f01b980c4beceba44e77977c9a9c0140487c28"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_IntroductionToPsychology101_HE+2022_1",
     "name": "Introduction to Psychology 101",
     "nameHe": "מבוא לפסיכולוגיה",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "83c9de87182860c885168c03944206609e9c7b8f"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_Plants101PA_HE+2022_1",
     "name": "Understanding Plants — Part 1: What Does a Plant Know?",
     "nameHe": "להבין צמחים - חלק 1: צמח מה הוא יודע?",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "06ce59575dd3df3fcfdd31f0f4efdc8c886cc7d8"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_Plants101PB_HE+2022_1",
     "name": "Understanding Plants — Part 2: Biological Foundations of the Plant",
     "nameHe": "להבין צמחים חלק 2: יסודות ביולוגיים של הצמח",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "48b31c4048b284ee1ae2d2f74f34de5fb9426030"
   },
   {
     "id": "course-v1:TAU+ACD_RFP1_HowToBeatViruses_HE+2022_1",
     "name": "Viruses — How Do We Beat Them? Cells, Viruses and Vaccines",
     "nameHe": "וירוסים, איך מנצחים אותם? תאים, וירוסים וחיסונים",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "e9a794377cadcfc7541f2a2515ad27bc039fd195"
   },
   {
     "id": "course-v1:TAU+ACD_RFP4_DataStructures_HE+2022_1",
     "name": "Data Structures",
     "nameHe": "מבני נתונים",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "796ac1874e16f38ca70bd8a98af69ad3a9888dba"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_IntroductionToChemistry101_HE+2022_1",
     "name": "What Is the World Made Of: Introduction to General Chemistry",
     "nameHe": "ממה מורכב העולם: מבוא לכימיה כללית",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "5f0adee77e1deed574b3ea1ec33d34126b064fa8"
   },
   {
     "id": "course-v1:TAU+ACD_NRFP_IntroductionToChemistry102_HE+2022_1",
     "name": "What Is the World Made Of: Introduction to General Chemistry, Part B",
     "nameHe": "ממה מורכב העולם: מבוא לכימיה כללית, חלק ב'",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "40ee77d2fc851c0adb77c8ee15fca6ae6edb3e18"
   },
   {
     "id": "course-v1:TAU+ACD_RFP4_InformationSecurity101_EN+2022_1",
     "name": "First Steps in Information Security",
     "nameHe": "צעדים ראשונים באבטחת מידע",
-    "forumCategory": "Technical Issues Forum"
+    "forumCategory": "Technical Issues Forum",
+    "forumTopicId": "87f1c73ce208b20aeb236ee6fb53a07125ad82b3"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_CSPythonIntroduction_HE+2022_1",
     "name": "First Steps in CS and Python",
     "nameHe": "צעדים ראשונים במדעי המחשב ותכנות בפייתון",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "5c953b3bf39b7463821a0bf25e095877ea3b5239"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_PhysicsIntro101_HE+2022_1",
     "name": "Central Ideas in Physics",
     "nameHe": "רעיונות מרכזיים בפיזיקה",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "0ee3319bb4e62c28dbd231423ad432f12d2bf260"
   },
   {
     "id": "course-v1:TAU+ACD_RFP2_ModernIsraelHistory_HE+2022_1",
     "name": "The History of Modern Israel",
     "nameHe": "ההיסטוריה של ישראל המודרנית",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "da4238cf2a146570d7a9b092f3b89bbb9d386209"
   },
   {
     "id": "course-v1:TAU+ACD_RFP1_IslamicHistory101_HE+2022_1",
     "name": "History of the Muslim Peoples — From Tribes to Empires",
     "nameHe": "תולדות העמים המוסלמים – משבטים לאימפריות",
-    "forumCategory": "פורום בעיות טכניות"
+    "forumCategory": "פורום בעיות טכניות",
+    "forumTopicId": "cbcaa3cf1c1074badb8691ffccad2823adbf0d2c"
   },
   {
     "id": "course-v1:TAU+ACD_RFP4_Mathematics101_HE+2022_1",
     "name": "Bridge to Academic Mathematics I — Between Algebraic and Geometric",
     "nameHe": "גשר למתמטיקה אקדמית Ⅰ – בין האלגברי לגאומטרי",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "98d002941a4b5e6a346bd16e0eed65dac09dd533"
   },
   {
     "id": "course-v1:TAU+ACD_RFP4_Mathematics102_HE+2022_1",
     "name": "Bridge to Academic Mathematics II — From Naturals to Complex Numbers",
     "nameHe": "גשר למתמטיקה אקדמית ⅠⅠ – מהטבעיים למרוכבים",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "5fd33dfe1a852c02d5ff23cdde4eb508d242bf89"
   },
   {
     "id": "course-v1:TAU+ACD_RFP5_DigitalStudyTechnologies_HE+2022_1",
     "name": "Learning Technologies: Version Update",
     "nameHe": "טכנולוגיות למידה: עדכון גרסה",
-    "forumCategory": "פורום בעיות טכניות"
+    "forumCategory": "פורום בעיות טכניות",
+    "forumTopicId": "0d7ce95b40841866f0e8dda1824c95f18281b466"
   },
   {
     "id": "course-v1:TAU+ACD_RFP5_HowToLearn_HE+1_2024",
     "name": "Learning How to Learn — 2024 Run",
     "nameHe": "ללמוד איך ללמוד - הרצה 2024",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "566a35bececcec984f000773a97ce163e24edb92"
   },
   {
     "id": "course-v1:TAU+ACD_RFP5_HowToLearn_HE+1_2025",
     "name": "Learning How to Learn — 2025 Run",
     "nameHe": "ללמוד איך ללמוד - הרצה 2025",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "892e5e6659d4b9bfc6e3e96c89fbaa7102a7afb9"
   },
   {
     "id": "course-v1:TAU+ACD_DetctMstry_HE+2024_1",
     "name": "The Detective Mystery: What Literary Detectives Hide and Reveal",
     "nameHe": "תעלומת הבלש: מה מסתירים מאיתנו ומה יכולים לגלות לנו בלשים ספרותיים",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "547d74d190e14582daf0e253d978eeaf6b81a9e1"
   },
   {
     "id": "course-v1:TAU+ACD_DataS_HE+2025_1",
     "name": "Data Science 360: From Theory to Practice",
     "nameHe": "מדעי הנתונים 360: מתאוריה לפרקטיקה",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "3effdb2052aabc23afd7291435d227d623abdf0a"
   },
   {
     "id": "course-v1:TAU+ACD_OldNew_HE+2023_1",
     "name": "Old and New in the Dead Sea Scrolls",
     "nameHe": "ישן וחדש במגילות מדבר יהודה",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "a4d809006cfcc7f385ac1eb9c0698e4a62710b73"
   },
   {
     "id": "course-v1:TAU+ACD_InLit_HE+2023_1",
     "name": "The Detective Mystery",
     "nameHe": "תעלומת הבלש",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "1f342b0ef948afb86eab093ab39be7533b3ba13b"
   },
   {
     "id": "course-v1:TAU+ACD_ChinesePhi_HE+2023_1",
     "name": "Introduction to Chinese Philosophy",
     "nameHe": "מבוא לפילוסופיה סינית",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "affb1aaf6342b2d22425833c76fa2f4f9abedb3c"
   },
   {
     "id": "course-v1:TAU+ACD_IntroP_HE+2023_1",
     "name": "Introduction to the Philosophy of Science",
     "nameHe": "מבוא לפילוסופיה של המדע",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "817b365c47c94a9a6d6b64dc69744508809b985a"
   },
   {
     "id": "course-v1:TAU+ACD_BuddhMind_HE+2023_1",
     "name": "Mindfulness and Buddhism: Practice and Theory Then and Now",
     "nameHe": "מיינדפולנס ובודהיזם: פרקטיקה ותיאוריה אז והיום",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "bc4b6f237fea1e012642c598c3e21206c6197fe7"
   },
   {
     "id": "course-v1:TAU+ACD_Cult_HE+2023_1",
     "name": "What Is Culture? Between West and East",
     "nameHe": "מהי תרבות? בין מערב למזרח",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "b873c59e76922f91384d6f460fdc183eaa8abdd6"
   },
   {
     "id": "course-v1:TAU+ACD_HeCu_HE+2023_1",
     "name": "A Matter of Life and Death: Medicine and Health in the Pre-Modern Era",
     "nameHe": "עניין של חיים ומוות: רפואה ובריאות בתקופה הטרום מודרנית",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "054bdf294b0ce6f9c96d7dac3378ebd2080cb6b9"
   },
   {
     "id": "course-v1:TAU+ACD_IntFinance_HE+2024_1",
     "name": "Understanding Financial Statements",
     "nameHe": "הכרת דוחות כספיים",
-    "forumCategory": "בעיות טכניות"
+    "forumCategory": "בעיות טכניות",
+    "forumTopicId": "8d3131eab30db94b7d7e402ff21fa539471ab7b2"
   }
 ]
