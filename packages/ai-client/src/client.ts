@@ -29,7 +29,15 @@ export type AskOptions = {
  */
 async function platformAuthHeaders(): Promise<Record<string, string>> {
   try {
-    const mod = await import("@workspace/auth/client");
+    // Opaque import: ai-client's CJS build uses moduleResolution "Node", which
+    // cannot resolve package exports like `@workspace/auth/client`.
+    const importer = new Function(
+      "specifier",
+      "return import(specifier)"
+    ) as (specifier: string) => Promise<{
+      getPlatformAccessToken: () => Promise<string | null>;
+    }>;
+    const mod = await importer("@workspace/auth/client");
     const token = await mod.getPlatformAccessToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
