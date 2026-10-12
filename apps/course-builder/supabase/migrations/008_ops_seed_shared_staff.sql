@@ -1,0 +1,16 @@
+-- OPS NOTE (not auto-applied as a one-shot for Auth user creation):
+-- 1. In Supabase Dashboard → Authentication → Users, create the shared staff user
+--    (email + password). Confirm email if required by project settings.
+-- 2. Run the SQL below (replace the email) so the profile joins all-staff:
+--
+-- insert into public.group_members (group_id, user_id)
+-- select g.id, p.id
+-- from public.groups g
+-- join public.profiles p on true
+-- join auth.users u on u.id = p.id
+-- where g.slug = 'all-staff'
+--   and u.email = 'staff@example.com'
+-- on conflict do nothing;
+--
+-- This file documents the ops step; it intentionally has no executable DDL.
+select 1;

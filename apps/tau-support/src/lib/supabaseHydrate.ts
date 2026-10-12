@@ -375,8 +375,20 @@ export async function applyRemoteUiFlagsToStore(
  * Returns skipped when Supabase env is not configured.
  */
 export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
-  if (!isSupabaseConfigured || !supabase) {
+  if (!isSupabaseConfigured) {
     return { ok: false, skipped: true };
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<HydrateResult>("hydrate");
+    } catch (err) {
+      return {
+        ok: false,
+        message:
+          err instanceof Error ? err.message : "Failed to hydrate from Supabase",
+      };
+    }
   }
 
   try {

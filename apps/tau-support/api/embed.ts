@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { AuthError, requireToolAccessFromRequest } from "@workspace/auth/server";
 import {
   EmbedError,
   embedTexts,
@@ -9,6 +10,15 @@ import {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    await requireToolAccessFromRequest(req, "tau-support");
+  } catch (err: unknown) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   let body: unknown = req.body;
@@ -34,7 +44,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     return res.status(500).json({
       error: "Server error",
-      details: err instanceof Error ? err.message : String(err),
     });
   }
 }

@@ -38,8 +38,19 @@ function rowToRun(row: LastCheckAllRow): LastCheckAllRun {
 export async function syncLastCheckAllToSupabase(
   run: LastCheckAllRun
 ): Promise<LastCheckAllSyncResult> {
-  if (!isSupabaseConfigured || !supabase) {
+  if (!isSupabaseConfigured) {
     return { ok: true, skipped: true };
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<LastCheckAllSyncResult>("syncLastCheckAll", run);
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "sync failed",
+      };
+    }
   }
 
   const { error } = await supabase.from("last_check_all").upsert(
@@ -62,8 +73,20 @@ export async function syncLastCheckAllToSupabase(
 
 /** Load the shared last check-all run from Supabase (null when empty). */
 export async function hydrateLastCheckAllFromSupabase(): Promise<LastCheckAllSyncResult> {
-  if (!isSupabaseConfigured || !supabase) {
+  if (!isSupabaseConfigured) {
     return { ok: true, skipped: true, run: null };
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<LastCheckAllSyncResult>("hydrateLastCheckAll");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "hydrate failed",
+        run: null,
+      };
+    }
   }
 
   const { data, error } = await supabase

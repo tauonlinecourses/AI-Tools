@@ -10,7 +10,7 @@ import { embedTexts } from "./embedClient";
 import { parseInfoDocIdFromSourceId } from "./infoDocEmbed";
 import { toPlainText } from "./qaPairing";
 import { rewriteQuestionForRetrieval } from "./rewriteRetrievalQuery";
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 import type { ForumThread } from "./types";
 
 /** Half-life (days) for exponential recency decay after cosine retrieval. */
@@ -464,7 +464,21 @@ export async function findSimilarQa(
     rewriteWithAi?: boolean;
   }
 ): Promise<SimilarQaResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<SimilarQaResult>("findSimilarQa", {
+        questionText,
+        opts,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Similar search failed",
+      };
+    }
+  }
 
   let aiRewritten: string | null = null;
   if (opts?.rewriteWithAi) {

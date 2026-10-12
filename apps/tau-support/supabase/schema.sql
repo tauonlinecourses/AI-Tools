@@ -182,12 +182,11 @@ before update on kb_chunks
 for each row execute function set_updated_at();
 
 -- ============================================================
--- RLS (open policies until auth is added — internal staff tool)
+-- RLS — locked: no anon/authenticated Data API access
 -- ============================================================
--- RLS is enabled so the Data API doesn't treat these as "RLS disabled".
--- Policies allow full CRUD for anon / authenticated, matching the no-login
--- SPA. The anon key can read/write every row; the service_role key must NEVER
--- ship to the browser. Tighten to authenticated-only when adding staff login.
+-- Staff Auth lives in the Course-Builder project. This project's tables
+-- are reached only via the tau-support BFF using service_role after a
+-- Platform JWT + group tool check. See migrations/008_lock_anon_access.sql.
 
 alter table courses  enable row level security;
 alter table threads  enable row level security;
@@ -197,33 +196,7 @@ alter table info_docs enable row level security;
 alter table kb_chunks enable row level security;
 alter table last_check_all enable row level security;
 
-drop policy if exists "anon_authenticated_all" on courses;
-create policy "anon_authenticated_all" on courses
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on threads;
-create policy "anon_authenticated_all" on threads
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on messages;
-create policy "anon_authenticated_all" on messages
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on qa_pairs;
-create policy "anon_authenticated_all" on qa_pairs
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on info_docs;
-create policy "anon_authenticated_all" on info_docs
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on kb_chunks;
-create policy "anon_authenticated_all" on kb_chunks
-  for all to anon, authenticated using (true) with check (true);
-
-drop policy if exists "anon_authenticated_all" on last_check_all;
-create policy "anon_authenticated_all" on last_check_all
-  for all to anon, authenticated using (true) with check (true);
+-- Intentionally no anon/authenticated policies (service_role bypasses RLS).
 
 -- ============================================================
 -- Phase 2 similarity search (cosine); course + source_type filters in SQL
@@ -268,7 +241,7 @@ as $$
 $$;
 
 grant execute on function match_kb_chunks(extensions.vector, int, text, float, text[])
-  to anon, authenticated;
+  to service_role;
 
 -- ============================================================
 -- Storage bucket for pasted info-doc images (public read)
@@ -292,21 +265,4 @@ create policy "info_doc_images_public_read"
   to anon, authenticated
   using (bucket_id = 'info-doc-images');
 
-drop policy if exists "info_doc_images_anon_insert" on storage.objects;
-create policy "info_doc_images_anon_insert"
-  on storage.objects for insert
-  to anon, authenticated
-  with check (bucket_id = 'info-doc-images');
-
-drop policy if exists "info_doc_images_anon_update" on storage.objects;
-create policy "info_doc_images_anon_update"
-  on storage.objects for update
-  to anon, authenticated
-  using (bucket_id = 'info-doc-images')
-  with check (bucket_id = 'info-doc-images');
-
-drop policy if exists "info_doc_images_anon_delete" on storage.objects;
-create policy "info_doc_images_anon_delete"
-  on storage.objects for delete
-  to anon, authenticated
-  using (bucket_id = 'info-doc-images');
+-- Writes only via service_role BFF (no anon insert/update/delete policies).

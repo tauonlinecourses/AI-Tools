@@ -9,7 +9,7 @@
 
 import { embedTexts } from "./embedClient";
 import { normalizeCommonQuestions } from "./infoDocs";
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 
 const SOURCE_TYPE = "info_doc" as const;
 /** Keep in sync with server/embedCore EMBED_MAX_BATCH. */
@@ -188,7 +188,18 @@ async function upsertPendingBatches(pending: EmbedUnit[]): Promise<number> {
  * Embed / refresh kb_chunks for all info_doc common questions. Never throws.
  */
 export async function embedInfoDocs(): Promise<InfoDocEmbedResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<InfoDocEmbedResult>("embedInfoDocs");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "info_doc embed failed",
+      };
+    }
+  }
   try {
     const { pending, allSourceIds, error } = await loadPendingUnits();
     if (error) return { ok: false, message: error };
@@ -217,7 +228,18 @@ export async function countPendingInfoDocEmbeddings(): Promise<{
   count?: number;
   message?: string;
 }> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData("countPendingInfoDocEmbeddings");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "count failed",
+      };
+    }
+  }
   try {
     const { pending, error } = await loadPendingUnits();
     if (error) return { ok: false, message: error };

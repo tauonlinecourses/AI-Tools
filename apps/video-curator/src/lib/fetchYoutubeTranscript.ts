@@ -1,3 +1,4 @@
+import { authFetch } from '@workspace/auth/client'
 import type { SrtItem } from './parseSrt'
 
 export type YoutubeTranscriptImportResult = {
@@ -48,9 +49,8 @@ export async function fetchYoutubeTranscriptAsSrtItems(
 
   const lang = options?.lang?.trim() || undefined
 
-  const response = await fetch('/api/youtube-transcript', {
+  const response = await authFetch('/api/youtube-transcript', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: trimmed, ...(lang ? { lang } : {}) }),
   })
 

@@ -4,7 +4,7 @@
  */
 
 import { embedTexts } from "./embedClient";
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 
 const SOURCE_TYPE = "qa_pair" as const;
 /** Keep in sync with server/embedCore EMBED_MAX_BATCH. */
@@ -163,7 +163,18 @@ async function upsertPendingBatches(
 export async function embedQaPairsForCourse(
   courseId: string
 ): Promise<KbEmbedResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<KbEmbedResult>("embedQaPairsForCourse", { courseId });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "kb embed failed",
+      };
+    }
+  }
   try {
     const { pending, allIds, error } = await loadPendingPairs(courseId);
     if (error) return { ok: false, message: error };
@@ -189,7 +200,18 @@ export async function embedQaPairsForCourse(
  * Backfill all pending qa_pairs across courses (Settings control).
  */
 export async function embedAllPendingQaPairs(): Promise<KbEmbedResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<KbEmbedResult>("embedAllPendingQaPairs");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "kb embed backfill failed",
+      };
+    }
+  }
   try {
     const { pending, allIds, error } = await loadPendingPairs();
     if (error) return { ok: false, message: error };
@@ -218,7 +240,18 @@ export async function countPendingEmbeddings(): Promise<{
   count?: number;
   message?: string;
 }> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData("countPendingEmbeddings");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "count failed",
+      };
+    }
+  }
   try {
     const { pending, error } = await loadPendingPairs();
     if (error) return { ok: false, message: error };

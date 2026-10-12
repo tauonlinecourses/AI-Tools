@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
     "@workspace/ai-client": "workspace:*",
+    "@workspace/auth": "workspace:*",
     "@workspace/ui": "workspace:*",
     "openai": "^6.48.0",
     "react": "^18.2.0",

@@ -6,7 +6,7 @@
 
 import { detectLang, hashContent } from "./qaPairing";
 import { infoDocBodyPlainText } from "./infoDocHtml";
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 
 export interface InfoDoc {
   id: string;
@@ -92,7 +92,18 @@ export function infoDocContentHash(
 }
 
 export async function listInfoDocs(): Promise<InfoDocListResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<InfoDocListResult>("listInfoDocs");
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to list info docs",
+      };
+    }
+  }
   try {
     const { data, error } = await supabase
       .from("info_docs")
@@ -119,7 +130,18 @@ export async function createInfoDoc(input: {
   commonQuestions?: string[];
   position?: number;
 }): Promise<InfoDocWriteResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<InfoDocWriteResult>("createInfoDoc", input);
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to create info doc",
+      };
+    }
+  }
 
   const title = input.title.trim();
   const body = input.body.trim();
@@ -178,7 +200,18 @@ export async function updateInfoDoc(
     position?: number;
   }
 ): Promise<InfoDocWriteResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<InfoDocWriteResult>("updateInfoDoc", { id, input });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to update info doc",
+      };
+    }
+  }
 
   const title = input.title.trim();
   const body = input.body.trim();
@@ -221,7 +254,18 @@ export async function deleteInfoDoc(id: string): Promise<{
   skipped?: boolean;
   message?: string;
 }> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData("deleteInfoDoc", { id });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to delete info doc",
+      };
+    }
+  }
   try {
     // Remove all question-chunks for this topic (id::N) plus legacy bare id.
     const { data: chunkRows } = await supabase
@@ -265,7 +309,18 @@ export async function reorderInfoDocs(orderedIds: string[]): Promise<{
   skipped?: boolean;
   message?: string;
 }> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData("reorderInfoDocs", { orderedIds });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Failed to reorder info docs",
+      };
+    }
+  }
   try {
     for (let i = 0; i < orderedIds.length; i += 1) {
       const id = orderedIds[i]!;

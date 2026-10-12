@@ -2,6 +2,99 @@
  * Render Open edX forum bodies (HTML or markdown with reference images).
  */
 
+const FORUM_ALLOWED_TAGS = new Set([
+  "P",
+  "BR",
+  "DIV",
+  "SPAN",
+  "STRONG",
+  "B",
+  "EM",
+  "I",
+  "U",
+  "UL",
+  "OL",
+  "LI",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "IMG",
+  "A",
+  "BLOCKQUOTE",
+  "PRE",
+  "CODE",
+]);
+
+/** Strip scripts/handlers; keep a small safe HTML subset for forum display. */
+export function sanitizeForumHtml(dirty: string): string {
+  if (!dirty.trim() || typeof document === "undefined") {
+    return dirty
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+      .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(dirty, "text/html");
+  const body = doc.body;
+  if (!body) return "";
+
+  body.querySelectorAll("script, style, meta, link, iframe, object, embed").forEach((el) => {
+    el.remove();
+  });
+
+  function walk(node: Node): Node | DocumentFragment | null {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent ?? "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const el = node as HTMLElement;
+    const tag = el.tagName.toUpperCase();
+    if (!FORUM_ALLOWED_TAGS.has(tag)) {
+      const frag = document.createDocumentFragment();
+      for (const child of Array.from(el.childNodes)) {
+        const t = walk(child);
+        if (t) frag.appendChild(t);
+      }
+      return frag;
+    }
+    const out = document.createElement(tag.toLowerCase());
+    if (tag === "A") {
+      const href = el.getAttribute("href")?.trim() ?? "";
+      if (/^https?:\/\//i.test(href) || href.startsWith("/") || href.startsWith("#")) {
+        out.setAttribute("href", href);
+        out.setAttribute("rel", "noopener noreferrer");
+        out.setAttribute("target", "_blank");
+      }
+    }
+    if (tag === "IMG") {
+      const src = el.getAttribute("src")?.trim() ?? "";
+      if (/^https?:\/\//i.test(src) || src.startsWith("data:image/")) {
+        out.setAttribute("src", src);
+        const alt = el.getAttribute("alt");
+        if (alt) out.setAttribute("alt", alt);
+        out.setAttribute("loading", "lazy");
+      } else {
+        return null;
+      }
+    }
+    for (const child of Array.from(el.childNodes)) {
+      const t = walk(child);
+      if (t) out.appendChild(t);
+    }
+    return out;
+  }
+
+  const result = document.createElement("div");
+  for (const child of Array.from(body.childNodes)) {
+    const t = walk(child);
+    if (t) result.appendChild(t);
+  }
+  return result.innerHTML;
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -53,26 +146,23 @@ export function toForumHtml(rendered?: string, raw?: string): string {
   const rawText = raw?.trim() ?? "";
   const renderedText = rendered?.trim() ?? "";
 
+  let html = "";
   if (rawText && hasImageMarkup(rawText) && !/<img\b/i.test(renderedText)) {
     const expanded = markdownRefsToHtml(rawText);
     if (/<img\b/i.test(expanded)) {
-      return expanded;
+      html = expanded;
     }
   }
 
-  if (renderedText) {
-    return renderedText;
+  if (!html && renderedText) {
+    html = renderedText;
+  } else if (!html && rawText) {
+    html = /<[a-z][\s\S]*>/i.test(rawText)
+      ? rawText
+      : markdownRefsToHtml(rawText);
   }
 
-  if (!rawText) {
-    return "";
-  }
-
-  if (/<[a-z][\s\S]*>/i.test(rawText)) {
-    return rawText;
-  }
-
-  return markdownRefsToHtml(rawText);
+  return html ? sanitizeForumHtml(html) : "";
 }
 
 export const FORUM_RTL_CLASS = "text-right";

@@ -1,12 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
+/**
+ * Course-Builder data + Platform Auth share this project.
+ * Use the shared Platform client so hub handoff sessions apply to RLS.
+ */
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import { getPlatformClient, isPlatformConfigured } from "@workspace/auth/client";
 
-if (!url || !anonKey) {
+if (!isPlatformConfigured()) {
   throw new Error(
-    "Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY — set them in apps/course-builder/.env and restart the dev server."
+    "Missing VITE_PLATFORM_SUPABASE_URL / VITE_PLATFORM_SUPABASE_ANON_KEY " +
+      "(or VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) — set them in apps/course-builder/.env " +
+      "to the Course-Builder project and restart the dev server."
   );
 }
 
-export const supabase = createClient(url, anonKey);
+export const supabase = getPlatformClient();

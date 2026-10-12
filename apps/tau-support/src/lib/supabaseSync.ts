@@ -22,7 +22,7 @@ import {
 } from "./threadStore";
 import { findCourseById } from "./courses";
 import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 import type { ForumThread } from "./types";
 import { isStaffAuthor } from "./unanswered";
 
@@ -287,7 +287,22 @@ export async function syncThreadUiStateToSupabase(
     lastCheckedAt?: string | null;
   }
 ): Promise<SyncResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<SyncResult>("syncThreadUiState", {
+        threadId,
+        ui,
+        fallback,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "UI sync failed",
+      };
+    }
+  }
 
   try {
     const res = await supabase
@@ -349,7 +364,23 @@ export async function syncCourseThreadsToSupabase(
   lastCheckedAt?: string | null,
   options?: SyncCourseOptions
 ): Promise<SyncResult> {
-  if (!supabase) return { ok: false, skipped: true };
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient");
+      return await tauData<SyncResult>("syncCourseThreads", {
+        courseId,
+        entries,
+        lastCheckedAt,
+        options,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Sync failed",
+      };
+    }
+  }
   if (entries.length === 0 && !lastCheckedAt) {
     return { ok: true, threads: 0, messages: 0, qaPairs: 0 };
   }

@@ -557,6 +557,14 @@ route). Locally, `vite.config.ts` also serves `/api/chat` via the same Web
 `handler` as `/api/embed` (restart Vite after middleware changes). Missing key
 or retrieval failure surfaces a clear error and never blocks poll/sync.
 
+**Local Vite BFF (Platform Auth):** `vite.config.ts` must not statically import
+`@workspace/auth` or `api/tau-data` (Node ESM cannot resolve auth’s extensionless
+graph when bundling the config). Auth for middleware uses
+`server/devPlatformAuth.ts`; `/api/tau-data` calls `server/tauDataHandler.ts`
+via an opaque dynamic import. Browser libs call `tauDataClient` only through
+dynamic `import()` so the Vite config graph stays auth-free. Production still
+uses `api/tau-data.ts` + `@workspace/auth/server`.
+
 Later (not this phase): Word-doc hierarchical chunking, hybrid BM25/RRF,
 cross-encoder reranker, auto-posting.
 
@@ -588,6 +596,9 @@ only:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_PLATFORM_SUPABASE_URL` / `VITE_PLATFORM_SUPABASE_ANON_KEY` — Course-Builder Auth (browser + local JWT checks)
+- `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` — server-only; group entitlement checks
+- `TAU_SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) — server-only Tau BFF
 - `OPENAI_API_KEY` — server-only (Vite/Vercel); used by `/api/embed` and
   `/api/chat`
 

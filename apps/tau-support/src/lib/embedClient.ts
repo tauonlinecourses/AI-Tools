@@ -1,5 +1,7 @@
 /**
- * Browser client for POST /api/embed (server holds OPENAI_API_KEY).
+ * Browser/server client for embeddings.
+ * Browser: POST /api/embed (with Platform JWT).
+ * Server (BFF): call embedCore directly.
  */
 
 export interface EmbedClientResult {
@@ -8,10 +10,27 @@ export interface EmbedClientResult {
   dimensions: number;
 }
 
+type EmbedCoreModule = {
+  embedTexts: (input: string[]) => Promise<EmbedClientResult>;
+};
+
+async function loadEmbedCore(): Promise<EmbedCoreModule> {
+  const importer = new Function(
+    "specifier",
+    "return import(specifier)"
+  ) as (specifier: string) => Promise<EmbedCoreModule>;
+  return importer("../../server/embedCore.js");
+}
+
 export async function embedTexts(texts: string[]): Promise<EmbedClientResult> {
-  const res = await fetch("/api/embed", {
+  if (typeof window === "undefined") {
+    const mod = await loadEmbedCore();
+    return mod.embedTexts(texts);
+  }
+
+  const { authFetch } = await import("@workspace/auth/client");
+  const res = await authFetch("/api/embed", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ texts }),
   });
 

@@ -27,10 +27,21 @@ export type AskOptions = {
 /**
  * Low-level fetch call to /api/chat. Use useAI() in components instead.
  */
+async function platformAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const mod = await import("@workspace/auth/client");
+    const token = await mod.getPlatformAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function aiChat(options: AskOptions): Promise<string> {
+  const authHeaders = await platformAuthHeaders();
   const res = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(options),
   });
 

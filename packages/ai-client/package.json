@@ -36,6 +36,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@workspace/auth": "workspace:*",
     "openai": "^6.48.0"
   }
 }

@@ -165,12 +165,52 @@ left join page_status ps on ps.page_id = p.id
 group by s.id;
 
 -- ============================================================
--- RLS (option B — open policies until auth is added)
+-- PLATFORM IDENTITY (hub Auth + group tool permissions)
+-- Full DDL: migrations/007_platform_auth_groups.sql
 -- ============================================================
--- RLS is enabled so the Data API no longer treats these tables as
--- "RLS disabled". Policies still allow full CRUD for `anon` /
--- `authenticated`, matching the no-login SPA. Tighten to
--- authenticated-only when adding users (see migrations/006_enable_rls.sql).
+
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  display_name text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text not null unique,
+  description text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists group_members (
+  group_id uuid not null references groups (id) on delete cascade,
+  user_id uuid not null references profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+create table if not exists group_tools (
+  group_id uuid not null references groups (id) on delete cascade,
+  tool_id text not null,
+  created_at timestamptz not null default now(),
+  primary key (group_id, tool_id)
+);
+
+create table if not exists auth_handoff_codes (
+  code text primary key,
+  user_id uuid not null references profiles (id) on delete cascade,
+  tool_id text not null,
+  redirect_url text not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- ============================================================
+-- RLS — course data: authenticated staff only
+-- ============================================================
 
 alter table courses enable row level security;
 alter table sections enable row level security;
@@ -178,22 +218,22 @@ alter table pages enable row level security;
 alter table components enable row level security;
 alter table component_comments enable row level security;
 
-create policy "anon_authenticated_all" on courses
-  for all to anon, authenticated
+create policy "authenticated_all" on courses
+  for all to authenticated
   using (true) with check (true);
 
-create policy "anon_authenticated_all" on sections
-  for all to anon, authenticated
+create policy "authenticated_all" on sections
+  for all to authenticated
   using (true) with check (true);
 
-create policy "anon_authenticated_all" on pages
-  for all to anon, authenticated
+create policy "authenticated_all" on pages
+  for all to authenticated
   using (true) with check (true);
 
-create policy "anon_authenticated_all" on components
-  for all to anon, authenticated
+create policy "authenticated_all" on components
+  for all to authenticated
   using (true) with check (true);
 
-create policy "anon_authenticated_all" on component_comments
-  for all to anon, authenticated
+create policy "authenticated_all" on component_comments
+  for all to authenticated
   using (true) with check (true);

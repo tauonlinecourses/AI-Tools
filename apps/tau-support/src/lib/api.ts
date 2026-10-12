@@ -1,3 +1,4 @@
+import { authFetch } from "@workspace/auth/client";
 import type {
   ForumThreadsResponse,
   KnownThreadSnapshot,
@@ -56,9 +57,8 @@ export function hasReusableSession(
 
 /** One-shot password login via server env; returns reusable session cookies. */
 export async function fetchLmsLogin(): Promise<LmsSessionCredentials> {
-  const res = await fetch("/api/lms-login", {
+  const res = await authFetch("/api/lms-login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(LMS_LOGIN_TIMEOUT_MS),
     body: "{}",
   });
@@ -106,9 +106,8 @@ export async function fetchForumThreads(
   const jwtHeaderPayload = options?.jwtHeaderPayload?.trim();
   const jwtSignature = options?.jwtSignature?.trim();
 
-  const res = await fetch("/api/forum-threads", {
+  const res = await authFetch("/api/forum-threads", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(CLIENT_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       courseId,
