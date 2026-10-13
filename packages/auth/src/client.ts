@@ -92,6 +92,28 @@ export async function setPlatformSession(tokens: {
   return data.session;
 }
 
+export type PlatformGroup = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+/** Groups the current user belongs to (RLS: member-only select). */
+export async function listUserGroups(): Promise<PlatformGroup[]> {
+  const client = getPlatformClient();
+  const { data, error } = await client
+    .from("groups")
+    .select("id, name, slug")
+    .order("name");
+  if (error) throw error;
+  if (!Array.isArray(data)) return [];
+  return data.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    slug: String(row.slug),
+  }));
+}
+
 /** Distinct tool ids allowed for the current user (union of group_tools). */
 export async function listAllowedToolIds(): Promise<string[]> {
   const client = getPlatformClient();

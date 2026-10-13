@@ -15,12 +15,15 @@ export {
   signOut,
   setPlatformSession,
   listAllowedToolIds,
+  listUserGroups,
   assertToolAccess,
   authFetch,
   hubLoginUrl,
   startToolHandoff,
   exchangeHandoffCode,
 } from "./client.js";
+
+export type { PlatformGroup } from "./client.js";
 
 export {
   AuthError,

@@ -13,8 +13,10 @@ import {
   getPlatformSession,
   isPlatformConfigured,
   listAllowedToolIds,
+  listUserGroups,
   signInWithPassword,
   signOut as platformSignOut,
+  type PlatformGroup,
 } from "./client.js";
 
 type AuthState = {
@@ -23,9 +25,11 @@ type AuthState = {
   session: Session | null;
   user: User | null;
   allowedToolIds: string[];
+  groups: PlatformGroup[];
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAllowedTools: () => Promise<void>;
+  refreshGroups: () => Promise<void>;
   hasToolAccess: (toolId: string) => boolean;
 };
 
@@ -36,6 +40,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [allowedToolIds, setAllowedToolIds] = useState<string[]>([]);
+  const [groups, setGroups] = useState<PlatformGroup[]>([]);
 
   const refreshAllowedTools = useCallback(async () => {
     if (!configured) {
@@ -50,6 +55,23 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [configured]);
 
+  const refreshGroups = useCallback(async () => {
+    if (!configured) {
+      setGroups([]);
+      return;
+    }
+    try {
+      const next = await listUserGroups();
+      setGroups(next);
+    } catch {
+      setGroups([]);
+    }
+  }, [configured]);
+
+  const refreshMembership = useCallback(async () => {
+    await Promise.all([refreshAllowedTools(), refreshGroups()]);
+  }, [refreshAllowedTools, refreshGroups]);
+
   useEffect(() => {
     if (!configured) {
       setLoading(false);
@@ -62,7 +84,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
         const s = await getPlatformSession();
         if (cancelled) return;
         setSession(s);
-        if (s) await refreshAllowedTools();
+        if (s) await refreshMembership();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,9 +94,10 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       (_event, next) => {
         setSession(next);
         if (next) {
-          void refreshAllowedTools();
+          void refreshMembership();
         } else {
           setAllowedToolIds([]);
+          setGroups([]);
         }
       }
     );
@@ -83,18 +106,19 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       sub.subscription.unsubscribe();
     };
-  }, [configured, refreshAllowedTools]);
+  }, [configured, refreshMembership]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const s = await signInWithPassword(email, password);
     setSession(s);
-    await refreshAllowedTools();
-  }, [refreshAllowedTools]);
+    await refreshMembership();
+  }, [refreshMembership]);
 
   const signOut = useCallback(async () => {
     await platformSignOut();
     setSession(null);
     setAllowedToolIds([]);
+    setGroups([]);
   }, []);
 
   const value = useMemo<AuthState>(
@@ -104,9 +128,11 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       allowedToolIds,
+      groups,
       signIn,
       signOut,
       refreshAllowedTools,
+      refreshGroups,
       hasToolAccess: (toolId: string) => allowedToolIds.includes(toolId),
     }),
     [
@@ -114,9 +140,11 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       allowedToolIds,
+      groups,
       signIn,
       signOut,
       refreshAllowedTools,
+      refreshGroups,
     ]
   );
 

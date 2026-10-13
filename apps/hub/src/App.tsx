@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Badge, persistHubLocale, Spinner } from "@workspace/ui";
 import { PlatformAuthProvider, usePlatformAuth } from "@workspace/auth/react";
@@ -12,6 +12,132 @@ import {
   type Locale,
 } from "./i18n";
 import { LoginPage } from "./components/LoginPage";
+import { SoftPageBg } from "./components/SoftPageBg";
+
+/** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
+const SHOW_LANG_SWITCHER = false;
+
+function UserMenu({
+  locale,
+  email,
+  groupNames,
+  onSignOut,
+}: {
+  locale: Locale;
+  email?: string | null;
+  groupNames: string[];
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointerDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const groupsInline =
+    groupNames.length > 0
+      ? groupNames.join(", ")
+      : locale === "he"
+        ? "אין קבוצות"
+        : "No groups";
+
+  return (
+    <div className="relative" ref={rootRef} dir="ltr">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          aria-label={locale === "he" ? "תפריט משתמש" : "User menu"}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-200 text-surface-500 transition-colors duration-fast hover:bg-surface-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-400"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-6 w-6"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="8" r="3.5" />
+            <path d="M4.5 19.5c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6" />
+          </svg>
+        </button>
+
+        {/* Width follows the email; multi-group names truncate to that same width. */}
+        <div className="w-fit max-w-[14rem] min-w-0 text-start sm:max-w-[18rem]">
+          {email && (
+            <p className="whitespace-nowrap text-sm font-medium text-surface-800">
+              {email}
+            </p>
+          )}
+          <p
+            className="truncate text-xs text-surface-500"
+            title={groupsInline}
+          >
+            {groupsInline}
+          </p>
+        </div>
+      </div>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute start-0 top-full z-30 mt-2 min-w-[12rem] max-w-[18rem] rounded-lg border border-surface-200 bg-white p-1 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28)]"
+        >
+          {email && (
+            <div className="truncate px-3 py-2 text-xs text-surface-500">
+              {email}
+            </div>
+          )}
+          <div className="border-t border-surface-100 px-3 py-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-surface-400">
+              {locale === "he" ? "קבוצות" : "Groups"}
+            </p>
+            {groupNames.length > 0 ? (
+              <ul className="mt-1 space-y-0.5">
+                {groupNames.map((name) => (
+                  <li key={name} className="break-words text-xs text-surface-700">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs text-surface-400">
+                {locale === "he" ? "אין קבוצות" : "No groups"}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+            className="w-full rounded-control px-3 py-2 text-start text-xs font-semibold text-red-600 transition-colors duration-fast hover:bg-red-50"
+          >
+            {locale === "he" ? "התנתקות" : "Sign out"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const iconPaths: Record<string, string | string[]> = {
   bolt:   "M13 10V3L4 14h7v7l9-11h-7z",
@@ -119,7 +245,8 @@ function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
 
 function HubPage({ locale }: { locale: Locale }) {
   const t = ui[locale];
-  const { loading, session, allowedToolIds, signOut, user } = usePlatformAuth();
+  const { loading, session, allowedToolIds, groups, signOut, user } =
+    usePlatformAuth();
   const [activeCategory, setActiveCategory] = useState<string>("All");
 
   useEffect(() => {
@@ -165,87 +292,87 @@ function HubPage({ locale }: { locale: Locale }) {
   const categoryTabs = ["All", ...categories] as const;
 
   return (
-    <div className="min-h-screen bg-white" dir={t.dir} lang={t.htmlLang}>
-      <div className="bg-white border-b border-surface-200">
-        <div className="max-w-screen-xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 min-w-0">
-              <Link to={locale === "en" ? "/en" : "/"} className="shrink-0">
-                <img
-                  src="/logo-narrow.png"
-                  alt="Feynman"
-                  className="h-16 w-auto"
+    <div className="relative min-h-screen bg-white" dir={t.dir} lang={t.htmlLang}>
+      <SoftPageBg />
+
+      <div className="relative z-10">
+        <div className="relative z-20 border-b border-surface-200/80 bg-white/55 backdrop-blur-[2px]">
+          <div className="max-w-screen-xl mx-auto px-6 py-8">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <Link to={locale === "en" ? "/en" : "/"} className="shrink-0">
+                  <img
+                    src="/logo-narrow.png"
+                    alt="Feynman"
+                    className="h-16 w-auto"
+                  />
+                </Link>
+                <div className="min-w-0">
+                  <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
+                    {t.title}
+                  </h1>
+                  <p className="text-surface-600 mt-1 text-sm">
+                    {t.subtitle}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <UserMenu
+                  locale={locale}
+                  email={user?.email}
+                  groupNames={groups.map((g) => g.name)}
+                  onSignOut={() => void signOut()}
                 />
-              </Link>
-              <div className="min-w-0">
-                <h1 className="text-3xl font-semibold tracking-tight text-surface-900 font-display">
-                  {t.title}
-                </h1>
-                <p className="text-surface-600 mt-1 text-sm">
-                  {t.subtitle}
-                </p>
+                {SHOW_LANG_SWITCHER && (
+                  <Link
+                    to={t.langHref}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-control border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors duration-fast"
+                  >
+                    {t.langLabel}
+                  </Link>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {user?.email && (
-                <span className="text-xs text-surface-500 hidden sm:inline">
-                  {user.email}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className="px-3 py-1.5 text-xs font-semibold rounded-control border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors duration-fast"
-              >
-                {locale === "he" ? "יציאה" : "Sign out"}
-              </button>
-              <Link
-                to={t.langHref}
-                className="px-3 py-1.5 text-xs font-semibold rounded-control border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors duration-fast"
-              >
-                {t.langLabel}
-              </Link>
+          </div>
+        </div>
+
+        <div className="relative z-10 border-b border-surface-200/80 bg-white/40 backdrop-blur-[2px]">
+          <div className="max-w-screen-xl mx-auto px-6">
+            <div className="flex gap-1 overflow-x-auto py-2">
+              {categoryTabs.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(cat)}
+                  className={[
+                    "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
+                    activeCategory === cat
+                      ? "bg-black text-white"
+                      : "bg-white/90 text-gray-700 border border-gray-200 hover:bg-gray-50",
+                  ].join(" ")}
+                >
+                  {cat === "All" ? t.all : localizeCategory(locale, cat)}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-white border-b border-surface-200">
-        <div className="max-w-screen-xl mx-auto px-6">
-          <div className="flex gap-1 overflow-x-auto py-2">
-            {categoryTabs.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={[
-                  "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
-                  activeCategory === cat
-                    ? "bg-black text-white"
-                    : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
-                ].join(" ")}
-              >
-                {cat === "All" ? t.all : localizeCategory(locale, cat)}
-              </button>
-            ))}
-          </div>
+        <div className="max-w-screen-xl mx-auto px-6 py-8">
+          {filteredTools.length === 0 ? (
+            <p className="text-surface-500 text-sm">
+              {locale === "he"
+                ? "אין כלים זמינים עבור המשתמש הזה. פנו למנהל המערכת."
+                : "No tools are available for this account. Contact an administrator."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filteredTools.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} locale={locale} />
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-
-      <div className="max-w-screen-xl mx-auto px-6 py-8">
-        {filteredTools.length === 0 ? (
-          <p className="text-surface-500 text-sm">
-            {locale === "he"
-              ? "אין כלים זמינים עבור המשתמש הזה. פנו למנהל המערכת."
-              : "No tools are available for this account. Contact an administrator."}
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} locale={locale} />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

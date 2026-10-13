@@ -3,6 +3,7 @@ import { Button, Input, Spinner } from "@workspace/ui";
 import { usePlatformAuth } from "@workspace/auth/react";
 import type { Locale } from "../i18n";
 import { ui } from "../i18n";
+import { SoftPageBg } from "./SoftPageBg";
 
 const DEFAULT_EMAIL =
   (import.meta.env.VITE_STAFF_LOGIN_EMAIL as string | undefined)?.trim() || "";
@@ -31,8 +32,9 @@ export function LoginPage({ locale }: { locale: Locale }) {
 
   if (!configured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-6" dir={t.dir}>
-        <p className="text-sm text-surface-600 max-w-md text-center">
+      <div className="relative min-h-screen flex items-center justify-center bg-white px-6" dir={t.dir}>
+        <SoftPageBg />
+        <p className="relative z-10 text-sm text-surface-600 max-w-md text-center">
           Platform auth is not configured. Set{" "}
           <code className="text-xs">VITE_PLATFORM_SUPABASE_URL</code> and{" "}
           <code className="text-xs">VITE_PLATFORM_SUPABASE_ANON_KEY</code>{" "}
@@ -44,23 +46,24 @@ export function LoginPage({ locale }: { locale: Locale }) {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center bg-white px-6"
+      className="relative flex min-h-screen items-center justify-center bg-white px-6 pb-24"
       dir={t.dir}
       lang={t.htmlLang}
     >
+      <SoftPageBg />
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="w-full max-w-md rounded-lg border border-surface-200 bg-white p-6 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28)]"
+        className="relative z-10 w-full max-w-md rounded-lg border border-surface-200 bg-white/95 p-6 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28)]"
       >
-        <div className="flex items-center gap-3 mb-4">
+        <div className="mb-5 flex flex-col items-center text-center">
           <img src="/logo-narrow.png" alt="Feynman" className="h-10 w-auto" />
-          <h1 className="text-xl font-semibold text-surface-900">{t.title}</h1>
+          <h1 className="mt-3 text-xl font-semibold text-surface-900">{t.title}</h1>
+          <p className="mt-1 text-sm text-surface-600">
+            {locale === "he"
+              ? "התחברו כדי לראות את הכלים הזמינים עבורכם."
+              : "Sign in to see the tools available to you."}
+          </p>
         </div>
-        <p className="text-sm text-surface-600 mb-5">
-          {locale === "he"
-            ? "התחברו כדי לראות את הכלים הזמינים עבורכם."
-            : "Sign in to see the tools available to you."}
-        </p>
 
         <div className="flex flex-col gap-4">
           <Input
@@ -84,7 +87,7 @@ export function LoginPage({ locale }: { locale: Locale }) {
           />
         </div>
 
-        <div className="mt-5 flex justify-start">
+        <div className="mt-5 flex justify-center">
           <Button type="submit" disabled={submitting || !email || !password}>
             {submitting ? <Spinner size="sm" /> : locale === "he" ? "כניסה" : "Sign in"}
           </Button>
