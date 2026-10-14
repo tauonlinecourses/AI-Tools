@@ -1,13 +1,8 @@
-{
+﻿{
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && test -f packages/auth/dist/server.js && pnpm build --filter hub",
+  "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter hub",
   "outputDirectory": "dist",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../packages/ui ../../packages/config ../../packages/ai-client ../../packages/auth",
-  "functions": {
-    "api/**/*.ts": {
-      "includeFiles": "{../../packages/auth/dist/**,../../packages/auth/package.json}"
-    }
-  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

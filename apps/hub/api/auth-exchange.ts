@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { loadAuthServer } from "./loadAuthServer";
+import { AuthError, redeemHandoffCode } from "./platformAuth";
 
 function setCors(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -14,19 +14,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
-  let auth: Awaited<ReturnType<typeof loadAuthServer>>;
-  try {
-    auth = await loadAuthServer();
-  } catch (err: unknown) {
-    return res.status(500).json({
-      error: `Auth module failed to load: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    });
-  }
-
-  const { AuthError, redeemHandoffCode } = auth;
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -44,14 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    const status =
-      err &&
-      typeof err === "object" &&
-      "statusCode" in err &&
-      typeof (err as { statusCode: unknown }).statusCode === "number"
-        ? (err as { statusCode: number }).statusCode
-        : 500;
-    return res.status(status).json({
+    return res.status(500).json({
       error: err instanceof Error ? err.message : "Exchange failed",
     });
   }
