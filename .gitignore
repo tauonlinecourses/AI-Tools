@@ -6,3 +6,5 @@ dist/
 *.log
 *.tsbuildinfo
 package-lock.json
+
+apps/*/vite.config.ts.timestamp-*.mjs
