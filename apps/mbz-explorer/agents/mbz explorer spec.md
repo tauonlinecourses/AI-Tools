@@ -52,7 +52,7 @@ HTML fields are XML-entity-escaped once. Then resolve:
 
 ## 3. Tech stack (Vite monorepo — locked)
 
-Lives in `apps/mbz-explorer` (port **5177**), hub id `mbz-explorer`.
+Lives in `apps/mbz-explorer` (standalone Vite port **5177**), hub id `mbz-explorer`. **Hub-hosted** — no separate Vercel project; hub mounts `/mbz-explorer/*` and lists `hubPath: "/mbz-explorer"` in `tools.config.ts`.
 
 | Concern | Choice |
 |---|---|

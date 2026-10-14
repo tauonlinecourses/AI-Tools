@@ -122,27 +122,22 @@ Hub depends on `react-router-dom` (`^6`) for `/` (Hebrew, default) and `/en` (En
 
 This is the single file you edit to add or remove tools from the hub. Add a new entry here whenever you create a new tool.
 
-Each tool needs both a production `url` (Vercel) and a `devUrl` (local Vite). `toolHref()` picks localhost when the hub is running via `vite` DEV, and the Vercel URL when the hub is built/deployed (Vercel mode). `toolHrefWithLocale(tool, locale)` appends `?lang=` for the shared tool header locale.
+Standalone tools need a production `url` (Vercel) and a `devUrl` (local Vite). Hub-hosted tools (no separate Vercel project) use `hubPath` instead — e.g. MBZ Explorer at `/mbz-explorer`. `toolIsOpenable()` / card click: `hubPath` navigates in-app; otherwise hub DEV uses `devUrl` and production uses `url` via auth handoff.
 
 ```typescript
 export interface Tool {
   id:          string;
   name:        string;
   description: string;
-  url:         string;       // Full Vercel URL (production / Vercel deploy)
-  devUrl:      string;       // Local Vite URL when hub runs in `vite` DEV
-  icon:        string;       // Black-and-white icon name (never emoji)
+  hubPath?:    string;       // Same-origin hub route (no separate Vercel project)
+  url?:        string;       // Vercel URL for standalone tool apps
+  devUrl?:     string;       // Local Vite URL (standalone tools from hub DEV)
+  icon:        string;
   status:      "live" | "beta" | "coming-soon";
   category:    string;
 }
 
-/** Hub DEV → localhost tool; production/Vercel build → live URL. */
-export function toolHref(tool: Tool): string {
-  return import.meta.env.DEV ? tool.devUrl : tool.url;
-}
-
 export const tools: Tool[] = [
-  // ── Add your tools here ─────────────────────────────────────────────
   {
     id:          "video-curator",
     name:        "Video Curator",
@@ -154,38 +149,16 @@ export const tools: Tool[] = [
     category:    "Video",
   },
   {
-    id:          "course-builder",
-    name:        "Course Builder",
-    description: "Generate structured course outlines from a topic and audience.",
-    url:         "https://ai-tools-course-builder.vercel.app",
-    devUrl:      "http://localhost:5176",
-    icon:        "book",
-    status:      "beta",
-    category:    "Education",
-  },
-  {
     id:          "mbz-explorer",
     name:        "MBZ Explorer",
     description: "Inspect Moodle .mbz course backups — structure, activities, and decoded content.",
-    url:         "https://ai-tools-mbz-explorer.vercel.app",
-    devUrl:      "http://localhost:5177",
+    hubPath:     "/mbz-explorer",
     icon:        "zip",
     status:      "beta",
     category:    "Tech",
   },
-  // ── Example entries (fill in real URLs after deploying) ─────────────
-  // {
-  //   id:          "tool-auth",
-  //   name:        "Auth Scanner",
-  //   description: "AI-powered trading card authentication.",
-  //   url:         "https://tool-auth.vercel.app",
-  //   devUrl:      "http://localhost:5178",
-  //   icon:        "search",
-  //   status:      "live",
-  //   category:    "TruLux",
-  // },
 ];
-
-export const categories = [...new Set(tools.map((t) => t.category))];
 ```
+
+
 

@@ -3,6 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src"],
+  "include": ["src", "../mbz-explorer/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -49,7 +49,7 @@ Staff sign-in form (email + password via platform auth). Header block is **cente
 Shared launcher UI driven by `locale`:
 
 - **ToolCard** — uses `localizeTool` for name/description; Coming Soon badge uses `ui[locale].comingSoon`.
-- **HubPage** — category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`.
+- **HubPage** — category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`. Tool cards use `toolIsOpenable()`; `hubPath` tools navigate in-app (e.g. MBZ at `/mbz-explorer`), standalone tools use auth handoff.
 - Same layout as before: header (logo + title + lang switch), category strip, tool grid.
 - **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and category strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and category strip `z-10` so the user-menu popup is not covered/blurred by the category strip’s backdrop filter.
 - **User menu** — circular grey placeholder avatar (silhouette). Email + group names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple groups, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full group list**, and red **התנתקות** / **Sign out**; closes on outside click or Escape.

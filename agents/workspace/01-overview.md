@@ -67,7 +67,7 @@ workspace/
 │   │       ├── main.tsx
 │   │       └── App.tsx
 │   │
-│   ├── video-curator/              ← Video Curator tool (hub id: video-curator)
+│   ├── video-curator/              ← Video Curator tool (hub id: video-curator; SPA rewrite required for /auth/callback)
 │   │   ├── agents/                 ← Per-tool agent docs
 │   │   ├── api/
 │   │   │   ├── chat.ts             ← AI route: re-exports @workspace/ai-client/vercel (used by transcript segmentation)
@@ -85,7 +85,7 @@ workspace/
 │   │                                   react-router SPA + supabase-js (VITE_SUPABASE_* env) + dnd-kit.
 │   │                                   SPA rewrite in vercel.json for deep links.
 │   │
-│   └── mbz-explorer/               ← MBZ Explorer tool (hub id: mbz-explorer)
+│   └── mbz-explorer/               ← MBZ Explorer (hub-hosted at /mbz-explorer; no separate Vercel)
 │       ├── agents/                 ← Per-tool agent docs
 │       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
 │       └── …                       Local Vite port 5177

@@ -2,7 +2,7 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter hub",
   "outputDirectory": "dist",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../packages/ui ../../packages/config ../../packages/ai-client ../../packages/auth",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../mbz-explorer ../../packages/ui ../../packages/config ../../packages/ai-client ../../packages/auth",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

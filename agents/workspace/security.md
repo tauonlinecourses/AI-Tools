@@ -6,7 +6,9 @@
 
 - **Identity + groups** live in the **Course-Builder** Supabase project (`profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`).
 - **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu.
-- Opening a tool uses a **handoff code** (hub → tool `/auth/callback`) because apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub).
+- Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub).
+- **Hub-hosted** tools (`hubPath`, e.g. MBZ Explorer at `/mbz-explorer`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route.
+- Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
 - Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data) require a Platform Bearer token and (where applicable) group tool access.

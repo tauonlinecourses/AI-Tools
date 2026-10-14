@@ -14,6 +14,7 @@ import {
   type SessionState,
 } from "../lib/session";
 import { hydrateHtmlBlobs } from "../lib/hydrateBlobs";
+import { mbzHomePath } from "../paths";
 
 export function ExplorerPage() {
   type ExplorerSelection =
@@ -108,7 +109,7 @@ export function ExplorerPage() {
     return (
       <div className="flex h-[calc(100vh-3rem)] flex-col items-center justify-center gap-3 p-8">
         <p className="text-sm text-danger">{error || "Not found"}</p>
-        <Link to="/" className="text-sm font-semibold text-surface-900 underline">
+        <Link to={mbzHomePath()} className="text-sm font-semibold text-surface-900 underline">
           Back to dashboard
         </Link>
       </div>

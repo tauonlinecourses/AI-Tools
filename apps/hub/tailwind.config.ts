@@ -6,6 +6,7 @@ const config: Config = {
   content: [
     "./index.html",
     "./src/**/*.{ts,tsx}",
+    "../mbz-explorer/src/**/*.{ts,tsx}", // hub-hosted MBZ tool
     "../../packages/ui/src/**/*.{ts,tsx}",  // include shared components
   ],
 };

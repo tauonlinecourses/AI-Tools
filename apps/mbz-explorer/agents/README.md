@@ -8,6 +8,8 @@ Monorepo-wide workspace docs live in the repo root: `agents/workspace/`.
 
 MBZ Explorer — Vite app on port **5177**. Hub id: `mbz-explorer`.
 
+**Hub-hosted tool** — no separate Vercel project. Source lives in `apps/mbz-explorer`; the hub imports it and mounts `/mbz-explorer/*` on the hub deployment. Hub `tools.config.ts` uses `hubPath: "/mbz-explorer"` (in-app navigation, shared Platform session — no handoff). Standalone `pnpm --filter mbz-explorer dev` (port 5177) still works for isolated work.
+
 Inspect Moodle `.mbz` backups in the browser: extract → structure tree → lazy content decode (first 2 sections eager; expand / Analyze full course via `decodeSection`).
 
 ## Docs

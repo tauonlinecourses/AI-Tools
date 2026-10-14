@@ -13,6 +13,7 @@ import {
 } from "../../lib/courseTree";
 import { activityTypeIcon } from "../../lib/activityTypeIcon";
 import { ChevronDownIcon, HomeIcon } from "../icons";
+import { mbzHomePath } from "../../paths";
 import { StructureOverview, structureStatsFromManifest } from "./StructureOverview";
 
 interface TreeProps {
@@ -292,7 +293,7 @@ export function Tree({
           )}
         </div>
         <Link
-          to="/"
+          to={mbzHomePath()}
           className="text-sm text-surface-500 hover:text-surface-900 transition-colors duration-fast self-start"
         >
           Back to dashboard

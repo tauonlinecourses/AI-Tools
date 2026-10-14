@@ -15,13 +15,13 @@ The monorepo and deployment boundaries solve different problems: all tools can s
 
 ### Put a small tool inside the Hub
 
-Implement a small utility or single-page tool as a route in `apps/hub` (for example, `/calculator` or `/text-cleaner`) when it:
+Implement a small utility or single-page tool as a route in `apps/hub` (for example, `/calculator` or `/mbz-explorer`) when it:
 
 - uses the Hub's dependencies, configuration, and release cycle;
 - does not need isolated environment variables, serverless APIs, or scaling; and
 - is simple enough that it does not justify a standalone application.
 
-It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and link to the relative path from the Hub UI. Do not create another Vercel project for it.
+It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and list it in `tools.config.ts` with `hubPath` (e.g. `"/mbz-explorer"`) instead of a Vercel `url`. Opening a hub-hosted tool navigates in-app (same Platform session — no auth handoff). **MBZ Explorer** is the reference: source stays in `apps/mbz-explorer`, hub imports it and mounts `/mbz-explorer/*`.
 
 ### Create a standalone app
 
@@ -60,11 +60,12 @@ Create one Vercel project per app. For each app:
 2. Set **Root Directory** to `apps/hub` (or `apps/tool-name`)
 3. Prefer putting install/build/output in that app’s `vercel.json` (copy from `apps/tool-starter/vercel.json` and change the `--filter` name):
    - **Install Command:** `cd ../.. && pnpm install`
-   - **Build Command:** `cd ../.. && pnpm build --filter <app-name>`
+   - **Build Command:** `cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter <app-name>`
    - **Output Directory:** `dist`
+   - **SPA rewrites** (required for Platform Auth handoff): `"/((?!api/).*)" → "/index.html"` so `/auth/callback` serves the Vite app
 4. Ensure **Include source files outside of the Root Directory in the Build Step** is enabled (needed for `packages/*`)
-5. Prefer a **team Shared** `OPENAI_API_KEY` (exact name; server-side — not `VITE_*`). Create it once under Team Settings → Environment Variables, then **Link to Projects** for each app that calls OpenAI (every app's `/api/chat`). Enable Production (and Preview if needed). After linking or changing env vars, **Redeploy** — existing deployments do not pick them up. Do not also add a project-level `OPENAI_API_KEY` unless you intend to override Shared (“Overridden by Project” means the project value wins).
-6. Deploy — confirm the new project is linked to the shared key (Team Settings → Shared env → linked projects)
+5. Prefer a **team Shared** `OPENAI_API_KEY` (exact name; server-side — not `VITE_*`). Create it once under Team Settings → Environment Variables, then **Link to Projects** for each app that calls OpenAI (every app's `/api/chat`). Enable Production (and Preview if needed). After linking or changing env vars, **Redeploy** — existing deployments do not pick them up. Do not also add a project-level `OPENAI_API_KEY` unless you intend to override Shared (“Overridden by Project” means the project value wins). Also link shared `VITE_PLATFORM_*` (and `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` on hub/tau).
+6. Deploy — confirm the new project is linked to the shared key (Team Settings → Shared env → linked projects). Hub `tools.config.ts` `url` must match the live `*.vercel.app` hostname. For tools hosted inside the hub (no separate project), use `hubPath` instead of `url`.
 
 Each app’s `vercel.json` includes an `ignoreCommand` so builds still run when `packages/ui`, `packages/config`, or `packages/ai-client` change (Vercel Root Directory alone would otherwise skip those commits). After changing Hub nav URLs in `packages/ui/src/hub.ts`, redeploy every tool app (or push a commit that touches that app / shared packages).
 

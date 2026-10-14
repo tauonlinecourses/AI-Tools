@@ -9,6 +9,7 @@ import {
   removeAnalysis,
   type AnalysisSummary,
 } from "../lib/session";
+import { mbzExplorerPath } from "../paths";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -42,7 +43,7 @@ export function DashboardPage() {
     setUploading(true);
     try {
       const session = await ingestFile(file);
-      navigate(`/f/${session.manifest.sourceFile.sha1}`);
+      navigate(mbzExplorerPath(session.manifest.sourceFile.sha1));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -88,7 +89,7 @@ export function DashboardPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <Link
-                          to={`/f/${item.sha1}`}
+                          to={mbzExplorerPath(item.sha1)}
                           className="text-sm font-semibold text-surface-900 hover:underline"
                         >
                           {item.name}
@@ -99,7 +100,11 @@ export function DashboardPage() {
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <Button size="sm" variant="secondary" onClick={() => navigate(`/f/${item.sha1}`)}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(mbzExplorerPath(item.sha1))}
+                        >
                           Open
                         </Button>
                         <Button

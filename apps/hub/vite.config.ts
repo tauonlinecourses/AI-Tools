@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import "../../packages/auth/src/devTls";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
@@ -7,6 +9,9 @@ import {
   redeemHandoffCode,
   verifyPlatformAccessToken,
 } from "../../packages/auth/src/server";
+
+const hubDir = path.dirname(fileURLToPath(import.meta.url));
+const mbzSrc = path.resolve(hubDir, "../mbz-explorer/src");
 
 function bridgeEnv(env: Record<string, string>) {
   // Local Windows + corporate TLS MITM: Node fetch cannot use the Windows store.
@@ -173,10 +178,17 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       dedupe: ["react", "react-dom"],
+      alias: {
+        // Allow hub to compile the hub-hosted MBZ tool from its sibling app.
+        "mbz-explorer": mbzSrc,
+      },
     },
     server: {
       port: 5173,
       strictPort: true,
+      fs: {
+        allow: [path.resolve(hubDir, "../..")],
+      },
     },
   };
 });

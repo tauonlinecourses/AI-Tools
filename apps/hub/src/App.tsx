@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Badge, persistHubLocale, Spinner } from "@workspace/ui";
 import { PlatformAuthProvider, usePlatformAuth } from "@workspace/auth/react";
 import { startToolHandoff } from "@workspace/auth/client";
-import { tools, categories, toolHref } from "./tools.config";
+import { tools, categories, toolHref, toolIsOpenable } from "./tools.config";
 import type { Tool } from "./tools.config";
 import {
   ui,
@@ -13,6 +13,8 @@ import {
 } from "./i18n";
 import { LoginPage } from "./components/LoginPage";
 import { SoftPageBg } from "./components/SoftPageBg";
+import { MbzExplorerHost } from "./components/MbzExplorerHost";
+import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
 const SHOW_LANG_SWITCHER = false;
@@ -171,7 +173,8 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
-  const isClickable = tool.status !== "coming-soon";
+  const navigate = useNavigate();
+  const isClickable = toolIsOpenable(tool);
   const isComingSoon = tool.status === "coming-soon";
   const copy = localizeTool(locale, tool);
   const t = ui[locale];
@@ -183,6 +186,11 @@ function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
     setError(null);
     setOpening(true);
     try {
+      // Hub-hosted tools share PlatformAuth — navigate in-app, no handoff.
+      if (tool.hubPath) {
+        navigate(tool.hubPath);
+        return;
+      }
       const href = toolHref(tool);
       const origin = new URL(href).origin;
       const handoffUrl =
@@ -385,6 +393,10 @@ export default function App() {
         <Route path="/" element={<HubPage locale="he" />} />
         <Route path="/en" element={<HubPage locale="en" />} />
         <Route path="/he" element={<Navigate to="/" replace />} />
+        <Route
+          path={`${MBZ_BASE}/*`}
+          element={<MbzExplorerHost locale="he" />}
+        />
       </Routes>
     </PlatformAuthProvider>
   );

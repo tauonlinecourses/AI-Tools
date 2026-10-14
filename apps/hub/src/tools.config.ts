@@ -2,16 +2,41 @@ export interface Tool {
   id:          string;
   name:        string;
   description: string;
-  url:         string;       // Full Vercel URL (production / Vercel deploy)
-  devUrl:      string;       // Local Vite URL when hub runs in `vite` DEV
+  /**
+   * Same-origin path on the hub Vercel project (no separate deploy).
+   * When set, the hub opens this route in-app — no auth handoff.
+   */
+  hubPath?:    string;
+  /** Full Vercel URL for standalone tool apps. Omit when `hubPath` is set. */
+  url?:        string;
+  /** Local Vite URL when opening a standalone tool from hub DEV (not used for hubPath tools). */
+  devUrl?:     string;
   icon:        string;       // Black-and-white icon name (never emoji)
   status:      "live" | "beta" | "coming-soon";
   category:    string;
 }
 
-/** Hub DEV → localhost tool; production/Vercel build → live URL. */
+/** True when this tool can be opened from the current hub build. */
+export function toolIsOpenable(tool: Tool): boolean {
+  if (tool.status === "coming-soon") return false;
+  if (tool.hubPath) return true;
+  if (import.meta.env.DEV) return Boolean(tool.devUrl);
+  return Boolean(tool.url);
+}
+
+/** Absolute URL (or path) used for standalone-tool handoff. Not for hubPath tools. */
 export function toolHref(tool: Tool): string {
-  return import.meta.env.DEV ? tool.devUrl : tool.url;
+  if (tool.hubPath) {
+    throw new Error(`${tool.id} is hub-hosted — use hubPath navigation, not handoff`);
+  }
+  if (import.meta.env.DEV) {
+    if (!tool.devUrl) throw new Error(`${tool.id} has no devUrl`);
+    return tool.devUrl;
+  }
+  if (!tool.url) {
+    throw new Error(`${tool.id} has no production URL`);
+  }
+  return tool.url;
 }
 
 /** Tool URL with `?lang=` so PageLayout can show the matching hub header locale. */
@@ -53,8 +78,8 @@ export const tools: Tool[] = [
     id:          "mbz-explorer",
     name:        "MBZ Explorer",
     description: "Inspect Moodle .mbz course backups — structure, activities, and decoded content.",
-    url:         "https://ai-tools-mbz-explorer.vercel.app",
-    devUrl:      "http://localhost:5177",
+    // Hosted inside the hub Vercel project (not a separate app deploy).
+    hubPath:     "/mbz-explorer",
     icon:        "zip",
     status:      "beta",
     category:    "Tech",
@@ -69,17 +94,6 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Education",
   },
-  // ── Example entries (fill in real URLs after deploying) ─────────────
-  // {
-  //   id:          "tool-auth",
-  //   name:        "Auth Scanner",
-  //   description: "AI-powered trading card authentication.",
-  //   url:         "https://tool-auth.vercel.app",
-  //   devUrl:      "http://localhost:5178",
-  //   icon:        "search",
-  //   status:      "live",
-  //   category:    "TruLux",
-  // },
 ];
 
 export const categories = [...new Set(tools.map((t) => t.category))];
