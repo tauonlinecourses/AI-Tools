@@ -58,15 +58,15 @@ function UserMenu({
 
   return (
     <div className="relative" ref={rootRef} dir="ltr">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label={locale === "he" ? "תפריט משתמש" : "User menu"}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-200 text-surface-500 transition-colors duration-fast hover:bg-surface-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-400"
-        >
+      <button
+        type="button"
+        aria-label={locale === "he" ? "תפריט משתמש" : "User menu"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-3 rounded-control px-2.5 py-1.5 text-start transition-colors duration-fast hover:bg-surface-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-400"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-200 text-surface-500">
           <svg
             viewBox="0 0 24 24"
             className="h-6 w-6"
@@ -76,23 +76,23 @@ function UserMenu({
             <circle cx="12" cy="8" r="3.5" />
             <path d="M4.5 19.5c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6" />
           </svg>
-        </button>
+        </span>
 
         {/* Width follows the email; multi-group names truncate to that same width. */}
-        <div className="w-fit max-w-[14rem] min-w-0 text-start sm:max-w-[18rem]">
+        <span className="w-fit max-w-[14rem] min-w-0 sm:max-w-[18rem]">
           {email && (
-            <p className="whitespace-nowrap text-sm font-medium text-surface-800">
+            <span className="block whitespace-nowrap text-sm font-medium text-surface-800">
               {email}
-            </p>
+            </span>
           )}
-          <p
-            className="truncate text-xs text-surface-500"
+          <span
+            className="block truncate text-xs text-surface-500"
             title={groupsInline}
           >
             {groupsInline}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
 
       {open && (
         <div

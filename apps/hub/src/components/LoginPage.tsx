@@ -58,11 +58,7 @@ export function LoginPage({ locale }: { locale: Locale }) {
         <div className="mb-5 flex flex-col items-center text-center">
           <img src="/logo-narrow.png" alt="Feynman" className="h-10 w-auto" />
           <h1 className="mt-3 text-xl font-semibold text-surface-900">{t.title}</h1>
-          <p className="mt-1 text-sm text-surface-600">
-            {locale === "he"
-              ? "התחברו כדי לראות את הכלים הזמינים עבורכם."
-              : "Sign in to see the tools available to you."}
-          </p>
+          <p className="mt-1 text-sm text-surface-600">{t.subtitle}</p>
         </div>
 
         <div className="flex flex-col gap-4">

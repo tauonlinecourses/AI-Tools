@@ -42,7 +42,7 @@ Shared soft curved background (`public/hub-bg.png`). Masked so the pattern is so
 
 ### `apps/hub/src/components/LoginPage.tsx`
 
-Staff sign-in form (email + password via platform auth). Header block is **centered**: logo image above, then title, then subtitle — all `text-center` / `items-center`. Form fields stay start-aligned; submit button is centered. The card sits slightly above true vertical center (`pb-24` on the full-height wrapper). Uses `SoftPageBg` behind the form; the card stays near-opaque white.
+Staff sign-in form (email + password via platform auth). Header block is **centered**: logo image above, then title, then subtitle from `ui[locale].subtitle` (Hebrew: **כלים שפותחו על ידי הדקנט, למען הדקנט**) — all `text-center` / `items-center`. Form fields stay start-aligned; submit button is centered. The card sits slightly above true vertical center (`pb-24` on the full-height wrapper). Uses `SoftPageBg` behind the form; the card stays near-opaque white.
 
 ### `apps/hub/src/App.tsx`
 
@@ -52,7 +52,7 @@ Shared launcher UI driven by `locale`:
 - **HubPage** — category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`.
 - Same layout as before: header (logo + title + lang switch), category strip, tool grid.
 - **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and category strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and category strip `z-10` so the user-menu popup is not covered/blurred by the category strip’s backdrop filter.
-- **User menu** — circular grey placeholder avatar (silhouette). Email + group names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple groups, the comma-joined names truncate (ellipsis) to that same width. Clicking the avatar opens a menu with email, the **full group list**, and red **התנתקות** / **Sign out**; closes on outside click or Escape.
+- **User menu** — circular grey placeholder avatar (silhouette). Email + group names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple groups, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full group list**, and red **התנתקות** / **Sign out**; closes on outside click or Escape.
 
 ### Adding a new tool (Hebrew)
 
