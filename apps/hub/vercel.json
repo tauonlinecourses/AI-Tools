@@ -1,4 +1,4 @@
-﻿{
+{
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter hub",
   "outputDirectory": "dist",
