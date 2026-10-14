@@ -52,7 +52,7 @@ Shared top nav on every tool:
 
 Video Curator uses `maxWidth="full"` and `padded={false}` so the split-pane editor stays full-bleed under the Hub nav. Tools should omit `hubUrl` so the Hub back link resolves via `hubHref(locale)`.
 
-The nav bar shows the brand logo on the trailing edge as a link to the hub home (`hubHref(locale)`), same target as the בית / Hub text link. The asset lives at `packages/ui/src/assets/Logo.png` and is imported by `PageLayout`. The Hub homepage logo (`apps/hub/public/logo-narrow.png`) also links to the current locale home (`/` or `/en`).
+The nav bar shows the brand strip logo on the trailing edge as a link to the hub home (`hubHref(locale)`), same target as the בית / Hub text link. The asset lives at `packages/ui/src/assets/striplogo-heb.png` (sourced from `apps/hub/public/striplogo-heb.png`) and is imported by `PageLayout`. The Hub homepage logo (`apps/hub/public/logo-heb.png`) also links to the current locale home (`/` or `/en`).
 
 ### `packages/ui/src/index.ts`
 

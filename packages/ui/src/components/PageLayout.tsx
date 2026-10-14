@@ -5,7 +5,7 @@ import {
   resolveHubLocale,
   type HubLocale,
 } from "../hub";
-import logoSrc from "../assets/Logo.png";
+import logoSrc from "../assets/striplogo-heb.png";
 
 interface PageLayoutProps {
   children: React.ReactNode;

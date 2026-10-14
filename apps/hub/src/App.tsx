@@ -172,14 +172,24 @@ function ToolIcon({ name }: { name: string }) {
   );
 }
 
-function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
+function ToolCard({
+  tool,
+  locale,
+  allowed,
+}: {
+  tool: Tool;
+  locale: Locale;
+  allowed: boolean;
+}) {
   const navigate = useNavigate();
-  const isClickable = toolIsOpenable(tool);
   const isComingSoon = tool.status === "coming-soon";
+  const isAllowed = allowed;
+  const isClickable = toolIsOpenable(tool) && isAllowed;
   const copy = localizeTool(locale, tool);
   const t = ui[locale];
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deniedTooltip = !isComingSoon && !isAllowed ? t.noPermission : undefined;
 
   async function openTool() {
     if (!isClickable || opening) return;
@@ -209,16 +219,21 @@ function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
     }
   }
 
-  const card = (
+  return (
     <div
       className={[
-        "group bg-white border border-surface-200 p-5",
+        "group relative bg-white border border-surface-200 p-5",
         "flex flex-col gap-3",
         "transition-colors duration-fast",
         isClickable
           ? "hover:bg-surface-50 hover:border-surface-900 cursor-pointer"
           : "opacity-60 cursor-not-allowed",
       ].join(" ")}
+      title={deniedTooltip}
+      aria-disabled={!isClickable}
+      aria-label={
+        deniedTooltip ? `${copy.name}. ${deniedTooltip}` : undefined
+      }
       onClick={() => void openTool()}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -247,8 +262,6 @@ function ToolCard({ tool, locale }: { tool: Tool; locale: Locale }) {
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
-
-  return card;
 }
 
 function HubPage({ locale }: { locale: Locale }) {
@@ -287,15 +300,11 @@ function HubPage({ locale }: { locale: Locale }) {
     return <LoginPage locale={locale} />;
   }
 
-  const entitled = tools.filter(
-    (tool) =>
-      tool.status === "coming-soon" || allowedToolIds.includes(tool.id)
-  );
-
+  // Always list every tool; unauthorized cards are shown disabled with a tooltip.
   const filteredTools =
     activeCategory === "All"
-      ? entitled
-      : entitled.filter((tool) => tool.category === activeCategory);
+      ? tools
+      : tools.filter((tool) => tool.category === activeCategory);
 
   const categoryTabs = ["All", ...categories] as const;
 
@@ -310,7 +319,7 @@ function HubPage({ locale }: { locale: Locale }) {
               <div className="flex items-center gap-4 min-w-0">
                 <Link to={locale === "en" ? "/en" : "/"} className="shrink-0">
                   <img
-                    src="/logo-narrow.png"
+                    src="/logo-heb.png"
                     alt="Feynman"
                     className="h-16 w-auto"
                   />
@@ -368,15 +377,16 @@ function HubPage({ locale }: { locale: Locale }) {
 
         <div className="max-w-screen-xl mx-auto px-6 py-8">
           {filteredTools.length === 0 ? (
-            <p className="text-surface-500 text-sm">
-              {locale === "he"
-                ? "אין כלים זמינים עבור המשתמש הזה. פנו למנהל המערכת."
-                : "No tools are available for this account. Contact an administrator."}
-            </p>
+            <p className="text-surface-500 text-sm">{t.empty}</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {filteredTools.map((tool) => (
-                <ToolCard key={tool.id} tool={tool} locale={locale} />
+                <ToolCard
+                  key={tool.id}
+                  tool={tool}
+                  locale={locale}
+                  allowed={allowedToolIds.includes(tool.id)}
+                />
               ))}
             </div>
           )}

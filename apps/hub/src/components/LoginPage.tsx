@@ -56,7 +56,7 @@ export function LoginPage({ locale }: { locale: Locale }) {
         className="relative z-10 w-full max-w-md rounded-lg border border-surface-200 bg-white/95 p-6 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28)]"
       >
         <div className="mb-5 flex flex-col items-center text-center">
-          <img src="/logo-narrow.png" alt="Feynman" className="h-10 w-auto" />
+          <img src="/logo-heb.png" alt="Feynman" className="h-16 w-auto" />
           <h1 className="mt-3 text-xl font-semibold text-surface-900">{t.title}</h1>
           <p className="mt-1 text-sm text-surface-600">{t.subtitle}</p>
         </div>

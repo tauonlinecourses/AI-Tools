@@ -88,6 +88,7 @@ export default defineConfig({
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>כלי בינה מלאכותית</title>
   </head>
@@ -97,6 +98,8 @@ export default defineConfig({
   </body>
 </html>
 ```
+
+Favicon: `apps/hub/public/favicon.png` (same asset copied into every tool app’s `public/favicon.png`).
 
 ### `apps/hub/src/main.tsx`
 

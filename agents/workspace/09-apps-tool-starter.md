@@ -121,6 +121,7 @@ export default defineConfig({
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tool Name</title>
   </head>
@@ -130,6 +131,8 @@ export default defineConfig({
   </body>
 </html>
 ```
+
+Keep `public/favicon.png` in sync with `apps/hub/public/favicon.png` (shared brand favicon for hub + all tools).
 
 ### `apps/tool-starter/src/main.tsx`
 
