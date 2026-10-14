@@ -99,6 +99,9 @@ importers:
 
   apps/hub:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.49.1
+        version: 2.112.2
       '@workspace/ai-client':
         specifier: workspace:*
         version: link:../../packages/ai-client

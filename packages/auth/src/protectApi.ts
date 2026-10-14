@@ -2,7 +2,7 @@ import {
   AuthError,
   requireToolAccessFromRequest,
   type VerifiedPlatformUser,
-} from "./server.js";
+} from "./server";
 
 type VercelLikeReq = {
   method?: string;

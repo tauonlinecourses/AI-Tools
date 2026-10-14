@@ -4,7 +4,7 @@ import {
   getPlatformPublicConfig,
   getPlatformServiceRoleKey,
   requirePlatformPublicConfig,
-} from "./envServer.js";
+} from "./envServer";
 function getServerEnv(): Record<string, string | undefined> {
   return (
     (globalThis as { process?: { env?: Record<string, string | undefined> } })

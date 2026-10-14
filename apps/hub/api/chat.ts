@@ -1,10 +1,29 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import vercelHandler from "@workspace/ai-client/vercel";
-import { AuthError, verifyPlatformRequest } from "@workspace/auth/server";
+
+type AuthServer = typeof import("@workspace/auth/server");
+
+function loadAuthServer(): AuthServer {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("@workspace/auth/server") as AuthServer;
+}
 
 /** Hub chat requires a signed-in platform user (any tool entitlement). */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  let auth: AuthServer;
+  try {
+    auth = loadAuthServer();
+  } catch (err: unknown) {
+    return res.status(500).json({
+      error: `Auth module failed to load: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    });
+  }
+
+  const { AuthError, verifyPlatformRequest } = auth;
+
   try {
     await verifyPlatformRequest(req);
   } catch (err: unknown) {
