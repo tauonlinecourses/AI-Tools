@@ -1,19 +1,13 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import vercelHandler from "@workspace/ai-client/vercel";
-
-type AuthServer = typeof import("@workspace/auth/server");
-
-function loadAuthServer(): AuthServer {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require("@workspace/auth/server") as AuthServer;
-}
+import { loadAuthServer } from "./loadAuthServer";
 
 /** Hub chat requires a signed-in platform user (any tool entitlement). */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  let auth: AuthServer;
+  let auth: Awaited<ReturnType<typeof loadAuthServer>>;
   try {
-    auth = loadAuthServer();
+    auth = await loadAuthServer();
   } catch (err: unknown) {
     return res.status(500).json({
       error: `Auth module failed to load: ${

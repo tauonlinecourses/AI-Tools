@@ -1,14 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-
-type AuthServer = typeof import("@workspace/auth/server");
-
-function loadAuthServer(): AuthServer {
-  // Use require so Vercel Node resolves package.json "default" → dist/server.js
-  // (static ESM import was loading raw src/*.ts and crashing the lambda).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require("@workspace/auth/server") as AuthServer;
-}
+import { loadAuthServer } from "./loadAuthServer";
 
 function setCors(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,9 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  let auth: AuthServer;
+  let auth: Awaited<ReturnType<typeof loadAuthServer>>;
   try {
-    auth = loadAuthServer();
+    auth = await loadAuthServer();
   } catch (err: unknown) {
     return res.status(500).json({
       error: `Auth module failed to load: ${
