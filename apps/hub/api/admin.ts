@@ -6,9 +6,14 @@ import {
   verifyPlatformRequest,
 } from "./platformAuth";
 import {
+  approveUser,
   createAdminGroup,
+  inviteUser,
   listAdminGroups,
   listAdminUsers,
+  rejectUser,
+  removeUser,
+  sendInviteEmail,
   setGroupMembers,
   setUserGroups,
   updateAdminGroup,
@@ -34,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   try {
-    await requireAdmin(req);
+    const verified = await requireAdmin(req);
 
     if (req.method === "GET") {
       const resource =
@@ -99,9 +104,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      if (action === "inviteUser") {
+        const result = await inviteUser({
+          email: String(body.email ?? ""),
+          groupIds: Array.isArray(body.groupIds)
+            ? body.groupIds.map(String)
+            : [],
+          redirectTo:
+            body.redirectTo != null ? String(body.redirectTo) : undefined,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "sendInviteEmail") {
+        const result = await sendInviteEmail({
+          email: String(body.email ?? ""),
+          redirectTo:
+            body.redirectTo != null ? String(body.redirectTo) : undefined,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "approveUser") {
+        const user = await approveUser({
+          userId: String(body.userId ?? ""),
+          groupIds: Array.isArray(body.groupIds)
+            ? body.groupIds.map(String)
+            : undefined,
+          reviewerId: verified.user.id,
+        });
+        return res.status(200).json({ user });
+      }
+
+      if (action === "rejectUser") {
+        const user = await rejectUser({
+          userId: String(body.userId ?? ""),
+          reviewerId: verified.user.id,
+        });
+        return res.status(200).json({ user });
+      }
+
+      if (action === "removeUser") {
+        const result = await removeUser({
+          userId: String(body.userId ?? ""),
+          actorId: verified.user.id,
+        });
+        return res.status(200).json(result);
+      }
+
       return res.status(400).json({
         error:
-          "action must be 'createGroup', 'updateGroup', 'setUserGroups', or 'setGroupMembers'",
+          "action must be 'createGroup', 'updateGroup', 'setUserGroups', 'setGroupMembers', 'inviteUser', 'sendInviteEmail', 'approveUser', 'rejectUser', or 'removeUser'",
       });
     }
 

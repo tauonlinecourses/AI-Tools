@@ -6,10 +6,14 @@ export type AdminGroupSummary = {
   slug: string;
 };
 
+export type AccountStatus = "pending" | "approved" | "rejected";
+
 export type AdminUserRow = {
   id: string;
   email: string;
   displayName: string | null;
+  status: AccountStatus;
+  requestedGroupId: string | null;
   groups: AdminGroupSummary[];
 };
 
@@ -106,4 +110,79 @@ export async function saveGroupMembers(
     }),
   });
   return parseJson<{ memberCount: number }>(res);
+}
+
+/** Hub set-password URL for invite redirects (must be allowlisted in Supabase Auth). */
+export function inviteSetPasswordRedirectTo(): string {
+  return `${window.location.origin}/auth/set-password`;
+}
+
+export async function inviteAdminUser(input: {
+  email: string;
+  groupIds: string[];
+}): Promise<{
+  user: AdminUserRow;
+  actionLink: string | null;
+}> {
+  const res = await authFetch("/api/admin", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "inviteUser",
+      ...input,
+      redirectTo: inviteSetPasswordRedirectTo(),
+    }),
+  });
+  return parseJson<{
+    user: AdminUserRow;
+    actionLink: string | null;
+  }>(res);
+}
+
+export async function sendAdminInviteEmail(email: string): Promise<{
+  emailSent: boolean;
+  actionLink: string | null;
+  user: AdminUserRow;
+}> {
+  const res = await authFetch("/api/admin", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "sendInviteEmail",
+      email,
+      redirectTo: inviteSetPasswordRedirectTo(),
+    }),
+  });
+  return parseJson<{
+    emailSent: boolean;
+    actionLink: string | null;
+    user: AdminUserRow;
+  }>(res);
+}
+
+export async function approveAdminUser(input: {
+  userId: string;
+  groupIds?: string[];
+}): Promise<AdminUserRow> {
+  const res = await authFetch("/api/admin", {
+    method: "POST",
+    body: JSON.stringify({ action: "approveUser", ...input }),
+  });
+  const data = await parseJson<{ user: AdminUserRow }>(res);
+  return data.user;
+}
+
+export async function rejectAdminUser(userId: string): Promise<AdminUserRow> {
+  const res = await authFetch("/api/admin", {
+    method: "POST",
+    body: JSON.stringify({ action: "rejectUser", userId }),
+  });
+  const data = await parseJson<{ user: AdminUserRow }>(res);
+  return data.user;
+}
+
+export async function removeAdminUser(userId: string): Promise<void> {
+  const res = await authFetch("/api/admin", {
+    method: "POST",
+    body: JSON.stringify({ action: "removeUser", userId }),
+  });
+  await parseJson<{ removed: true }>(res);
 }

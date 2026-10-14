@@ -84,6 +84,36 @@ export async function assertUserIsAdmin(userId: string): Promise<void> {
   }
 }
 
+export type AccountStatus = "pending" | "approved" | "rejected";
+
+export async function getUserAccountStatus(
+  userId: string
+): Promise<AccountStatus> {
+  const { data, error } = await serviceClient()
+    .from("profiles")
+    .select("status")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const status = data?.status;
+  if (status === "pending" || status === "rejected" || status === "approved") {
+    return status;
+  }
+  // Missing profile row — treat as approved for legacy Dashboard-created users
+  // until the trigger/backfill catches up.
+  return "approved";
+}
+
+export async function assertUserIsApproved(userId: string): Promise<void> {
+  const status = await getUserAccountStatus(userId);
+  if (status === "pending") {
+    throw new AuthError("Account pending admin approval", 403);
+  }
+  if (status === "rejected") {
+    throw new AuthError("Account was rejected", 403);
+  }
+}
+
 export type VerifiedPlatformUser = {
   user: User;
   accessToken: string;
@@ -127,6 +157,7 @@ export async function createHandoffCode(params: {
   accessToken: string;
   refreshToken: string;
 }): Promise<string> {
+  await assertUserIsApproved(params.userId);
   await assertToolAccess(params.userId, params.toolId);
   const code = randomBytes(24).toString("hex");
   const { error } = await serviceClient().from("auth_handoff_codes").insert({

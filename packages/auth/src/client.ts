@@ -98,6 +98,37 @@ export type PlatformGroup = {
   slug: string;
 };
 
+export type AccountStatus = "pending" | "approved" | "rejected";
+
+/** Current user's profile status (RLS: own row only). */
+export async function getMyAccountStatus(): Promise<AccountStatus> {
+  const client = getPlatformClient();
+  const {
+    data: { user },
+    error: userErr,
+  } = await client.auth.getUser();
+  if (userErr) throw userErr;
+  if (!user) throw new Error("Not signed in");
+
+  const { data, error } = await client
+    .from("profiles")
+    .select("status")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  const status = data?.status;
+  if (status === "pending" || status === "rejected" || status === "approved") {
+    return status;
+  }
+  // Legacy users without a status column value — allow access.
+  return "approved";
+}
+
+export async function updatePlatformPassword(password: string): Promise<void> {
+  const { error } = await getPlatformClient().auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export {
   ADMIN_GROUP_SLUG,
   PLATFORM_TOOL_IDS,

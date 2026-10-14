@@ -16,6 +16,8 @@ export {
   setPlatformSession,
   listAllowedToolIds,
   listUserGroups,
+  getMyAccountStatus,
+  updatePlatformPassword,
   assertToolAccess,
   authFetch,
   hubLoginUrl,
@@ -27,7 +29,7 @@ export {
   isPlatformToolId,
 } from "./client.js";
 
-export type { PlatformGroup, PlatformToolId } from "./client.js";
+export type { AccountStatus, PlatformGroup, PlatformToolId } from "./client.js";
 
 export {
   AuthError,
@@ -38,6 +40,7 @@ export {
   verifyPlatformRequest,
   listAllowedToolIdsForUser,
   assertUserHasToolAccess,
+  assertUserIsApproved,
   requireToolAccessFromRequest,
   createHandoffCode,
   redeemHandoffCode,

@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import {
+  getMyAccountStatus,
   getPlatformClient,
   getPlatformSession,
   isPlatformConfigured,
@@ -17,6 +18,7 @@ import {
   listUserGroups,
   signInWithPassword,
   signOut as platformSignOut,
+  type AccountStatus,
   type PlatformGroup,
 } from "./client.js";
 
@@ -29,10 +31,13 @@ type AuthState = {
   groups: PlatformGroup[];
   /** True when the user belongs to the Admin group (`Admin (all tools)`). */
   isAdmin: boolean;
+  /** Profile approval status; null while unsigned or still loading membership. */
+  accountStatus: AccountStatus | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAllowedTools: () => Promise<void>;
   refreshGroups: () => Promise<void>;
+  refreshAccountStatus: () => Promise<void>;
   hasToolAccess: (toolId: string) => boolean;
 };
 
@@ -44,6 +49,9 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [allowedToolIds, setAllowedToolIds] = useState<string[]>([]);
   const [groups, setGroups] = useState<PlatformGroup[]>([]);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(
+    null
+  );
 
   const refreshAllowedTools = useCallback(async () => {
     if (!configured) {
@@ -71,9 +79,27 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [configured]);
 
+  const refreshAccountStatus = useCallback(async () => {
+    if (!configured) {
+      setAccountStatus(null);
+      return;
+    }
+    try {
+      const status = await getMyAccountStatus();
+      setAccountStatus(status);
+    } catch {
+      // Fail closed: do not treat unknown status as approved.
+      setAccountStatus("pending");
+    }
+  }, [configured]);
+
   const refreshMembership = useCallback(async () => {
-    await Promise.all([refreshAllowedTools(), refreshGroups()]);
-  }, [refreshAllowedTools, refreshGroups]);
+    await Promise.all([
+      refreshAllowedTools(),
+      refreshGroups(),
+      refreshAccountStatus(),
+    ]);
+  }, [refreshAllowedTools, refreshGroups, refreshAccountStatus]);
 
   useEffect(() => {
     if (!configured) {
@@ -101,6 +127,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
         } else {
           setAllowedToolIds([]);
           setGroups([]);
+          setAccountStatus(null);
         }
       }
     );
@@ -122,6 +149,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setAllowedToolIds([]);
     setGroups([]);
+    setAccountStatus(null);
   }, []);
 
   const isAdmin = isAdminFromGroups(groups);
@@ -135,10 +163,12 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       allowedToolIds,
       groups,
       isAdmin,
+      accountStatus,
       signIn,
       signOut,
       refreshAllowedTools,
       refreshGroups,
+      refreshAccountStatus,
       hasToolAccess: (toolId: string) => allowedToolIds.includes(toolId),
     }),
     [
@@ -148,10 +178,12 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       allowedToolIds,
       groups,
       isAdmin,
+      accountStatus,
       signIn,
       signOut,
       refreshAllowedTools,
       refreshGroups,
+      refreshAccountStatus,
     ]
   );
 

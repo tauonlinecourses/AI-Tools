@@ -14,9 +14,16 @@ import {
   AuthError as HubAuthError,
 } from "./api/platformAuth";
 import {
+  approveUser,
   createAdminGroup,
+  inviteUser,
   listAdminGroups,
   listAdminUsers,
+  listPublicGroups,
+  registerPendingUser,
+  rejectUser,
+  removeUser,
+  sendInviteEmail,
   setGroupMembers,
   setUserGroups,
   updateAdminGroup,
@@ -248,6 +255,8 @@ export default defineConfig(({ mode }) => {
                   groupIds?: string[];
                   groupId?: string;
                   userIds?: string[];
+                  email?: string;
+                  redirectTo?: string;
                 } | null;
                 const action = body?.action?.trim() ?? "";
 
@@ -306,9 +315,66 @@ export default defineConfig(({ mode }) => {
                   return;
                 }
 
+                if (action === "inviteUser") {
+                  const result = await inviteUser({
+                    email: String(body?.email ?? ""),
+                    groupIds: Array.isArray(body?.groupIds)
+                      ? body.groupIds.map(String)
+                      : [],
+                    redirectTo:
+                      body?.redirectTo != null
+                        ? String(body.redirectTo)
+                        : undefined,
+                  });
+                  send(200, result);
+                  return;
+                }
+
+                if (action === "sendInviteEmail") {
+                  const result = await sendInviteEmail({
+                    email: String(body?.email ?? ""),
+                    redirectTo:
+                      body?.redirectTo != null
+                        ? String(body.redirectTo)
+                        : undefined,
+                  });
+                  send(200, result);
+                  return;
+                }
+
+                if (action === "approveUser") {
+                  const user = await approveUser({
+                    userId: String(body?.userId ?? ""),
+                    groupIds: Array.isArray(body?.groupIds)
+                      ? body.groupIds.map(String)
+                      : undefined,
+                    reviewerId: verified.user.id,
+                  });
+                  send(200, { user });
+                  return;
+                }
+
+                if (action === "rejectUser") {
+                  const user = await rejectUser({
+                    userId: String(body?.userId ?? ""),
+                    reviewerId: verified.user.id,
+                  });
+                  send(200, { user });
+                  return;
+                }
+
+                if (action === "removeUser") {
+                  const result = await removeUser({
+                    userId: String(body?.userId ?? ""),
+                    actorId: verified.user.id,
+                  });
+                  send(200, result);
+                  return;
+                }
+
                 send(400, {
                   error:
-                    "action must be 'createGroup', 'updateGroup', 'setUserGroups', or 'setGroupMembers'",
+                    "action must be 'createGroup', 'updateGroup', 'setUserGroups', 'setGroupMembers', 'inviteUser', 'sendInviteEmail', 'approveUser', 'rejectUser', or 'removeUser'",
                 });
                 return;
               }
@@ -322,6 +388,66 @@ export default defineConfig(({ mode }) => {
               send(status, {
                 error:
                   err instanceof Error ? err.message : "Admin request failed",
+              });
+            }
+          });
+
+          server.middlewares.use("/api/register", async (req, res) => {
+            bridgeEnv(env);
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            res.setHeader(
+              "Access-Control-Allow-Headers",
+              "Authorization, Content-Type"
+            );
+            if (req.method === "OPTIONS") {
+              res.statusCode = 204;
+              res.end();
+              return;
+            }
+
+            const send = (status: number, payload: unknown) => {
+              res.statusCode = status;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(payload));
+            };
+
+            try {
+              if (req.method === "GET") {
+                const url = new URL(req.url ?? "/", "http://localhost");
+                const resource = url.searchParams.get("resource") ?? "";
+                if (resource === "groups") {
+                  send(200, { groups: await listPublicGroups() });
+                  return;
+                }
+                send(400, { error: "resource must be 'groups'" });
+                return;
+              }
+
+              if (req.method === "POST") {
+                const body = (await readJsonBody(req)) as {
+                  email?: string;
+                  password?: string;
+                  requestedGroupId?: string;
+                } | null;
+                const result = await registerPendingUser({
+                  email: String(body?.email ?? ""),
+                  password: String(body?.password ?? ""),
+                  requestedGroupId: String(body?.requestedGroupId ?? ""),
+                });
+                send(200, result);
+                return;
+              }
+
+              send(405, { error: "Method not allowed" });
+            } catch (err: unknown) {
+              const status =
+                err instanceof AuthError || err instanceof HubAuthError
+                  ? err.statusCode
+                  : 500;
+              send(status, {
+                error:
+                  err instanceof Error ? err.message : "Registration failed",
               });
             }
           });

@@ -46,18 +46,27 @@ Shared soft curved background (`public/hub-bg.png`). Masked so the pattern is so
 
 ### `apps/hub/src/components/LoginPage.tsx`
 
-Staff sign-in form (email + password via platform auth). Header block is **centered**: logo image (`h-16`, same height as the hub homepage logo) above, then title, then subtitle from `ui[locale].subtitle` (Hebrew: **כלים שפותחו על ידי הדקנט, למען הדקנט**) — all `text-center` / `items-center`. Form fields stay start-aligned; submit button is centered. The card sits slightly above true vertical center (`pb-24` on the full-height wrapper). Uses `SoftPageBg` behind the form; the card stays near-opaque white.
+Staff sign-in form (email + password via platform auth). Header block is **centered**: logo image (`h-16`, same height as the hub homepage logo) above, then title, then subtitle from `ui[locale].subtitle` (Hebrew: **כלים שפותחו על ידי הדקנט, למען הדקנט**) — all `text-center` / `items-center`. Form fields stay start-aligned. **Create account** link sits above **Sign in** / **כניסה** and is right-aligned; the submit button stays centered (`/register` or `/en/register`). The card sits slightly above true vertical center (`pb-24` on the full-height wrapper). Uses `SoftPageBg` behind the form; the card stays near-opaque white.
+
+### Register / set-password / pending
+
+| Route | Component | Behavior |
+|---|---|---|
+| `/register`, `/en/register` | `RegisterPage` | Email + password + group select (excludes Admin). No display-name field. Creates pending user via `/api/register`, then signs in → pending gate. |
+| `/auth/set-password`, `/en/auth/set-password` | `SetPasswordPage` | Invite landing: session from invite link → set new password → continue to hub. |
+| (hub when `accountStatus` is pending/rejected) | `AccountStatusPage` | Blocking message + sign out; no tools. |
 
 ### `apps/hub/src/App.tsx`
 
 Shared launcher UI driven by `locale`:
 
 - **ToolCard** — uses `localizeTool` for name/description; Coming Soon badge uses `ui[locale].comingSoon`. Always rendered for every tool in the filtered category. Clickable only when `toolIsOpenable()` **and** the tool id is in `allowedToolIds`; otherwise dimmed (`opacity-60`, `cursor-not-allowed`) with native `title` tooltip `ui[locale].noPermission` (Hebrew: **אין לך הרשאות לכלי זה**). `hubPath` tools navigate in-app (e.g. MBZ at `/mbz-explorer`); standalone tools use auth handoff.
-- **HubPage** — category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`. **Does not hide** tools the user lacks group access for — the full catalog is always shown; entitlement only disables the card.
+- **HubPage** — if session but `accountStatus` is `pending`/`rejected`, shows `AccountStatusPage` instead of the catalog. Category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`. **Does not hide** tools the user lacks group access for — the full catalog is always shown; entitlement only disables the card. Within the filtered list, **available** tools (`toolIsOpenable` + in `allowedToolIds`) are sorted first; original catalog order is kept within available / unavailable.
 - Same layout as before: header (logo + title + lang switch), category strip, tool grid.
 - **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and category strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and category strip `z-10` so the user-menu popup is not covered/blurred by the category strip’s backdrop filter.
-- **User menu** — circular grey placeholder avatar (silhouette). Email + group names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple groups, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full group list**, and red **התנתקות** / **Sign out**; closes on outside click or Escape.
+- **User menu** — circular grey placeholder avatar (silhouette). Email + team names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple teams, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full team list** (UI label: **צוותים** / Teams), and red **התנתקות** / **Sign out**; closes on outside click or Escape.
 - **Admin button** — gear icon link to `/admin` (or `/en/admin`), placed **visually to the right** of the user menu (`dir="ltr"` on the header actions cluster). Visible only when `usePlatformAuth().isAdmin` is true (membership in group slug `Admin (all tools)`).
+- **MBZ host** — wrapped in `ApprovedOnly` so pending/rejected users cannot open `/mbz-explorer`.
 
 ### Admin page (`/admin`, `/en/admin`)
 
@@ -65,11 +74,11 @@ Shared launcher UI driven by `locale`:
 
 | Capability | Behavior |
 |---|---|
-| Gate | Client: redirect/deny if not signed in or not `isAdmin`. Server: `/api/admin` requires Bearer JWT + Admin group membership (service_role checks). |
-| Users tab | Table of all Auth users (email, display name, groups). Filter by group; sort by email or groups. Edit opens checkboxes to set the user’s group memberships (`setUserGroups`). |
+| Gate | Client: redirect/deny if not signed in, not approved, or not `isAdmin`. Server: `/api/admin` requires Bearer JWT + Admin group membership (service_role checks). |
+| Users tab | Table of Auth users (email, display name from email local-part, **status**, groups). Filter by group and status; sort by email or groups. **Create user** modal: step 1 email + groups + create; step 2 user properties, invite URL + **Copy**, and **Send invite email**. Pending: **Approve** / **Reject**. Approved: **Edit** groups. Every row (except self): **Remove** permanently deletes the Auth user (`removeUser`; confirm dialog; cannot remove your own account). |
 | Groups tab | Table of groups (name, slug, tools, member count). Create / edit name, slug, description, and tool checkboxes (`createGroup` / `updateGroup`). **Edit members** opens checkboxes to set who belongs to that group (`setGroupMembers`). |
 
-API: `GET/POST /api/admin` (`apps/hub/api/admin.ts` + `adminOps.ts`). Local Vite middleware mirrors the same routes in `vite.config.ts`. Client helpers: `src/lib/adminApi.ts`.
+API: `GET/POST /api/admin` (`apps/hub/api/admin.ts` + `adminOps.ts`) — actions include `inviteUser`, `approveUser`, `rejectUser`. Public `GET/POST /api/register`. Local Vite middleware mirrors both in `vite.config.ts`. Client helpers: `src/lib/adminApi.ts`, `src/lib/registerApi.ts`.
 
 ### Adding a new tool (Hebrew)
 

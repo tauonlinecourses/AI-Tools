@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Badge, persistHubLocale, Spinner } from "@workspace/ui";
 import { PlatformAuthProvider, usePlatformAuth } from "@workspace/auth/react";
@@ -15,6 +15,9 @@ import { LoginPage } from "./components/LoginPage";
 import { SoftPageBg } from "./components/SoftPageBg";
 import { MbzExplorerHost } from "./components/MbzExplorerHost";
 import { AdminPage } from "./components/AdminPage";
+import { AccountStatusPage } from "./components/AccountStatusPage";
+import { RegisterPage } from "./components/RegisterPage";
+import { SetPasswordPage } from "./components/SetPasswordPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
@@ -56,8 +59,8 @@ function UserMenu({
     groupNames.length > 0
       ? groupNames.join(", ")
       : locale === "he"
-        ? "אין קבוצות"
-        : "No groups";
+        ? "אין צוותים"
+        : "No teams";
 
   return (
     <div className="relative" ref={rootRef} dir="ltr">
@@ -109,7 +112,7 @@ function UserMenu({
           )}
           <div className="border-t border-surface-100 px-3 py-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-surface-400">
-              {locale === "he" ? "קבוצות" : "Groups"}
+              {locale === "he" ? "צוותים" : "Teams"}
             </p>
             {groupNames.length > 0 ? (
               <ul className="mt-1 space-y-0.5">
@@ -121,7 +124,7 @@ function UserMenu({
               </ul>
             ) : (
               <p className="mt-1 text-xs text-surface-400">
-                {locale === "he" ? "אין קבוצות" : "No groups"}
+                {locale === "he" ? "אין צוותים" : "No teams"}
               </p>
             )}
           </div>
@@ -267,8 +270,16 @@ function ToolCard({
 
 function HubPage({ locale }: { locale: Locale }) {
   const t = ui[locale];
-  const { loading, session, allowedToolIds, groups, isAdmin, signOut, user } =
-    usePlatformAuth();
+  const {
+    loading,
+    session,
+    allowedToolIds,
+    groups,
+    isAdmin,
+    signOut,
+    user,
+    accountStatus,
+  } = usePlatformAuth();
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const adminHref = locale === "en" ? "/en/admin" : "/admin";
 
@@ -281,6 +292,7 @@ function HubPage({ locale }: { locale: Locale }) {
 
   useEffect(() => {
     if (loading || !session) return;
+    if (accountStatus && accountStatus !== "approved") return;
     const params = new URLSearchParams(window.location.search);
     const returnUrl = params.get("returnUrl");
     if (!returnUrl) return;
@@ -288,7 +300,7 @@ function HubPage({ locale }: { locale: Locale }) {
     params.delete("returnUrl");
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
     window.history.replaceState({}, "", next);
-  }, [loading, session]);
+  }, [loading, session, accountStatus]);
 
   if (loading) {
     return (
@@ -302,11 +314,26 @@ function HubPage({ locale }: { locale: Locale }) {
     return <LoginPage locale={locale} />;
   }
 
+  if (accountStatus === "pending" || accountStatus === "rejected") {
+    return <AccountStatusPage locale={locale} status={accountStatus} />;
+  }
+
   // Always list every tool; unauthorized cards are shown disabled with a tooltip.
-  const filteredTools =
+  // Available (openable + allowed) tools first; preserve catalog order within each bucket.
+  const filteredTools = (
     activeCategory === "All"
       ? tools
-      : tools.filter((tool) => tool.category === activeCategory);
+      : tools.filter((tool) => tool.category === activeCategory)
+  )
+    .map((tool, index) => ({ tool, index }))
+    .sort((a, b) => {
+      const aAvail =
+        toolIsOpenable(a.tool) && allowedToolIds.includes(a.tool.id) ? 0 : 1;
+      const bAvail =
+        toolIsOpenable(b.tool) && allowedToolIds.includes(b.tool.id) ? 0 : 1;
+      return aAvail - bAvail || a.index - b.index;
+    })
+    .map(({ tool }) => tool);
 
   const categoryTabs = ["All", ...categories] as const;
 
@@ -426,6 +453,32 @@ function HubPage({ locale }: { locale: Locale }) {
   );
 }
 
+function ApprovedOnly({
+  locale,
+  children,
+}: {
+  locale: Locale;
+  children: ReactNode;
+}) {
+  const { loading, session, accountStatus } = usePlatformAuth();
+  const homeHref = locale === "en" ? "/en" : "/";
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!session) {
+    return <Navigate to={homeHref} replace />;
+  }
+  if (accountStatus === "pending" || accountStatus === "rejected") {
+    return <AccountStatusPage locale={locale} status={accountStatus} />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <PlatformAuthProvider>
@@ -433,11 +486,25 @@ export default function App() {
         <Route path="/" element={<HubPage locale="he" />} />
         <Route path="/en" element={<HubPage locale="en" />} />
         <Route path="/he" element={<Navigate to="/" replace />} />
+        <Route path="/register" element={<RegisterPage locale="he" />} />
+        <Route path="/en/register" element={<RegisterPage locale="en" />} />
+        <Route
+          path="/auth/set-password"
+          element={<SetPasswordPage locale="he" />}
+        />
+        <Route
+          path="/en/auth/set-password"
+          element={<SetPasswordPage locale="en" />}
+        />
         <Route path="/admin" element={<AdminPage locale="he" />} />
         <Route path="/en/admin" element={<AdminPage locale="en" />} />
         <Route
           path={`${MBZ_BASE}/*`}
-          element={<MbzExplorerHost locale="he" />}
+          element={
+            <ApprovedOnly locale="he">
+              <MbzExplorerHost locale="he" />
+            </ApprovedOnly>
+          }
         />
       </Routes>
     </PlatformAuthProvider>

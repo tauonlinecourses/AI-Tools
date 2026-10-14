@@ -138,11 +138,29 @@ export async function assertUserHasToolAccess(
   }
 }
 
+export async function assertUserIsApproved(userId: string): Promise<void> {
+  const admin = createPlatformServiceClient();
+  const { data, error } = await admin
+    .from("profiles")
+    .select("status")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const status = data?.status;
+  if (status === "pending") {
+    throw new AuthError("Account pending admin approval", 403);
+  }
+  if (status === "rejected") {
+    throw new AuthError("Account was rejected", 403);
+  }
+}
+
 export async function requireToolAccessFromRequest(
   req: { headers?: { authorization?: string | string[] | undefined } } | Request,
   toolId: string
 ): Promise<VerifiedPlatformUser> {
   const verified = await verifyPlatformRequest(req);
+  await assertUserIsApproved(verified.user.id);
   await assertUserHasToolAccess(verified.user.id, toolId);
   return verified;
 }
@@ -156,6 +174,7 @@ export async function createHandoffCode(params: {
   accessToken: string;
   refreshToken: string;
 }): Promise<string> {
+  await assertUserIsApproved(params.userId);
   await assertUserHasToolAccess(params.userId, params.toolId);
   const code = randomBytes(24).toString("hex");
   const admin = createPlatformServiceClient();

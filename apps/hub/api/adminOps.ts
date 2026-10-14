@@ -2,10 +2,13 @@
  * Hub admin data ops (service_role). Callers must verify the requester is Admin first.
  */
 import {
+  ADMIN_GROUP_SLUG,
   AuthError,
   PLATFORM_TOOL_IDS,
   serviceClient,
 } from "./platformAuth";
+
+export type AccountStatus = "pending" | "approved" | "rejected";
 
 export type AdminGroupSummary = {
   id: string;
@@ -17,8 +20,47 @@ export type AdminUserRow = {
   id: string;
   email: string;
   displayName: string | null;
+  status: AccountStatus;
+  requestedGroupId: string | null;
   groups: AdminGroupSummary[];
 };
+
+function hubOrigin(): string {
+  const raw =
+    process.env.VITE_HUB_URL?.trim() ||
+    process.env.HUB_URL?.trim() ||
+    (process.env.NODE_ENV !== "production"
+      ? "http://localhost:5173"
+      : "https://ai-tools-tauonline.vercel.app");
+  return raw.replace(/\/$/, "");
+}
+
+function defaultInviteRedirectTo(): string {
+  return `${hubOrigin()}/auth/set-password`;
+}
+
+/** Prefer client-provided hub origin; must end with /auth/set-password. */
+function resolveInviteRedirectTo(redirectTo?: string | null): string {
+  const raw = redirectTo?.trim() || "";
+  if (!raw) return defaultInviteRedirectTo();
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return defaultInviteRedirectTo();
+    }
+    // Normalize to the set-password route on that origin.
+    return `${url.origin}/auth/set-password`;
+  } catch {
+    return defaultInviteRedirectTo();
+  }
+}
+
+function asAccountStatus(value: unknown): AccountStatus {
+  if (value === "pending" || value === "rejected" || value === "approved") {
+    return value;
+  }
+  return "approved";
+}
 
 export type AdminGroupRow = {
   id: string;
@@ -48,7 +90,9 @@ export async function listAdminUsers(): Promise<AdminUserRow[]> {
   const [{ data: authData, error: authErr }, { data: profiles, error: profErr }, { data: members, error: memErr }] =
     await Promise.all([
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      admin.from("profiles").select("id, display_name"),
+      admin
+        .from("profiles")
+        .select("id, display_name, status, requested_group_id"),
       admin
         .from("group_members")
         .select("user_id, group_id, groups(id, name, slug)"),
@@ -58,9 +102,21 @@ export async function listAdminUsers(): Promise<AdminUserRow[]> {
   if (profErr) throw profErr;
   if (memErr) throw memErr;
 
-  const displayById = new Map<string, string | null>();
+  const profileById = new Map<
+    string,
+    {
+      displayName: string | null;
+      status: AccountStatus;
+      requestedGroupId: string | null;
+    }
+  >();
   for (const p of profiles ?? []) {
-    displayById.set(String(p.id), (p.display_name as string | null) ?? null);
+    profileById.set(String(p.id), {
+      displayName: (p.display_name as string | null) ?? null,
+      status: asAccountStatus(p.status),
+      requestedGroupId:
+        p.requested_group_id != null ? String(p.requested_group_id) : null,
+    });
   }
 
   const groupsByUser = new Map<string, AdminGroupSummary[]>();
@@ -85,10 +141,13 @@ export async function listAdminUsers(): Promise<AdminUserRow[]> {
     const groups = (groupsByUser.get(u.id) ?? []).sort((a, b) =>
       a.name.localeCompare(b.name, "he")
     );
+    const profile = profileById.get(u.id);
     return {
       id: u.id,
       email: u.email ?? "",
-      displayName: displayById.get(u.id) ?? null,
+      displayName: profile?.displayName ?? null,
+      status: profile?.status ?? "approved",
+      requestedGroupId: profile?.requestedGroupId ?? null,
       groups,
     };
   });
@@ -143,12 +202,12 @@ export async function createAdminGroup(input: {
   toolIds: string[];
 }): Promise<AdminGroupRow> {
   const name = input.name.trim();
-  if (!name) throw new AuthError("Group name is required", 400);
+  if (!name) throw new AuthError("Team name is required", 400);
 
   const slug = (input.slug?.trim() ? slugify(input.slug) : slugify(name)) || "";
   if (!slug) {
     throw new AuthError(
-      "Slug is required (use Latin letters for Hebrew group names)",
+      "Slug is required (use Latin letters for Hebrew team names)",
       400
     );
   }
@@ -172,7 +231,7 @@ export async function createAdminGroup(input: {
     .single();
   if (error) {
     if (error.code === "23505") {
-      throw new AuthError("A group with this slug already exists", 409);
+      throw new AuthError("A team with this slug already exists", 409);
     }
     throw error;
   }
@@ -204,11 +263,11 @@ export async function updateAdminGroup(input: {
   const id = input.id.trim();
   const name = input.name.trim();
   const slug = slugify(input.slug);
-  if (!id) throw new AuthError("Group id is required", 400);
-  if (!name) throw new AuthError("Group name is required", 400);
+  if (!id) throw new AuthError("Team id is required", 400);
+  if (!name) throw new AuthError("Team name is required", 400);
   if (!slug) {
     throw new AuthError(
-      "Slug is required (use Latin letters for Hebrew group names)",
+      "Slug is required (use Latin letters for Hebrew team names)",
       400
     );
   }
@@ -233,7 +292,7 @@ export async function updateAdminGroup(input: {
     .single();
   if (error) {
     if (error.code === "23505") {
-      throw new AuthError("A group with this slug already exists", 409);
+      throw new AuthError("A team with this slug already exists", 409);
     }
     throw error;
   }
@@ -284,7 +343,7 @@ export async function setUserGroups(
       .in("id", uniqueIds);
     if (exErr) throw exErr;
     if ((existing ?? []).length !== uniqueIds.length) {
-      throw new AuthError("One or more groups were not found", 400);
+      throw new AuthError("One or more teams were not found", 400);
     }
   }
 
@@ -341,7 +400,7 @@ export async function setGroupMembers(
     .eq("id", gid)
     .maybeSingle();
   if (gErr) throw gErr;
-  if (!group) throw new AuthError("Group not found", 404);
+  if (!group) throw new AuthError("Team not found", 404);
 
   if (uniqueIds.length > 0) {
     const { data: profiles, error: pErr } = await admin
@@ -377,4 +436,365 @@ export async function setGroupMembers(
   }
 
   return { memberCount: uniqueIds.length };
+}
+
+async function ensureProfileStatus(
+  userId: string,
+  status: AccountStatus,
+  requestedGroupId: string | null = null
+): Promise<void> {
+  const admin = serviceClient();
+  const { data: existing, error: findErr } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (findErr) throw findErr;
+
+  if (!existing) {
+    const { error: insErr } = await admin.from("profiles").insert({
+      id: userId,
+      status,
+      requested_group_id: requestedGroupId,
+    });
+    if (insErr) throw insErr;
+    return;
+  }
+
+  const { error: updErr } = await admin
+    .from("profiles")
+    .update({
+      status,
+      requested_group_id: requestedGroupId,
+    })
+    .eq("id", userId);
+  if (updErr) throw updErr;
+}
+
+async function generateInviteActionLink(
+  email: string,
+  redirectTo: string
+): Promise<string | null> {
+  const admin = serviceClient();
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      redirectTo,
+      data: { status: "approved" },
+    },
+  });
+  if (error) throw error;
+  const link =
+    (data as { properties?: { action_link?: string } } | null)?.properties
+      ?.action_link ?? null;
+  return link;
+}
+
+/** Create approved user + groups; returns shareable invite link (no email yet). */
+export async function inviteUser(input: {
+  email: string;
+  groupIds: string[];
+  redirectTo?: string | null;
+}): Promise<{ user: AdminUserRow; actionLink: string | null }> {
+  const email = input.email.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    throw new AuthError("A valid email is required", 400);
+  }
+  const uniqueGroupIds = [
+    ...new Set(input.groupIds.map((g) => g.trim()).filter(Boolean)),
+  ];
+  if (uniqueGroupIds.length === 0) {
+    throw new AuthError("Select at least one team", 400);
+  }
+
+  const admin = serviceClient();
+  const redirectTo = resolveInviteRedirectTo(input.redirectTo);
+
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      redirectTo,
+      data: { status: "approved" },
+    },
+  });
+  if (error) {
+    throw new AuthError(error.message || "Invite failed", 400);
+  }
+
+  const userId = data.user?.id ?? null;
+  let actionLink =
+    (data as { properties?: { action_link?: string } } | null)?.properties
+      ?.action_link ?? null;
+  if (!actionLink) {
+    actionLink = await generateInviteActionLink(email, redirectTo);
+  }
+
+  if (!userId) throw new AuthError("Invite failed — no user created", 500);
+
+  await ensureProfileStatus(userId, "approved", null);
+  await setUserGroups(userId, uniqueGroupIds);
+
+  const users = await listAdminUsers();
+  const user = users.find((u) => u.id === userId);
+  if (!user) {
+    throw new AuthError("User created but could not be loaded", 500);
+  }
+
+  return { user, actionLink };
+}
+
+/**
+ * Send a real Supabase invite email for an already-created user.
+ * Auth cannot mail an invite after `generateLink` created the account, so we
+ * re-invite: delete + `inviteUserByEmail`, then restore groups / approved status.
+ */
+export async function sendInviteEmail(input: {
+  email: string;
+  redirectTo?: string | null;
+}): Promise<{
+  emailSent: boolean;
+  actionLink: string | null;
+  user: AdminUserRow;
+}> {
+  const email = input.email.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    throw new AuthError("A valid email is required", 400);
+  }
+
+  const existing = (await listAdminUsers()).find(
+    (u) => u.email.trim().toLowerCase() === email
+  );
+  if (!existing) {
+    throw new AuthError("User not found — create the user first", 404);
+  }
+
+  const groupIds = existing.groups.map((g) => g.id);
+  const admin = serviceClient();
+  const redirectTo = resolveInviteRedirectTo(input.redirectTo);
+
+  const { error: delErr } = await admin.auth.admin.deleteUser(existing.id);
+  if (delErr) {
+    throw new AuthError(delErr.message || "Could not prepare invite email", 400);
+  }
+
+  const invite = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo,
+    data: { status: "approved" },
+  });
+  if (invite.error || !invite.data.user) {
+    // Best-effort recreate so the admin is not left without the user.
+    try {
+      await inviteUser({ email, groupIds, redirectTo });
+    } catch {
+      /* ignore secondary failure */
+    }
+    throw new AuthError(
+      invite.error?.message || "Invite email failed",
+      400
+    );
+  }
+
+  const userId = invite.data.user.id;
+  await ensureProfileStatus(userId, "approved", null);
+  if (groupIds.length > 0) {
+    await setUserGroups(userId, groupIds);
+  }
+
+  let actionLink: string | null = null;
+  try {
+    actionLink = await generateInviteActionLink(email, redirectTo);
+  } catch {
+    actionLink = null;
+  }
+
+  const users = await listAdminUsers();
+  const user = users.find((u) => u.id === userId);
+  if (!user) {
+    throw new AuthError("Invite email sent but user could not be loaded", 500);
+  }
+
+  return { emailSent: true, actionLink, user };
+}
+
+export async function approveUser(input: {
+  userId: string;
+  groupIds?: string[];
+  reviewerId: string;
+}): Promise<AdminUserRow> {
+  const userId = input.userId.trim();
+  if (!userId) throw new AuthError("userId is required", 400);
+
+  const admin = serviceClient();
+  const { data: profile, error: profErr } = await admin
+    .from("profiles")
+    .select("id, status, requested_group_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profErr) throw profErr;
+  if (!profile) throw new AuthError("User profile not found", 404);
+
+  let groupIds = Array.isArray(input.groupIds)
+    ? [...new Set(input.groupIds.map((g) => g.trim()).filter(Boolean))]
+    : [];
+  if (groupIds.length === 0 && profile.requested_group_id) {
+    groupIds = [String(profile.requested_group_id)];
+  }
+  if (groupIds.length === 0) {
+    throw new AuthError("Select at least one team to approve", 400);
+  }
+
+  const { error: updErr } = await admin
+    .from("profiles")
+    .update({
+      status: "approved",
+      requested_group_id: null,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: input.reviewerId,
+    })
+    .eq("id", userId);
+  if (updErr) throw updErr;
+
+  await setUserGroups(userId, groupIds);
+
+  const users = await listAdminUsers();
+  const user = users.find((u) => u.id === userId);
+  if (!user) throw new AuthError("Approved user could not be loaded", 500);
+  return user;
+}
+
+export async function rejectUser(input: {
+  userId: string;
+  reviewerId: string;
+}): Promise<AdminUserRow> {
+  const userId = input.userId.trim();
+  if (!userId) throw new AuthError("userId is required", 400);
+
+  const admin = serviceClient();
+  const { data: profile, error: profErr } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profErr) throw profErr;
+  if (!profile) throw new AuthError("User profile not found", 404);
+
+  const { error: updErr } = await admin
+    .from("profiles")
+    .update({
+      status: "rejected",
+      requested_group_id: null,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: input.reviewerId,
+    })
+    .eq("id", userId);
+  if (updErr) throw updErr;
+
+  const { error: delErr } = await admin
+    .from("group_members")
+    .delete()
+    .eq("user_id", userId);
+  if (delErr) throw delErr;
+
+  const users = await listAdminUsers();
+  const user = users.find((u) => u.id === userId);
+  if (!user) throw new AuthError("Rejected user could not be loaded", 500);
+  return user;
+}
+
+/** Permanently delete Auth user (profiles / memberships cascade). */
+export async function removeUser(input: {
+  userId: string;
+  actorId: string;
+}): Promise<{ removed: true }> {
+  const userId = input.userId.trim();
+  if (!userId) throw new AuthError("userId is required", 400);
+  if (userId === input.actorId) {
+    throw new AuthError("You cannot remove your own account", 400);
+  }
+
+  const admin = serviceClient();
+  const { data: authData, error: getErr } =
+    await admin.auth.admin.getUserById(userId);
+  if (getErr) throw getErr;
+  if (!authData.user) throw new AuthError("User not found", 404);
+
+  const { error: delErr } = await admin.auth.admin.deleteUser(userId);
+  if (delErr) {
+    throw new AuthError(delErr.message || "Failed to remove user", 400);
+  }
+  return { removed: true };
+}
+
+/** Public groups list for self-registration (excludes Admin). */
+export async function listPublicGroups(): Promise<AdminGroupSummary[]> {
+  const admin = serviceClient();
+  const { data, error } = await admin
+    .from("groups")
+    .select("id, name, slug")
+    .order("name");
+  if (error) throw error;
+  return (data ?? [])
+    .filter((g) => String(g.slug) !== ADMIN_GROUP_SLUG)
+    .map((g) => ({
+      id: String(g.id),
+      name: String(g.name),
+      slug: String(g.slug),
+    }));
+}
+
+export async function registerPendingUser(input: {
+  email: string;
+  password: string;
+  requestedGroupId: string;
+}): Promise<{ userId: string }> {
+  const email = input.email.trim().toLowerCase();
+  const password = input.password;
+  const requestedGroupId = input.requestedGroupId.trim();
+
+  if (!email || !email.includes("@")) {
+    throw new AuthError("A valid email is required", 400);
+  }
+  if (!password || password.length < 6) {
+    throw new AuthError("Password must be at least 6 characters", 400);
+  }
+  if (!requestedGroupId) {
+    throw new AuthError("Select a team", 400);
+  }
+
+  const admin = serviceClient();
+  const { data: group, error: gErr } = await admin
+    .from("groups")
+    .select("id, slug")
+    .eq("id", requestedGroupId)
+    .maybeSingle();
+  if (gErr) throw gErr;
+  if (!group) throw new AuthError("Team not found", 400);
+  if (String(group.slug) === ADMIN_GROUP_SLUG) {
+    throw new AuthError("Cannot self-register into the Admin team", 400);
+  }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      status: "pending",
+      requested_group_id: requestedGroupId,
+    },
+  });
+  if (error) {
+    const msg = error.message || "Registration failed";
+    const status =
+      msg.toLowerCase().includes("already") ||
+      msg.toLowerCase().includes("registered")
+        ? 409
+        : 400;
+    throw new AuthError(msg, status);
+  }
+  if (!data.user) throw new AuthError("Registration failed", 500);
+
+  await ensureProfileStatus(data.user.id, "pending", requestedGroupId);
+  return { userId: data.user.id };
 }

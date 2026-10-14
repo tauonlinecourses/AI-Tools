@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Button, Input, Spinner } from "@workspace/ui";
 import { usePlatformAuth } from "@workspace/auth/react";
 import type { Locale } from "../i18n";
@@ -83,10 +84,32 @@ export function LoginPage({ locale }: { locale: Locale }) {
           />
         </div>
 
-        <div className="mt-5 flex justify-center">
-          <Button type="submit" disabled={submitting || !email || !password}>
-            {submitting ? <Spinner size="sm" /> : locale === "he" ? "כניסה" : "Sign in"}
-          </Button>
+        <div className="mt-5 flex flex-col gap-3">
+          <div
+            className={[
+              "flex w-full",
+              // Physical right: RTL start / LTR end
+              locale === "he" ? "justify-start" : "justify-end",
+            ].join(" ")}
+          >
+            <Link
+              to={locale === "en" ? "/en/register" : "/register"}
+              className="text-sm font-semibold text-surface-700 underline"
+            >
+              {locale === "he" ? "יצירת חשבון" : "Create account"}
+            </Link>
+          </div>
+          <div className="flex w-full justify-center">
+            <Button type="submit" disabled={submitting || !email || !password}>
+              {submitting ? (
+                <Spinner size="sm" />
+              ) : locale === "he" ? (
+                "כניסה"
+              ) : (
+                "Sign in"
+              )}
+            </Button>
+          </div>
         </div>
       </form>
     </div>
