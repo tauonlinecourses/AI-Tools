@@ -10,7 +10,8 @@
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
 - Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data) require a Platform Bearer token and (where applicable) group tool access.
-- **Tau local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local `/api/tau-data` uses `server/tauDataHandler.ts` (opaque dynamic import). `@workspace/auth` relative imports use `.js` suffixes so Node can load the package when APIs do import it.
+- **Tau local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local `/api/tau-data` uses `server/tauDataHandler.ts` via `server.ssrLoadModule`.
+- **Vercel APIs**: `@workspace/auth/server` resolves to a **CJS `dist/` build** (`pnpm --filter @workspace/auth build`). Each app `vercel.json` builds auth (then ai-client) before the app so handoff/chat serverless functions do not crash on raw `.ts` imports.
 
 ```text
 Hub login → Course-Builder Auth JWT

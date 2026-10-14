@@ -14,7 +14,9 @@
     },
     "./server": {
       "types": "./src/server.ts",
-      "default": "./src/server.ts"
+      "import": "./src/server.ts",
+      "require": "./dist/server.js",
+      "default": "./dist/server.js"
     },
     "./react": {
       "types": "./src/react.tsx",
@@ -24,6 +26,9 @@
       "types": "./src/ToolAuthGate.tsx",
       "default": "./src/ToolAuthGate.tsx"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
   },
   "peerDependencies": {
     "react": "^18.2.0",
