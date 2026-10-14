@@ -5,7 +5,8 @@
 ## Architecture (current)
 
 - **Identity + groups** live in the **Course-Builder** Supabase project (`profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`).
-- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu.
+- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu. `isAdmin` is true when the user belongs to slug `Admin (all tools)` — gates the header admin button and `/admin` UI.
+- **Hub admin API** (`/api/admin`): service_role list/create/update of groups + memberships. Every request verifies JWT then Admin group membership. Non-admins cannot read all users/groups via RLS (member-only selects).
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub).
 - **Hub-hosted** tools (`hubPath`, e.g. MBZ Explorer at `/mbz-explorer`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route.
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
@@ -45,11 +46,20 @@ Hub login → Course-Builder Auth JWT
 | `TAU_SUPABASE_SERVICE_ROLE_KEY` | Tau server only | Never `VITE_` |
 | `OPENAI_API_KEY` | Server only | Never `VITE_` |
 
-## Ops — shared staff user
+## Permission groups (Course-Builder `groups` / `group_tools`)
+
+| Name | Slug | Tools | Notes |
+|---|---|---|---|
+| Admin | `Admin (all tools)` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
+| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
+
+Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` / hub `platformAuth.ts`.
+
+## Ops — assign a user to a group
 
 1. Course-Builder project → Authentication → create email/password user.
 2. Confirm `profiles` row exists (trigger `handle_new_user`).
-3. Insert membership into `all-staff`:
+3. Insert membership (replace slug + email):
 
 ```sql
 insert into public.group_members (group_id, user_id)
@@ -57,7 +67,7 @@ select g.id, p.id
 from public.groups g
 join public.profiles p on true
 join auth.users u on u.id = p.id
-where g.slug = 'all-staff'
+where g.slug = 'learning-systems-team'  -- or 'Admin (all tools)'
   and u.email = 'YOUR_STAFF_EMAIL'
 on conflict do nothing;
 ```
@@ -70,7 +80,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
 
 ## Later

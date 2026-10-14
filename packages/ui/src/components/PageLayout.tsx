@@ -39,6 +39,8 @@ interface PageLayoutProps {
   hubUrl?: string;
   /** When false, content fills the area under the nav with no outer padding (for full-bleed tools). */
   padded?: boolean;
+  /** Extra classes on the root shell (e.g. `bg-transparent` over a page background). */
+  className?: string;
 }
 
 const maxWidthStyles = {
@@ -67,6 +69,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   locale: localeProp,
   hubUrl,
   padded = true,
+  className = "",
 }) => {
   const [locale, setLocale] = useState<HubLocale>(
     () => localeProp ?? resolveHubLocale(),
@@ -88,7 +91,11 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   const dir = locale === "he" ? "rtl" : "ltr";
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div
+      className={["min-h-screen bg-white flex flex-col", className]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {/* Top nav bar */}
       <header
         dir={dir}

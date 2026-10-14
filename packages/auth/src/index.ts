@@ -21,9 +21,13 @@ export {
   hubLoginUrl,
   startToolHandoff,
   exchangeHandoffCode,
+  ADMIN_GROUP_SLUG,
+  PLATFORM_TOOL_IDS,
+  isAdminFromGroups,
+  isPlatformToolId,
 } from "./client.js";
 
-export type { PlatformGroup } from "./client.js";
+export type { PlatformGroup, PlatformToolId } from "./client.js";
 
 export {
   AuthError,

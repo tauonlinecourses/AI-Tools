@@ -13,6 +13,7 @@ import {
   getPlatformSession,
   isPlatformConfigured,
   listAllowedToolIds,
+  isAdminFromGroups,
   listUserGroups,
   signInWithPassword,
   signOut as platformSignOut,
@@ -26,6 +27,8 @@ type AuthState = {
   user: User | null;
   allowedToolIds: string[];
   groups: PlatformGroup[];
+  /** True when the user belongs to the Admin group (`Admin (all tools)`). */
+  isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAllowedTools: () => Promise<void>;
@@ -121,6 +124,8 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     setGroups([]);
   }, []);
 
+  const isAdmin = isAdminFromGroups(groups);
+
   const value = useMemo<AuthState>(
     () => ({
       configured,
@@ -129,6 +134,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       allowedToolIds,
       groups,
+      isAdmin,
       signIn,
       signOut,
       refreshAllowedTools,
@@ -141,6 +147,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       session,
       allowedToolIds,
       groups,
+      isAdmin,
       signIn,
       signOut,
       refreshAllowedTools,

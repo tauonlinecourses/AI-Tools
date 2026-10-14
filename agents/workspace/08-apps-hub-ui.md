@@ -57,6 +57,19 @@ Shared launcher UI driven by `locale`:
 - Same layout as before: header (logo + title + lang switch), category strip, tool grid.
 - **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and category strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and category strip `z-10` so the user-menu popup is not covered/blurred by the category strip’s backdrop filter.
 - **User menu** — circular grey placeholder avatar (silhouette). Email + group names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple groups, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full group list**, and red **התנתקות** / **Sign out**; closes on outside click or Escape.
+- **Admin button** — gear icon link to `/admin` (or `/en/admin`), placed **visually to the right** of the user menu (`dir="ltr"` on the header actions cluster). Visible only when `usePlatformAuth().isAdmin` is true (membership in group slug `Admin (all tools)`).
+
+### Admin page (`/admin`, `/en/admin`)
+
+`apps/hub/src/components/AdminPage.tsx` — Admin-group-only management UI. Uses shared `PageLayout` strip header (בית / Hub + tool name + strip logo), same as the other tools; `hubUrl` points at `/` or `/en`. Soft hub background (`SoftPageBg`) sits behind a transparent `PageLayout` shell (`className="bg-transparent"`).
+
+| Capability | Behavior |
+|---|---|
+| Gate | Client: redirect/deny if not signed in or not `isAdmin`. Server: `/api/admin` requires Bearer JWT + Admin group membership (service_role checks). |
+| Users tab | Table of all Auth users (email, display name, groups). Filter by group; sort by email or groups. Edit opens checkboxes to set the user’s group memberships (`setUserGroups`). |
+| Groups tab | Table of groups (name, slug, tools, member count). Create / edit name, slug, description, and tool checkboxes (`createGroup` / `updateGroup`). **Edit members** opens checkboxes to set who belongs to that group (`setGroupMembers`). |
+
+API: `GET/POST /api/admin` (`apps/hub/api/admin.ts` + `adminOps.ts`). Local Vite middleware mirrors the same routes in `vite.config.ts`. Client helpers: `src/lib/adminApi.ts`.
 
 ### Adding a new tool (Hebrew)
 

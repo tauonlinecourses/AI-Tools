@@ -54,10 +54,34 @@ function anonClient() {
   });
 }
 
-function serviceClient() {
+export function serviceClient() {
   return createClient(platformUrl(), platformServiceRole(), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+/** Slug of the Admin group — members may use the hub admin UI/API. */
+export const ADMIN_GROUP_SLUG = "Admin (all tools)";
+
+export const PLATFORM_TOOL_IDS = [
+  "video-curator",
+  "course-builder",
+  "mbz-explorer",
+  "tau-support",
+  "tool-starter",
+] as const;
+
+export async function assertUserIsAdmin(userId: string): Promise<void> {
+  const { data, error } = await serviceClient()
+    .from("group_members")
+    .select("group_id, groups!inner(slug)")
+    .eq("user_id", userId)
+    .eq("groups.slug", ADMIN_GROUP_SLUG)
+    .limit(1);
+  if (error) throw error;
+  if (!data?.length) {
+    throw new AuthError("Admin access required", 403);
+  }
 }
 
 export type VerifiedPlatformUser = {

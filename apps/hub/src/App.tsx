@@ -14,6 +14,7 @@ import {
 import { LoginPage } from "./components/LoginPage";
 import { SoftPageBg } from "./components/SoftPageBg";
 import { MbzExplorerHost } from "./components/MbzExplorerHost";
+import { AdminPage } from "./components/AdminPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
@@ -266,9 +267,10 @@ function ToolCard({
 
 function HubPage({ locale }: { locale: Locale }) {
   const t = ui[locale];
-  const { loading, session, allowedToolIds, groups, signOut, user } =
+  const { loading, session, allowedToolIds, groups, isAdmin, signOut, user } =
     usePlatformAuth();
   const [activeCategory, setActiveCategory] = useState<string>("All");
+  const adminHref = locale === "en" ? "/en/admin" : "/admin";
 
   useEffect(() => {
     document.documentElement.lang = t.htmlLang;
@@ -333,13 +335,41 @@ function HubPage({ locale }: { locale: Locale }) {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0" dir="ltr">
                 <UserMenu
                   locale={locale}
                   email={user?.email}
                   groupNames={groups.map((g) => g.name)}
                   onSignOut={() => void signOut()}
                 />
+                {isAdmin && (
+                  <Link
+                    to={adminHref}
+                    aria-label={locale === "he" ? "ניהול משתמשים" : "User admin"}
+                    title={locale === "he" ? "ניהול משתמשים" : "User admin"}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-surface-200 bg-white text-surface-700 transition-colors duration-fast hover:bg-surface-50 hover:text-surface-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-surface-400"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 01-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 01-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 012.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 012.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9c.2.6.7 1 1.4 1.1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"
+                      />
+                    </svg>
+                  </Link>
+                )}
                 {SHOW_LANG_SWITCHER && (
                   <Link
                     to={t.langHref}
@@ -403,6 +433,8 @@ export default function App() {
         <Route path="/" element={<HubPage locale="he" />} />
         <Route path="/en" element={<HubPage locale="en" />} />
         <Route path="/he" element={<Navigate to="/" replace />} />
+        <Route path="/admin" element={<AdminPage locale="he" />} />
+        <Route path="/en/admin" element={<AdminPage locale="en" />} />
         <Route
           path={`${MBZ_BASE}/*`}
           element={<MbzExplorerHost locale="he" />}

@@ -98,6 +98,14 @@ export type PlatformGroup = {
   slug: string;
 };
 
+export {
+  ADMIN_GROUP_SLUG,
+  PLATFORM_TOOL_IDS,
+  isAdminFromGroups,
+  isPlatformToolId,
+} from "./constants.js";
+export type { PlatformToolId } from "./constants.js";
+
 /** Groups the current user belongs to (RLS: member-only select). */
 export async function listUserGroups(): Promise<PlatformGroup[]> {
   const client = getPlatformClient();

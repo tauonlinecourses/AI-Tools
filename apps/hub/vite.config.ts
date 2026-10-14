@@ -9,6 +9,18 @@ import {
   redeemHandoffCode,
   verifyPlatformAccessToken,
 } from "../../packages/auth/src/server";
+import {
+  assertUserIsAdmin,
+  AuthError as HubAuthError,
+} from "./api/platformAuth";
+import {
+  createAdminGroup,
+  listAdminGroups,
+  listAdminUsers,
+  setGroupMembers,
+  setUserGroups,
+  updateAdminGroup,
+} from "./api/adminOps";
 
 const hubDir = path.dirname(fileURLToPath(import.meta.url));
 const mbzSrc = path.resolve(hubDir, "../mbz-explorer/src");
@@ -171,6 +183,146 @@ export default defineConfig(({ mode }) => {
                   error: err instanceof Error ? err.message : "Exchange failed",
                 })
               );
+            }
+          });
+
+          server.middlewares.use("/api/admin", async (req, res) => {
+            bridgeEnv(env);
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            res.setHeader(
+              "Access-Control-Allow-Headers",
+              "Authorization, Content-Type"
+            );
+            if (req.method === "OPTIONS") {
+              res.statusCode = 204;
+              res.end();
+              return;
+            }
+
+            const send = (status: number, payload: unknown) => {
+              res.statusCode = status;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(payload));
+            };
+
+            try {
+              const auth = req.headers.authorization;
+              const token =
+                typeof auth === "string" && auth.startsWith("Bearer ")
+                  ? auth.slice(7)
+                  : "";
+              if (!token) {
+                throw new AuthError("Missing Authorization bearer token", 401);
+              }
+              const verified = await verifyPlatformAccessToken(token);
+              await assertUserIsAdmin(verified.user.id);
+
+              if (req.method === "GET") {
+                const url = new URL(
+                  req.url ?? "/",
+                  "http://localhost"
+                );
+                const resource = url.searchParams.get("resource") ?? "";
+                if (resource === "users") {
+                  send(200, { users: await listAdminUsers() });
+                  return;
+                }
+                if (resource === "groups") {
+                  send(200, { groups: await listAdminGroups() });
+                  return;
+                }
+                send(400, { error: "resource must be 'users' or 'groups'" });
+                return;
+              }
+
+              if (req.method === "POST") {
+                const body = (await readJsonBody(req)) as {
+                  action?: string;
+                  id?: string;
+                  name?: string;
+                  slug?: string;
+                  description?: string | null;
+                  toolIds?: string[];
+                  userId?: string;
+                  groupIds?: string[];
+                  groupId?: string;
+                  userIds?: string[];
+                } | null;
+                const action = body?.action?.trim() ?? "";
+
+                if (action === "createGroup") {
+                  const group = await createAdminGroup({
+                    name: String(body?.name ?? ""),
+                    slug: body?.slug != null ? String(body.slug) : undefined,
+                    description:
+                      body?.description != null
+                        ? String(body.description)
+                        : null,
+                    toolIds: Array.isArray(body?.toolIds)
+                      ? body.toolIds.map(String)
+                      : [],
+                  });
+                  send(200, { group });
+                  return;
+                }
+
+                if (action === "updateGroup") {
+                  const group = await updateAdminGroup({
+                    id: String(body?.id ?? ""),
+                    name: String(body?.name ?? ""),
+                    slug: String(body?.slug ?? ""),
+                    description:
+                      body?.description != null
+                        ? String(body.description)
+                        : null,
+                    toolIds: Array.isArray(body?.toolIds)
+                      ? body.toolIds.map(String)
+                      : [],
+                  });
+                  send(200, { group });
+                  return;
+                }
+
+                if (action === "setUserGroups") {
+                  const groups = await setUserGroups(
+                    String(body?.userId ?? ""),
+                    Array.isArray(body?.groupIds)
+                      ? body.groupIds.map(String)
+                      : []
+                  );
+                  send(200, { groups });
+                  return;
+                }
+
+                if (action === "setGroupMembers") {
+                  const result = await setGroupMembers(
+                    String(body?.groupId ?? ""),
+                    Array.isArray(body?.userIds)
+                      ? body.userIds.map(String)
+                      : []
+                  );
+                  send(200, result);
+                  return;
+                }
+
+                send(400, {
+                  error:
+                    "action must be 'createGroup', 'updateGroup', 'setUserGroups', or 'setGroupMembers'",
+                });
+                return;
+              }
+
+              send(405, { error: "Method not allowed" });
+            } catch (err: unknown) {
+              const status =
+                err instanceof AuthError || err instanceof HubAuthError
+                  ? err.statusCode
+                  : 500;
+              send(status, {
+                error:
+                  err instanceof Error ? err.message : "Admin request failed",
+              });
             }
           });
         },
