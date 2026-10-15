@@ -6,11 +6,10 @@ import type {
   PageWorkflowStatus,
   Section,
 } from "../lib/types";
-import { PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
 import { useSaveStatus } from "../lib/saveStatus";
-import { ChevronDownIcon, EyeOffIcon } from "./icons";
 import { LessonFilesButton } from "./LessonFilesButton";
+import { LessonPagesCard } from "./LessonPagesCard";
 import { LessonWorkflowStatusToggle } from "./StatusBadge";
 
 const SAVE_DEBOUNCE_MS = 700;
@@ -64,13 +63,8 @@ export function SectionOverview({
   const editable = mode === "edit";
   const isImplement = mode === "implement";
   const [error, setError] = useState<string | null>(null);
-  const [pagesExpanded, setPagesExpanded] = useState(true);
   const [workflowSaving, setWorkflowSaving] = useState(false);
   const timers = useRef(new Map<string, number>());
-
-  useEffect(() => {
-    setPagesExpanded(true);
-  }, [section.id]);
 
   useEffect(() => {
     return () => {
@@ -244,87 +238,16 @@ export function SectionOverview({
         )}
       </div>
 
-      {/* Moodle-style lesson activity list */}
-      <div className="mt-8 rounded-xl border border-surface-200 bg-white overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-surface-100">
-          <button
-            type="button"
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-[#E8F2FB] text-[#0F6CBF] shrink-0 hover:bg-[#d7e9f8] transition-colors duration-fast"
-            aria-expanded={pagesExpanded}
-            aria-label={pagesExpanded ? "כווץ רשימת עמודים" : "הרחב רשימת עמודים"}
-            onClick={() => setPagesExpanded((open) => !open)}
-          >
-            <ChevronDownIcon
-              className={`w-4 h-4 transition-transform duration-fast ${
-                pagesExpanded ? "" : "-rotate-90"
-              }`}
-            />
-          </button>
-          <h2 className="flex-1 min-w-0 text-base font-bold text-surface-900 truncate">
-            {section.title}
-          </h2>
-        </div>
-
-        {pagesExpanded && (
-          <ul className="flex flex-col">
-            {pages.length === 0 ? (
-              <li className="px-4 py-5 text-base text-surface-400">
-                אין עדיין עמודים בשיעור.
-              </li>
-            ) : (
-              pages.map((page, index) => {
-                const pageType = pageTypes.get(page.id) ?? "page";
-                const pageNumber = numbering.get(page.id);
-                const hiddenFromImplement =
-                  page.workflow_status === "in_progress";
-                const blocked = isImplement && hiddenFromImplement;
-                const titleLabel = pageNumber
-                  ? `${pageNumber} | ${page.title}`
-                  : page.title;
-                return (
-                  <li
-                    key={page.id}
-                    className={`flex items-start gap-3 px-4 py-3.5 transition-colors duration-fast ${
-                      index < pages.length - 1 ? "border-b border-surface-100" : ""
-                    } ${
-                      blocked
-                        ? "opacity-50"
-                        : "hover:bg-[#F5F8FB]"
-                    }`}
-                  >
-                    <img
-                      src={PAGE_TYPE_LOGO[pageType]}
-                      alt=""
-                      title={PAGE_TYPE_LABEL[pageType]}
-                      className="w-5 h-5 mt-0.5 shrink-0 object-contain"
-                    />
-                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                      {blocked ? (
-                        <span className="text-base text-surface-500 truncate">
-                          {titleLabel}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-start text-base text-[#0F6CBF] hover:underline truncate"
-                          onClick={() => onSelectPage(page.id)}
-                        >
-                          {titleLabel}
-                        </button>
-                      )}
-                      {hiddenFromImplement && (
-                        <span className="inline-flex w-fit items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-100 text-xs text-surface-600">
-                          <EyeOffIcon className="w-3.5 h-3.5" />
-                          מוסתר מהטמעה
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        )}
+      <div className="mt-8">
+        <LessonPagesCard
+          title={section.title}
+          pages={pages}
+          pageTypes={pageTypes}
+          numbering={numbering}
+          mode={mode}
+          onSelectPage={onSelectPage}
+          resetKey={section.id}
+        />
       </div>
     </div>
   );

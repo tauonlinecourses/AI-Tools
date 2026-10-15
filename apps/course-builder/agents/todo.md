@@ -53,7 +53,8 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 ## Pages & sidebar
 
 - [x] Page types with icons — assign a type to each page and show the matching icon in the implement-view sidebar
-  - Derived from blocks: any `question` → H5P (`h5p-logo.svg`); otherwise normal page (`page-logo.svg`). Extra logos in `public/` reserved for future block types.
+  - Derived from blocks via `derivePageType`: `forum` → `/forum-icon.svg`; `notes_board` → `/notes-board-logo.svg`; `word_cloud` → `/cloud-words-logo.svg`; `question` / `interactive_video` → H5P (`/h5p-logo.svg`); otherwise `/page-logo.svg`.
+- [x] Forum activity (`forum`) — pinned bottom; title (default פורום); implement sidebar uses forum icon
 - [x] Duplicate page button in edit-mode sidebar — ⋮ menu; clone under source as `העתק של {title}`; same component types/order; empty props except banner data kept; home page excluded
 - [x] Duplicate component on page — copy icon to the right of delete in edit card header; inserts clone after source with same props (new question option ids); comments not copied
 - [x] Edit-mode workflow statuses for individual pages and whole lessons: Ready for implementation (מוכן להטמעה), In progress (בעבודה)

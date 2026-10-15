@@ -8,9 +8,20 @@ import type {
   ImplementationStatus,
   Page,
   PageComponent,
+  PageType,
+  Section,
   StatusRollup,
 } from "../lib/types";
-import { componentStatus, ACTIVITY_TYPES, PINNED_BOTTOM_TYPES, derivePageType, PAGE_TYPE_LOGO, QUESTION_TYPE_LABEL } from "../lib/types";
+import {
+  componentStatus,
+  ACTIVITY_TYPES,
+  PINNED_BOTTOM_TYPES,
+  derivePageType,
+  isHomePage,
+  PAGE_TYPE_LABEL,
+  PAGE_TYPE_LOGO,
+  QUESTION_TYPE_LABEL,
+} from "../lib/types";
 import type { QuestionType } from "../lib/types";
 import * as api from "../lib/api";
 import { writeClipboard } from "../lib/clipboard";
@@ -39,8 +50,6 @@ import {
   LinkIcon,
   PencilIcon,
   PlusIcon,
-  NotesBoardIcon,
-  WordCloudIcon,
   QuestionIcon,
   TextIcon,
   ThumbnailIcon,
@@ -48,6 +57,7 @@ import {
   VideoIcon,
 } from "./icons";
 import { LessonFilesButton } from "./LessonFilesButton";
+import { LessonPagesCard } from "./LessonPagesCard";
 
 /** Sentinel for the open page-notes panel (mutually exclusive with block threads). */
 const PAGE_NOTES_OPEN_ID = "__page_notes__";
@@ -146,10 +156,23 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
       return { plain: component.props.description ?? "" };
     case "word_cloud":
       return { plain: component.props.centerWord ?? "" };
+    case "forum":
+      return { plain: component.props.title?.trim() || "פורום" };
   }
 }
 
 const SAVE_DEBOUNCE_MS = 700;
+
+function activityTypeLogo(pageType: "notes_board" | "word_cloud" | "forum") {
+  return (
+    <img
+      src={PAGE_TYPE_LOGO[pageType]}
+      alt=""
+      title={PAGE_TYPE_LABEL[pageType]}
+      className="w-4 h-4 object-contain shrink-0"
+    />
+  );
+}
 
 const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> = {
   banner: { label: "באנר", icon: <BannerIcon /> },
@@ -158,8 +181,9 @@ const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> 
   text: { label: "טקסט", icon: <TextIcon /> },
   question: { label: "שאלה", icon: <QuestionIcon /> },
   image: { label: "תמונה", icon: <ThumbnailIcon /> },
-  notes_board: { label: "לוח פתקים", icon: <NotesBoardIcon /> },
-  word_cloud: { label: "ענן מילים", icon: <WordCloudIcon /> },
+  notes_board: { label: "לוח פתקים", icon: activityTypeLogo("notes_board") },
+  word_cloud: { label: "ענן מילים", icon: activityTypeLogo("word_cloud") },
+  forum: { label: "פורום", icon: activityTypeLogo("forum") },
 };
 
 function defaultProps(type: ComponentType): BlockProps {
@@ -194,6 +218,8 @@ function defaultProps(type: ComponentType): BlockProps {
           { id: crypto.randomUUID(), title: "", items: [] },
         ],
       };
+    case "forum":
+      return { title: "פורום" };
   }
 }
 
@@ -203,12 +229,24 @@ interface AdjacentPageLink {
   numbering: string;
 }
 
+/** Course structure shown under home-page components (all lessons + pages). */
+export interface HomeCourseStructure {
+  sections: Section[];
+  pagesBySection: Map<string, Page[]>;
+  pageTypes: Map<string, PageType>;
+  numbering: Map<string, string>;
+  onSelectPage: (pageId: string) => void;
+  onSelectSection: (sectionId: string) => void;
+}
+
 interface PageContentProps {
   page: Page;
   numbering: string;
   mode: CourseViewMode;
   /** Lesson files folder URL for implement-mode header button (lesson pages only). */
   lessonFilesFolderUrl?: string | null;
+  /** When set on the course home page, renders Moodle-style lesson cards below content. */
+  homeCourseStructure?: HomeCourseStructure | null;
   rollup?: StatusRollup;
   prevPage: AdjacentPageLink | null;
   nextPage: AdjacentPageLink | null;
@@ -228,6 +266,7 @@ export function PageContent({
   numbering,
   mode,
   lessonFilesFolderUrl,
+  homeCourseStructure,
   rollup,
   prevPage,
   nextPage,
@@ -240,6 +279,7 @@ export function PageContent({
   const editable = mode === "edit";
   const isImplement = mode === "implement";
   const isReview = mode === "review";
+  const isHome = isHomePage(page);
 
   const [components, setComponents] = useState<PageComponent[] | null>(null);
   const [commentsByComponent, setCommentsByComponent] = useState<
@@ -410,6 +450,11 @@ export function PageContent({
     setError(null);
     try {
       const list = components ?? [];
+
+      if (isHome && ACTIVITY_TYPES.has(type)) {
+        window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבים מרכזיים.");
+        return;
+      }
 
       if (ACTIVITY_TYPES.has(type)) {
         const existingActivity = list.find(
@@ -1099,26 +1144,55 @@ export function PageContent({
                     ))}
                   </div>
                 </div>
-                <div>
-                  <span className="text-xs font-semibold text-surface-400 mb-1.5 block">פעילויות</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(["question", "notes_board", "word_cloud"] as ComponentType[]).map((type) => (
-                      <Button
-                        key={type}
-                        size="sm"
-                        variant="secondary"
-                        leftIcon={typeMeta[type].icon}
-                        onClick={() => handleAdd(type)}
-                      >
-                        {typeMeta[type].label}
-                      </Button>
-                    ))}
+                {!isHome && (
+                  <div>
+                    <span className="text-xs font-semibold text-surface-400 mb-1.5 block">
+                      פעילויות (ניתן להוסיף רק סוג פעילות אחת בעמוד)
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {(["question", "notes_board", "word_cloud", "forum"] as ComponentType[]).map((type) => (
+                        <Button
+                          key={type}
+                          size="sm"
+                          variant="secondary"
+                          leftIcon={typeMeta[type].icon}
+                          onClick={() => handleAdd(type)}
+                        >
+                          {typeMeta[type].label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}
         </>
+      )}
+
+      {isHome && homeCourseStructure && (
+        <div className="mt-8 flex flex-col gap-4">
+          {homeCourseStructure.sections.length === 0 ? (
+            <p className="text-base text-surface-400">אין עדיין שיעורים בקורס.</p>
+          ) : (
+            homeCourseStructure.sections.map((section) => (
+              <LessonPagesCard
+                key={section.id}
+                title={section.title}
+                pages={homeCourseStructure.pagesBySection.get(section.id) ?? []}
+                pageTypes={homeCourseStructure.pageTypes}
+                numbering={homeCourseStructure.numbering}
+                mode={mode}
+                onSelectPage={homeCourseStructure.onSelectPage}
+                onSelectLesson={() =>
+                  homeCourseStructure.onSelectSection(section.id)
+                }
+                opensAt={section.opens_at}
+                resetKey={section.id}
+              />
+            ))
+          )}
+        </div>
       )}
 
       {(prevPage || nextPage) && (

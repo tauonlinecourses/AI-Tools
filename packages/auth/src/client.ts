@@ -170,13 +170,34 @@ export async function listAllowedToolIds(): Promise<string[]> {
     .filter((id): id is string => Boolean(id));
 }
 
+/** Thrown when the user is signed in but their groups do not include `toolId`. */
+export class ToolAccessDeniedError extends Error {
+  readonly toolId: string;
+  constructor(toolId: string) {
+    super(`No access to tool: ${toolId}`);
+    this.name = "ToolAccessDeniedError";
+    this.toolId = toolId;
+  }
+}
+
+export function isToolAccessDeniedError(
+  err: unknown
+): err is ToolAccessDeniedError {
+  return (
+    err instanceof ToolAccessDeniedError ||
+    (err instanceof Error &&
+      (err.name === "ToolAccessDeniedError" ||
+        err.message.startsWith("No access to tool:")))
+  );
+}
+
 export async function assertToolAccess(toolId: string): Promise<void> {
   const { data, error } = await getPlatformClient().rpc("user_has_tool_access", {
     p_tool_id: toolId,
   });
   if (error) throw error;
   if (data !== true) {
-    throw new Error(`No access to tool: ${toolId}`);
+    throw new ToolAccessDeniedError(toolId);
   }
 }
 
@@ -193,7 +214,8 @@ export async function authFetch(
   return fetch(input, { ...init, headers });
 }
 
-export function hubLoginUrl(returnUrl?: string): string {
+/** Hub origin from `VITE_HUB_URL`, or local/prod defaults. */
+export function hubOrigin(): string {
   const hub =
     (typeof import.meta !== "undefined" &&
       (import.meta as { env?: Record<string, string | undefined> }).env
@@ -201,7 +223,17 @@ export function hubLoginUrl(returnUrl?: string): string {
     (typeof window !== "undefined" && window.location.hostname === "localhost"
       ? "http://localhost:5173"
       : "https://ai-tools-tauonline.vercel.app");
-  const origin = hub.replace(/\/$/, "");
+  return hub.replace(/\/$/, "");
+}
+
+/** Hub home (catalog). Use when the user is signed in but lacks a tool entitlement. */
+export function hubHomeUrl(): string {
+  return hubOrigin();
+}
+
+/** Hub URL that shows login when unsigned; optional `returnUrl` for post-login resume. */
+export function hubLoginUrl(returnUrl?: string): string {
+  const origin = hubOrigin();
   if (!returnUrl) return origin;
   const url = new URL(origin);
   url.searchParams.set("returnUrl", returnUrl);

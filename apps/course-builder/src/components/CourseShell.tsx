@@ -1100,6 +1100,18 @@ export function CourseShell({ mode }: CourseShellProps) {
               numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
               lessonFilesFolderUrl={selectedPageLessonFilesUrl}
+              homeCourseStructure={
+                isHomePage(selectedPage) && tree
+                  ? {
+                      sections: tree.sections,
+                      pagesBySection,
+                      pageTypes,
+                      numbering,
+                      onSelectPage: selectPage,
+                      onSelectSection: selectSection,
+                    }
+                  : null
+              }
               rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
               prevPage={
                 adjacentPages.prev

@@ -39,25 +39,44 @@ export function isHomePage(page: Page): boolean {
   return page.section_id === null;
 }
 
-export type ComponentType = "banner" | "video" | "interactive_video" | "text" | "question" | "image" | "notes_board" | "word_cloud";
+export type ComponentType =
+  | "banner"
+  | "video"
+  | "interactive_video"
+  | "text"
+  | "question"
+  | "image"
+  | "notes_board"
+  | "word_cloud"
+  | "forum";
 
 /** Activity component types — only one kind allowed per page. */
-export const ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set(["question", "notes_board", "word_cloud"]);
+export const ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
+  "question",
+  "notes_board",
+  "word_cloud",
+  "forum",
+]);
 
 /** Component types that are always pinned to the bottom of the page. */
-export const PINNED_BOTTOM_TYPES: ReadonlySet<ComponentType> = new Set(["notes_board", "word_cloud"]);
+export const PINNED_BOTTOM_TYPES: ReadonlySet<ComponentType> = new Set([
+  "notes_board",
+  "word_cloud",
+  "forum",
+]);
 
 /**
  * Moodle/edX activity shape implied by a page's blocks.
  * Each activity type gets its own logo and label.
  */
-export type PageType = "page" | "h5p" | "notes_board" | "word_cloud";
+export type PageType = "page" | "h5p" | "notes_board" | "word_cloud" | "forum";
 
 export const PAGE_TYPE_LOGO: Record<PageType, string> = {
   page: "/page-logo.svg",
   h5p: "/h5p-logo.svg",
   notes_board: "/notes-board-logo.svg",
   word_cloud: "/cloud-words-logo.svg",
+  forum: "/forum-icon.svg",
 };
 
 export const PAGE_TYPE_LABEL: Record<PageType, string> = {
@@ -65,11 +84,13 @@ export const PAGE_TYPE_LABEL: Record<PageType, string> = {
   h5p: "H5P",
   notes_board: "לוח פתקים",
   word_cloud: "ענן מילים",
+  forum: "פורום",
 };
 
 /** Derive implementer page type from the component types on that page. */
 export function derivePageType(types: Iterable<ComponentType>): PageType {
   for (const t of types) {
+    if (t === "forum") return "forum";
     if (t === "notes_board") return "notes_board";
     if (t === "word_cloud") return "word_cloud";
     if (t === "question" || t === "interactive_video") return "h5p";
@@ -151,6 +172,11 @@ export interface WordCloudProps extends NotesProps {
   centerWord?: string;
 }
 
+export interface ForumProps extends NotesProps {
+  /** Forum display name shown in the activity placeholder. */
+  title?: string;
+}
+
 export interface ImageProps extends NotesProps {
   /** URL of the image to display in the placeholder. */
   imageUrl?: string;
@@ -158,7 +184,15 @@ export interface ImageProps extends NotesProps {
   fileUrl?: string;
 }
 
-export type BlockProps = BannerProps & VideoProps & InteractiveVideoProps & TextProps & QuestionProps & ImageProps & NotesBoardProps & WordCloudProps;
+export type BlockProps = BannerProps &
+  VideoProps &
+  InteractiveVideoProps &
+  TextProps &
+  QuestionProps &
+  ImageProps &
+  NotesBoardProps &
+  WordCloudProps &
+  ForumProps;
 
 export interface PageComponent {
   id: string;

@@ -2,8 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Badge, persistHubLocale, Spinner } from "@workspace/ui";
 import { PlatformAuthProvider, usePlatformAuth } from "@workspace/auth/react";
-import { startToolHandoff } from "@workspace/auth/client";
-import { tools, categories, toolHref, toolIsOpenable } from "./tools.config";
+import { listAllowedToolIds, startToolHandoff } from "@workspace/auth/client";
+import {
+  tools,
+  categories,
+  toolHref,
+  toolIsOpenable,
+  findToolForReturnUrl,
+} from "./tools.config";
 import type { Tool } from "./tools.config";
 import {
   ui,
@@ -22,6 +28,9 @@ import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
 const SHOW_LANG_SWITCHER = false;
+
+/** Survive React StrictMode double-mount so tool returnUrl handoff runs once. */
+const processedReturnUrls = new Set<string>();
 
 function UserMenu({
   locale,
@@ -270,6 +279,7 @@ function ToolCard({
 
 function HubPage({ locale }: { locale: Locale }) {
   const t = ui[locale];
+  const navigate = useNavigate();
   const {
     loading,
     session,
@@ -295,12 +305,56 @@ function HubPage({ locale }: { locale: Locale }) {
     if (accountStatus && accountStatus !== "approved") return;
     const params = new URLSearchParams(window.location.search);
     const returnUrl = params.get("returnUrl");
-    if (!returnUrl) return;
-    // After login from a tool redirect, send user back to hub home (tool must re-open via handoff).
+    if (!returnUrl || processedReturnUrls.has(returnUrl)) return;
+    processedReturnUrls.add(returnUrl);
+
+    // Clear so refresh does not re-trigger.
     params.delete("returnUrl");
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
     window.history.replaceState({}, "", next);
-  }, [loading, session, accountStatus]);
+
+    const tool = findToolForReturnUrl(returnUrl);
+    if (!tool || !toolIsOpenable(tool)) {
+      // Unknown or unopenable URL → stay on hub.
+      return;
+    }
+
+    void (async () => {
+      // Fresh entitlement check avoids racing PlatformAuthProvider membership state.
+      let ids: string[];
+      try {
+        ids = await listAllowedToolIds();
+      } catch {
+        return;
+      }
+      if (!ids.includes(tool.id)) {
+        // Signed in but no entitlement for this tool → stay on hub catalog.
+        return;
+      }
+
+      if (tool.hubPath) {
+        navigate(tool.hubPath);
+        return;
+      }
+
+      try {
+        const href = toolHref(tool);
+        const origin = new URL(href).origin;
+        const handoffUrl =
+          import.meta.env.DEV
+            ? "/api/auth-handoff"
+            : `${window.location.origin}/api/auth-handoff`;
+        const target = await startToolHandoff({
+          toolId: tool.id,
+          toolOrigin: origin,
+          hubHandoffUrl: handoffUrl,
+        });
+        window.location.href = target;
+      } catch {
+        // Stay on hub if handoff fails; user can open the tool from the catalog.
+      }
+    })();
+  }, [loading, session, accountStatus, navigate]);
 
   if (loading) {
     return (

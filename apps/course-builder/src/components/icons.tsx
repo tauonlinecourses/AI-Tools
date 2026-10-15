@@ -229,6 +229,16 @@ export const NotesBoardIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =
   </svg>
 );
 
+export const ForumIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M7 8h10M7 12h6m-9 7.5V6.75A2.25 2.25 0 016.75 4.5h10.5A2.25 2.25 0 0119.5 6.75v7.5a2.25 2.25 0 01-2.25 2.25H9.75L5.25 20.25z"
+    />
+  </svg>
+);
+
 export const CalendarIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path

@@ -6,6 +6,7 @@ import { QuestionBlock } from "./QuestionBlock";
 import { ImageBlock } from "./ThumbnailBlock";
 import { NotesBoardBlock } from "./NotesBoardBlock";
 import { WordCloudBlock } from "./WordCloudBlock";
+import { ForumBlock } from "./ForumBlock";
 import { InteractiveVideoBlock } from "./InteractiveVideoBlock";
 
 interface Props {
@@ -83,6 +84,8 @@ export function BlockRenderer({
       return <NotesBoardBlock props={props} mode={mode} onChange={onChange} />;
     case "word_cloud":
       return <WordCloudBlock props={props} mode={mode} onChange={onChange} />;
+    case "forum":
+      return <ForumBlock props={props} mode={mode} onChange={onChange} />;
     default:
       // Legacy "thumbnail" rows or unknown types — treat as image
       return <ImageBlock props={props} mode={mode} onChange={onChange} />;

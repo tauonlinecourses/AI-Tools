@@ -97,3 +97,39 @@ export const tools: Tool[] = [
 ];
 
 export const categories = [...new Set(tools.map((t) => t.category))];
+
+/**
+ * Resolve a tool deep-link / `returnUrl` to a catalog entry.
+ * Only matches known `hubPath`, production `url`, or `devUrl` origins (no open redirects).
+ */
+export function findToolForReturnUrl(returnUrl: string): Tool | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(returnUrl);
+  } catch {
+    return null;
+  }
+
+  const path = parsed.pathname.replace(/\/+$/, "") || "/";
+
+  for (const tool of tools) {
+    if (tool.hubPath) {
+      const base = tool.hubPath.replace(/\/+$/, "") || "/";
+      if (path === base || path.startsWith(`${base}/`)) {
+        return tool;
+      }
+      continue;
+    }
+
+    for (const candidate of [tool.url, tool.devUrl]) {
+      if (!candidate) continue;
+      try {
+        if (new URL(candidate).origin === parsed.origin) return tool;
+      } catch {
+        /* skip invalid catalog URL */
+      }
+    }
+  }
+
+  return null;
+}

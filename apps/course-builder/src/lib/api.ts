@@ -557,6 +557,8 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
       };
     case "word_cloud":
       return { centerWord: "" };
+    case "forum":
+      return { title: "פורום" };
   }
 }
 

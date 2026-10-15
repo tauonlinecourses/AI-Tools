@@ -2,10 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   exchangeHandoffCode,
   getPlatformSession,
+  hubHomeUrl,
   hubLoginUrl,
   isPlatformConfigured,
   setPlatformSession,
   assertToolAccess,
+  isToolAccessDeniedError,
 } from "./client.js";
 
 function hubExchangeUrl(): string {
@@ -37,9 +39,21 @@ function exchangeHandoffOnce(
   return promise;
 }
 
+function redirectToLogin(): void {
+  window.location.href = hubLoginUrl(window.location.href);
+}
+
+function redirectToHub(): void {
+  window.location.href = hubHomeUrl();
+}
+
 /**
  * Ensures a Platform (Course-Builder Auth) session exists and the user may
- * use `toolId`. Handles `/auth/callback?code=` handoff and redirects to hub login.
+ * use `toolId`. Handles `/auth/callback?code=` handoff.
+ *
+ * Direct-link rules:
+ * - Not signed in → hub login (`?returnUrl=` back to this tool URL)
+ * - Signed in without this tool’s group entitlement → hub home (catalog)
  */
 export function ToolAuthGate({
   toolId,
@@ -80,7 +94,7 @@ export function ToolAuthGate({
 
         const session = await getPlatformSession();
         if (!session) {
-          window.location.href = hubLoginUrl(window.location.href);
+          redirectToLogin();
           return;
         }
         await assertToolAccess(toolId);
@@ -88,6 +102,13 @@ export function ToolAuthGate({
         setReady(true);
       } catch (err) {
         if (cancelled) return;
+
+        if (isToolAccessDeniedError(err)) {
+          setMessage("You do not have access to this tool");
+          redirectToHub();
+          return;
+        }
+
         // After a cancelled first StrictMode pass, session may already be set.
         try {
           const session = await getPlatformSession();
@@ -98,13 +119,21 @@ export function ToolAuthGate({
             setReady(true);
             return;
           }
-        } catch {
-          /* fall through */
+          redirectToLogin();
+          return;
+        } catch (retryErr) {
+          if (cancelled) return;
+          if (isToolAccessDeniedError(retryErr)) {
+            setMessage("You do not have access to this tool");
+            redirectToHub();
+            return;
+          }
         }
+
         const msg = err instanceof Error ? err.message : "Access denied";
         setMessage(msg);
         window.setTimeout(() => {
-          window.location.href = hubLoginUrl(window.location.origin);
+          redirectToLogin();
         }, 1500);
       }
     }

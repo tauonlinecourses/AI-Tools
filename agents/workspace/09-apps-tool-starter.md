@@ -51,6 +51,7 @@ After changing tool behavior, update the matching doc in this folder so it stays
   "dependencies": {
     "@workspace/ui":        "file:../../packages/ui",
     "@workspace/ai-client": "file:../../packages/ai-client",
+    "@workspace/auth":      "file:../../packages/auth",
     "react":                "^18.2.0",
     "react-dom":            "^18.2.0"
   },
@@ -136,18 +137,26 @@ Keep `public/favicon.png` in sync with `apps/hub/public/favicon.png` (shared bra
 
 ### `apps/tool-starter/src/main.tsx`
 
+Wrap the app in `ToolAuthGate` with the same `toolId` as in `apps/hub/src/tools.config.ts`. Direct links: unsigned → hub login; signed-in without entitlement → hub home.
+
 ```tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@workspace/ui/styles";
+import { ToolAuthGate } from "@workspace/auth/ToolAuthGate";
 import App from "./App";
 
+// Replace `your-tool-id` with the same id used in apps/hub/src/tools.config.ts
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ToolAuthGate toolId="your-tool-id">
+      <App />
+    </ToolAuthGate>
   </React.StrictMode>
 );
 ```
+
+Also add `"@workspace/auth": "workspace:*"` to `dependencies` in `package.json`.
 
 ### `apps/tool-starter/src/App.tsx`
 
