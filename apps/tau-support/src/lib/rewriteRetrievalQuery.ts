@@ -4,10 +4,18 @@
  * Falls back silently (returns null) if /api/chat fails — callers keep regex cleanup.
  */
 
-import { aiChat } from "@workspace/ai-client/client";
-
 /** Cap paste length sent to the rewrite model. */
 const MAX_REWRITE_INPUT_CHARS = 2500;
+
+/** Dynamic import so Vercel /api/tau-data does not pull React at module load. */
+async function aiChat(
+  options: Parameters<
+    typeof import("@workspace/ai-client/client").aiChat
+  >[0]
+): Promise<string> {
+  const mod = await import("@workspace/ai-client/client");
+  return mod.aiChat(options);
+}
 
 const SYSTEM_PROMPT = [
   "את/ה מסייע/ת לחיפוש במאגר תמיכה טכנית של קמפוס IL.",

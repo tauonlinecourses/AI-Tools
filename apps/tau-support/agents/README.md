@@ -610,6 +610,11 @@ deployments do not pick up new env. If `/api/tau-data` returns 500, check the
 response JSON `error` field (and Function logs); a common cause is missing
 `TAU_SUPABASE_SERVICE_ROLE_KEY` on the running deployment.
 
+`api/tau-data.ts` is intentionally a **thin** handler (Platform JWT check +
+dynamic `import("../server/tauDataHandler.js")`). Statically importing the full
+`src/lib` graph at module load pulled React via `@workspace/ai-client/client`
+and caused Vercel `FUNCTION_INVOCATION_FAILED` before the handler ran.
+
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
