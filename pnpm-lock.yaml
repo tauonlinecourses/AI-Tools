@@ -303,6 +303,9 @@ importers:
       '@workspace/ai-client':
         specifier: workspace:*
         version: link:../../packages/ai-client
+      '@workspace/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
