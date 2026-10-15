@@ -40,22 +40,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await requireToolAccessFromRequest(req, "tau-support");
-  } catch (err: unknown) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
+    try {
+      await requireToolAccessFromRequest(req, "tau-support");
+    } catch (err: unknown) {
+      if (err instanceof AuthError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      const message =
+        err instanceof Error ? err.message : "Unauthorized";
+      return res.status(401).json({ error: message });
     }
-    return res.status(401).json({ error: "Unauthorized" });
-  }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-  const action = body && typeof body.action === "string" ? body.action : "";
-  const payload = body?.payload;
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const action = body && typeof body.action === "string" ? body.action : "";
+    const payload = body?.payload;
 
-  const client = createTauServiceClient();
-  bindTauSupabase(client);
+    // Must stay inside try: missing TAU_* env used to throw uncaught and
+    // Vercel returned FUNCTION_INVOCATION_FAILED with no JSON error body.
+    const client = createTauServiceClient();
+    bindTauSupabase(client);
 
-  try {
     switch (action) {
       case "hydrate":
         return res.status(200).json(await hydrateThreadStoreFromSupabase());

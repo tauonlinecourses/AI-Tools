@@ -599,8 +599,16 @@ only:
 - `VITE_PLATFORM_SUPABASE_URL` / `VITE_PLATFORM_SUPABASE_ANON_KEY` — Course-Builder Auth (browser + local JWT checks)
 - `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` — server-only; group entitlement checks
 - `TAU_SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) — server-only Tau BFF
+- `TAU_SUPABASE_URL` — optional on Vercel if `VITE_SUPABASE_URL` is already set
+  (same Tau project URL); useful to set explicitly so serverless does not depend
+  on the `VITE_` fallback
 - `OPENAI_API_KEY` — server-only (Vite/Vercel); used by `/api/embed` and
   `/api/chat`
+
+On Vercel: after adding/changing any of these, **Redeploy** — existing
+deployments do not pick up new env. If `/api/tau-data` returns 500, check the
+response JSON `error` field (and Function logs); a common cause is missing
+`TAU_SUPABASE_SERVICE_ROLE_KEY` on the running deployment.
 
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply

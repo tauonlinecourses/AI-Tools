@@ -14,9 +14,11 @@ export function createTauServiceClient(): SupabaseClient {
     env("TAU_SUPABASE_SERVICE_ROLE_KEY") ||
     env("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) {
-    throw new Error(
-      "Missing TAU_SUPABASE_URL / TAU_SUPABASE_SERVICE_ROLE_KEY on server"
-    );
+    const missing = [
+      !url && "TAU_SUPABASE_URL (or VITE_SUPABASE_URL)",
+      !key && "TAU_SUPABASE_SERVICE_ROLE_KEY",
+    ].filter(Boolean);
+    throw new Error(`Missing on server: ${missing.join(", ")}`);
   }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
