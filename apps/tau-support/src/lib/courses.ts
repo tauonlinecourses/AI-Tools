@@ -4,7 +4,8 @@
  * The hub sidebar reads COURSES from this module.
  */
 
-import coursesJson from "./courses.json";
+// Node ESM (Vercel BFF) requires the import attribute; Vite accepts it too.
+import coursesJson from "./courses.json" with { type: "json" };
 
 export interface CourseEntry {
   /** Open edX course key, e.g. course-v1:TAU+ACD_TAU_cs101x+2019_3 */
