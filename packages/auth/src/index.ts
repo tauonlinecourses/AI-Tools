@@ -18,6 +18,8 @@ export {
   listUserGroups,
   getMyAccountStatus,
   updatePlatformPassword,
+  resetPlatformPasswordForEmail,
+  verifyPlatformPassword,
   assertToolAccess,
   ToolAccessDeniedError,
   isToolAccessDeniedError,

@@ -86,17 +86,26 @@ export function LoginPage({ locale }: { locale: Locale }) {
 
         <div className="mt-5 flex flex-col gap-3">
           <div
-            className={[
-              "flex w-full",
-              // Physical right: RTL start / LTR end
-              locale === "he" ? "justify-start" : "justify-end",
-            ].join(" ")}
+            className="flex w-full items-center justify-between"
+            // Physical sides: create left, forgot right (ignore page RTL).
+            dir="ltr"
           >
             <Link
               to={locale === "en" ? "/en/register" : "/register"}
               className="text-sm font-semibold text-surface-700 underline"
             >
               {locale === "he" ? "יצירת חשבון" : "Create account"}
+            </Link>
+            <Link
+              to={
+                locale === "en"
+                  ? "/en/auth/forgot-password"
+                  : "/auth/forgot-password"
+              }
+              className="text-sm font-semibold text-surface-700 underline"
+              dir={locale === "he" ? "rtl" : undefined}
+            >
+              {locale === "he" ? "שכחת סיסמה?" : "Forgot password?"}
             </Link>
           </div>
           <div className="flex w-full justify-center">

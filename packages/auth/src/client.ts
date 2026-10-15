@@ -129,6 +129,32 @@ export async function updatePlatformPassword(password: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Send a password-recovery email; redirect lands on hub /auth/set-password. */
+export async function resetPlatformPasswordForEmail(
+  email: string,
+  redirectTo?: string
+): Promise<void> {
+  const target =
+    redirectTo?.trim() ||
+    `${hubOrigin()}/auth/set-password`;
+  const { error } = await getPlatformClient().auth.resetPasswordForEmail(
+    email.trim(),
+    { redirectTo: target }
+  );
+  if (error) throw error;
+}
+
+/**
+ * Re-authenticate with email + password (e.g. verify current password before
+ * changing it). Throws on wrong credentials.
+ */
+export async function verifyPlatformPassword(
+  email: string,
+  password: string
+): Promise<Session> {
+  return signInWithPassword(email, password);
+}
+
 export {
   ADMIN_GROUP_SLUG,
   PLATFORM_TOOL_IDS,

@@ -24,6 +24,8 @@ import { AdminPage } from "./components/AdminPage";
 import { AccountStatusPage } from "./components/AccountStatusPage";
 import { RegisterPage } from "./components/RegisterPage";
 import { SetPasswordPage } from "./components/SetPasswordPage";
+import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
+import { ChangePasswordPage } from "./components/ChangePasswordPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
@@ -43,6 +45,8 @@ function UserMenu({
   groupNames: string[];
   onSignOut: () => void;
 }) {
+  const changePasswordHref =
+    locale === "en" ? "/en/auth/change-password" : "/auth/change-password";
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +141,14 @@ function UserMenu({
               </p>
             )}
           </div>
+          <Link
+            role="menuitem"
+            to={changePasswordHref}
+            onClick={() => setOpen(false)}
+            className="block w-full rounded-control px-3 py-2 text-start text-xs font-semibold text-surface-700 transition-colors duration-fast hover:bg-surface-50"
+          >
+            {locale === "he" ? "שינוי סיסמה" : "Change password"}
+          </Link>
           <button
             type="button"
             role="menuitem"
@@ -549,6 +561,22 @@ export default function App() {
         <Route
           path="/en/auth/set-password"
           element={<SetPasswordPage locale="en" />}
+        />
+        <Route
+          path="/auth/forgot-password"
+          element={<ForgotPasswordPage locale="he" />}
+        />
+        <Route
+          path="/en/auth/forgot-password"
+          element={<ForgotPasswordPage locale="en" />}
+        />
+        <Route
+          path="/auth/change-password"
+          element={<ChangePasswordPage locale="he" />}
+        />
+        <Route
+          path="/en/auth/change-password"
+          element={<ChangePasswordPage locale="en" />}
         />
         <Route path="/admin" element={<AdminPage locale="he" />} />
         <Route path="/en/admin" element={<AdminPage locale="en" />} />

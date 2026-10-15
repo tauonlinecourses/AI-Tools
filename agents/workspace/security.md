@@ -28,6 +28,8 @@ Hub login → Course-Builder Auth JWT
 
 Admin invite → invite email (or copyable action link) → /auth/set-password → approved user
 Self-register → pending profile → admin approve (+ groups) → approved user
+Forgot password → recovery email → /auth/set-password → update password
+Signed-in change password → verify current → update password
 ```
 
 ## Invite + self-register
@@ -37,12 +39,21 @@ Self-register → pending profile → admin approve (+ groups) → approved user
 | **Admin invite** | Admin enters work email + groups → **Create user** (`generateLink`, approved + memberships, no email yet) → same modal shows user details + shareable link (copy) + optional **Send invite email** (`sendInviteEmail` re-invites via delete + `inviteUserByEmail`) → invitee opens `/auth/set-password` | Built-in Auth email ~2/hour — prefer copy link or attach **custom SMTP** for volume |
 | **Self-register** | Login → Create account → email + password + group (not Admin) → `status=pending` → pending screen until admin **Approve** (confirm/change groups) or **Reject** | **No** Auth confirmation email; admin approval is the trust gate |
 
+## Forgot + change password
+
+| Flow | How | Email |
+|---|---|---|
+| **Forgot password** | Login → **Forgot password?** → `/auth/forgot-password` → `resetPasswordForEmail` with `redirectTo` = hub `/auth/set-password` → user opens recovery link → same `SetPasswordPage` (recovery copy via `PASSWORD_RECOVERY` / `type=recovery`) → `updatePlatformPassword` | Same Auth email limits as invites — prefer **custom SMTP** for volume. UI always shows a neutral “if an account exists…” success to avoid email enumeration. |
+| **Change password** | Signed-in user menu → **Change password** / **שינוי סיסמה** → `/auth/change-password` → verify current password (`signInWithPassword`) → `updatePlatformPassword` | None |
+
+Helpers live in `@workspace/auth`: `resetPlatformPasswordForEmail`, `verifyPlatformPassword`, `updatePlatformPassword`.
+
 Supabase Auth URL config (Course-Builder project → Authentication → URL configuration):
 
 - **Site URL** should be the hub (local: `http://localhost:5173`, prod: hub Vercel URL) — not `localhost:3000`.
-- **Redirect URLs** must allow `http://localhost:5173/auth/set-password` and the prod `https://<hub>/auth/set-password`. If a redirect is not allowlisted, Supabase falls back to Site URL and the invite `redirect_to` will look wrong (e.g. `http://localhost:3000` with no `/auth/set-password`).
+- **Redirect URLs** must allow `http://localhost:5173/auth/set-password` and the prod `https://<hub>/auth/set-password`. Invite **and** password-recovery emails reuse this path. If a redirect is not allowlisted, Supabase falls back to Site URL and the invite/`redirect_to` will look wrong (e.g. `http://localhost:3000` with no `/auth/set-password`).
 
-Invite APIs pass `redirectTo` from the browser (`window.location.origin + /auth/set-password`).
+Invite and forgot-password APIs pass `redirectTo` from the browser (`window.location.origin + /auth/set-password`).
 
 ## Threat findings addressed
 
@@ -113,4 +124,3 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 - Dedicated Platform Supabase project after Pro (transfer Auth schema)
 - Custom parent domain for cookie SSO (replace handoff)
-- Forgot / change password (can reuse `/auth/set-password`)

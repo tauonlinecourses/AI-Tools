@@ -1,49 +1,91 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Input, Spinner } from "@workspace/ui";
-import { updatePlatformPassword } from "@workspace/auth/client";
+import {
+  getPlatformClient,
+  isPlatformConfigured,
+  updatePlatformPassword,
+} from "@workspace/auth/client";
 import { usePlatformAuth } from "@workspace/auth/react";
 import type { Locale } from "../i18n";
 import { SoftPageBg } from "./SoftPageBg";
 
+function detectRecoveryFromUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  const hash = window.location.hash.replace(/^#/, "");
+  const search = window.location.search.replace(/^\?/, "");
+  const params = new URLSearchParams(hash || search);
+  const type = params.get("type");
+  return type === "recovery";
+}
+
 export function SetPasswordPage({ locale }: { locale: Locale }) {
   const homeHref = locale === "en" ? "/en" : "/";
   const navigate = useNavigate();
-  const { loading, session, accountStatus } = usePlatformAuth();
+  const { loading, session } = usePlatformAuth();
+  const [isRecovery, setIsRecovery] = useState(() => detectRecoveryFromUrl());
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  const t =
+  const inviteCopy =
     locale === "he"
       ? {
           title: "הגדרת סיסמה",
           subtitle: "בחר סיסמה להתחברות לפלטפורמה",
+          waiting: "ממתין לקישור ההזמנה…",
+          noSession:
+            "פתח את הקישור מהמייל (או מהקישור שהמנהל שלח) כדי להגדיר סיסמה.",
+        }
+      : {
+          title: "Set password",
+          subtitle: "Choose a password to sign in to the platform",
+          waiting: "Waiting for invite link…",
+          noSession:
+            "Open the link from your invite email (or the link your admin shared) to set a password.",
+        };
+
+  const recoveryCopy =
+    locale === "he"
+      ? {
+          title: "איפוס סיסמה",
+          subtitle: "בחר סיסמה חדשה להתחברות לפלטפורמה",
+          waiting: "ממתין לקישור האיפוס…",
+          noSession:
+            "פתח את הקישור ממייל שחזור הסיסמה כדי לבחור סיסמה חדשה.",
+        }
+      : {
+          title: "Reset password",
+          subtitle: "Choose a new password to sign in to the platform",
+          waiting: "Waiting for reset link…",
+          noSession:
+            "Open the link from your password reset email to choose a new password.",
+        };
+
+  const mode = isRecovery ? recoveryCopy : inviteCopy;
+
+  const t =
+    locale === "he"
+      ? {
+          ...mode,
           password: "סיסמה חדשה",
           confirm: "אימות סיסמה",
           submit: "שמירת סיסמה",
           mismatch: "הסיסמאות אינן תואמות",
           short: "הסיסמה חייבת להכיל לפחות 6 תווים",
-          waiting: "ממתין לקישור ההזמנה…",
-          noSession:
-            "פתח את הקישור מהמייל (או מהקישור שהמנהל שלח) כדי להגדיר סיסמה.",
           success: "הסיסמה נשמרה. אפשר להמשיך לפלטפורמה.",
           continue: "המשך",
           back: "חזרה להתחברות",
         }
       : {
-          title: "Set password",
-          subtitle: "Choose a password to sign in to the platform",
+          ...mode,
           password: "New password",
           confirm: "Confirm password",
           submit: "Save password",
           mismatch: "Passwords do not match",
           short: "Password must be at least 6 characters",
-          waiting: "Waiting for invite link…",
-          noSession:
-            "Open the link from your invite email (or the link your admin shared) to set a password.",
           success: "Password saved. You can continue to the platform.",
           continue: "Continue",
           back: "Back to sign in",
@@ -54,6 +96,24 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
     document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
     document.title = t.title;
   }, [locale, t.title]);
+
+  useEffect(() => {
+    if (detectRecoveryFromUrl()) {
+      setIsRecovery(true);
+    }
+    if (!isPlatformConfigured()) return;
+    const client = getPlatformClient();
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecovery(true);
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -101,16 +161,7 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           />
           <p className="mt-4 text-sm text-surface-700">{t.success}</p>
           <div className="mt-5 flex justify-center">
-            <Button
-              type="button"
-              onClick={() => {
-                if (accountStatus === "approved" || !accountStatus) {
-                  navigate(homeHref);
-                } else {
-                  navigate(homeHref);
-                }
-              }}
-            >
+            <Button type="button" onClick={() => navigate(homeHref)}>
               {t.continue}
             </Button>
           </div>
