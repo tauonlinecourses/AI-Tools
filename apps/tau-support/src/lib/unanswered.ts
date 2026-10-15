@@ -1,5 +1,5 @@
-import type { ForumComment, ForumThread } from "./types";
-import type { StoredThreadEntry } from "./threadStore";
+import type { ForumComment, ForumThread } from "./types.js";
+import type { StoredThreadEntry } from "./threadStore.js";
 
 const STAFF_LABEL_PATTERNS = [
   /\bstaff\b/i,

@@ -3,8 +3,8 @@
  * Rebuilds ForumThread + comment forests from `threads` + `messages`.
  */
 
-import { sanitizeCommentForest } from "./commentTree";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { sanitizeCommentForest } from "./commentTree.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 import {
   MAX_THREADS_PER_COURSE,
   activityTimestampMs,
@@ -12,9 +12,9 @@ import {
   type CourseThreadBucket,
   type StoredThreadEntry,
   type ThreadStore,
-} from "./threadStore";
-import type { ForumComment, ForumThread } from "./types";
-import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered";
+} from "./threadStore.js";
+import type { ForumComment, ForumThread } from "./types.js";
+import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered.js";
 
 export interface HydrateResult {
   ok: boolean;
@@ -380,7 +380,7 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
   }
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<HydrateResult>("hydrate");
     } catch (err) {
       return {

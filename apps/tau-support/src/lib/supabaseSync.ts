@@ -19,12 +19,12 @@
 import {
   threadActivityAt,
   type StoredThreadEntry,
-} from "./threadStore";
-import { findCourseById } from "./courses";
-import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing";
-import { isSupabaseConfigured, supabase } from "./supabase";
-import type { ForumThread } from "./types";
-import { isStaffAuthor } from "./unanswered";
+} from "./threadStore.js";
+import { findCourseById } from "./courses.js";
+import { buildQaPair, flattenComments, hashContent, toPlainText } from "./qaPairing.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
+import type { ForumThread } from "./types.js";
+import { isStaffAuthor } from "./unanswered.js";
 
 export interface SyncResult {
   ok: boolean;
@@ -290,7 +290,7 @@ export async function syncThreadUiStateToSupabase(
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<SyncResult>("syncThreadUiState", {
         threadId,
         ui,
@@ -367,7 +367,7 @@ export async function syncCourseThreadsToSupabase(
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<SyncResult>("syncCourseThreads", {
         courseId,
         entries,

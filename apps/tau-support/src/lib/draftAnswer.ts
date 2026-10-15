@@ -10,9 +10,9 @@
  */
 
 import { aiChat } from "@workspace/ai-client/client";
-import { infoDocBodyPlainText } from "./infoDocHtml";
-import { findSimilarQa, threadQuestionText, type SimilarQaHit } from "./kbSearch";
-import type { ForumThread } from "./types";
+import { infoDocBodyPlainText } from "./infoDocHtml.js";
+import { findSimilarQa, threadQuestionText, type SimilarQaHit } from "./kbSearch.js";
+import type { ForumThread } from "./types.js";
 
 /** Minimum top-hit cosine similarity required to attempt a draft. */
 export const DRAFT_MIN_SIMILARITY = 0.45;

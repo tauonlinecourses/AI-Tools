@@ -4,7 +4,7 @@
  * suitable for markdown `![](url)` insertion into the topic body.
  */
 
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 
 export const INFO_DOC_IMAGES_BUCKET = "info-doc-images";
 
@@ -74,7 +74,7 @@ export async function uploadPastedImage(
   if (typeof window !== "undefined") {
     try {
       const base64 = await blobToBase64(blob);
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<UploadPastedImageResult>("uploadPastedImage", {
         base64,
         mime,

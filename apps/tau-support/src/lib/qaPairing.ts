@@ -8,8 +8,8 @@
  * unit-tested and reused by the Supabase sync.
  */
 
-import type { ForumComment, ForumThread } from "./types";
-import { isStaffAuthor } from "./unanswered";
+import type { ForumComment, ForumThread } from "./types.js";
+import { isStaffAuthor } from "./unanswered.js";
 
 export type AnswerSelection = "endorsed" | "first_staff";
 

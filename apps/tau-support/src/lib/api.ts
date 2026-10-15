@@ -2,7 +2,7 @@ import { authFetch } from "@workspace/auth/client";
 import type {
   ForumThreadsResponse,
   KnownThreadSnapshot,
-} from "./types";
+} from "./types.js";
 
 export interface LmsSessionCredentials {
   csrfToken: string;

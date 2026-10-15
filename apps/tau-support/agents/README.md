@@ -615,6 +615,10 @@ dynamic `import("../server/tauDataHandler.js")`). Statically importing the full
 `src/lib` graph at module load pulled React via `@workspace/ai-client/client`
 and caused Vercel `FUNCTION_INVOCATION_FAILED` before the handler ran.
 
+Relative imports under `src/lib/` that the BFF loads must use explicit `.js`
+extensions (NodeNext on Vercel). Extensionless paths work in Vite but fail at
+runtime with `Cannot find module '.../commentTree'`.
+
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,

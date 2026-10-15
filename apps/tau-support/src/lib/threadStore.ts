@@ -5,13 +5,13 @@
  * and survives when Supabase env is missing.
  */
 
-import { countCommentsInForest } from "./commentTree";
-import type { ForumThread, KnownThreadSnapshot } from "./types";
+import { countCommentsInForest } from "./commentTree.js";
+import type { ForumThread, KnownThreadSnapshot } from "./types.js";
 import {
   markCommentAsStaffInForest,
   preserveStaffAuthorLabels,
   sanitizeCommentForest,
-} from "./commentTree";
+} from "./commentTree.js";
 
 export const THREAD_STORE_KEY = "tau-support-thread-store-v1";
 export const THREAD_STORE_VERSION = 1;

@@ -3,8 +3,8 @@
  * and Vercel share the same "העדכון האחרון היה ב" timestamp.
  */
 
-import type { LastCheckAllRun } from "./checkAllRun";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import type { LastCheckAllRun } from "./checkAllRun.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 
 const SINGLETON_ID = "singleton";
 
@@ -43,7 +43,7 @@ export async function syncLastCheckAllToSupabase(
   }
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<LastCheckAllSyncResult>("syncLastCheckAll", run);
     } catch (err) {
       return {
@@ -78,7 +78,7 @@ export async function hydrateLastCheckAllFromSupabase(): Promise<LastCheckAllSyn
   }
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<LastCheckAllSyncResult>("hydrateLastCheckAll");
     } catch (err) {
       return {

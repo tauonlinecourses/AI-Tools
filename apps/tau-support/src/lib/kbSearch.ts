@@ -6,12 +6,12 @@
  * a naive blank-line split of kb_chunks.content (questions are title\\n\\nbody).
  */
 
-import { embedTexts } from "./embedClient";
-import { parseInfoDocIdFromSourceId } from "./infoDocEmbed";
-import { toPlainText } from "./qaPairing";
-import { rewriteQuestionForRetrieval } from "./rewriteRetrievalQuery";
-import { isSupabaseConfigured, supabase } from "./supabase";
-import type { ForumThread } from "./types";
+import { embedTexts } from "./embedClient.js";
+import { parseInfoDocIdFromSourceId } from "./infoDocEmbed.js";
+import { toPlainText } from "./qaPairing.js";
+import { rewriteQuestionForRetrieval } from "./rewriteRetrievalQuery.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
+import type { ForumThread } from "./types.js";
 
 /** Half-life (days) for exponential recency decay after cosine retrieval. */
 export const RECENCY_HALF_LIFE_DAYS = 180;
@@ -467,7 +467,7 @@ export async function findSimilarQa(
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<SimilarQaResult>("findSimilarQa", {
         questionText,
         opts,

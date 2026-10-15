@@ -3,8 +3,8 @@
  * Idempotent via content_hash — only (re)embeds when missing or changed.
  */
 
-import { embedTexts } from "./embedClient";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { embedTexts } from "./embedClient.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 
 const SOURCE_TYPE = "qa_pair" as const;
 /** Keep in sync with server/embedCore EMBED_MAX_BATCH. */
@@ -166,7 +166,7 @@ export async function embedQaPairsForCourse(
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<KbEmbedResult>("embedQaPairsForCourse", { courseId });
     } catch (err) {
       return {
@@ -203,7 +203,7 @@ export async function embedAllPendingQaPairs(): Promise<KbEmbedResult> {
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<KbEmbedResult>("embedAllPendingQaPairs");
     } catch (err) {
       return {
@@ -243,7 +243,7 @@ export async function countPendingEmbeddings(): Promise<{
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData("countPendingEmbeddings");
     } catch (err) {
       return {

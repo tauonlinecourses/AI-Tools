@@ -4,9 +4,9 @@
  * Retrieval embeds common_questions (question-shaped); display uses title+body.
  */
 
-import { detectLang, hashContent } from "./qaPairing";
-import { infoDocBodyPlainText } from "./infoDocHtml";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { detectLang, hashContent } from "./qaPairing.js";
+import { infoDocBodyPlainText } from "./infoDocHtml.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 
 export interface InfoDoc {
   id: string;
@@ -95,7 +95,7 @@ export async function listInfoDocs(): Promise<InfoDocListResult> {
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<InfoDocListResult>("listInfoDocs");
     } catch (err) {
       return {
@@ -133,7 +133,7 @@ export async function createInfoDoc(input: {
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<InfoDocWriteResult>("createInfoDoc", input);
     } catch (err) {
       return {
@@ -203,7 +203,7 @@ export async function updateInfoDoc(
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<InfoDocWriteResult>("updateInfoDoc", { id, input });
     } catch (err) {
       return {
@@ -257,7 +257,7 @@ export async function deleteInfoDoc(id: string): Promise<{
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData("deleteInfoDoc", { id });
     } catch (err) {
       return {
@@ -312,7 +312,7 @@ export async function reorderInfoDocs(orderedIds: string[]): Promise<{
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData("reorderInfoDocs", { orderedIds });
     } catch (err) {
       return {

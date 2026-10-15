@@ -7,9 +7,9 @@
  * Idempotent via content_hash on the parent doc.
  */
 
-import { embedTexts } from "./embedClient";
-import { normalizeCommonQuestions } from "./infoDocs";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { embedTexts } from "./embedClient.js";
+import { normalizeCommonQuestions } from "./infoDocs.js";
+import { isSupabaseConfigured, supabase } from "./supabase.js";
 
 const SOURCE_TYPE = "info_doc" as const;
 /** Keep in sync with server/embedCore EMBED_MAX_BATCH. */
@@ -191,7 +191,7 @@ export async function embedInfoDocs(): Promise<InfoDocEmbedResult> {
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData<InfoDocEmbedResult>("embedInfoDocs");
     } catch (err) {
       return {
@@ -231,7 +231,7 @@ export async function countPendingInfoDocEmbeddings(): Promise<{
   if (!isSupabaseConfigured) return { ok: false, skipped: true };
   if (typeof window !== "undefined") {
     try {
-      const { tauData } = await import("./tauDataClient");
+      const { tauData } = await import("./tauDataClient.js");
       return await tauData("countPendingInfoDocEmbeddings");
     } catch (err) {
       return {

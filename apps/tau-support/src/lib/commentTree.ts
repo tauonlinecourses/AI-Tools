@@ -1,5 +1,5 @@
-import type { ForumComment } from "./types";
-import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered";
+import type { ForumComment } from "./types.js";
+import { ensureStaffAuthorLabel, isStaffAuthor } from "./unanswered.js";
 
 /**
  * Fingerprint of visible comment content. Used to drop API echoes where the

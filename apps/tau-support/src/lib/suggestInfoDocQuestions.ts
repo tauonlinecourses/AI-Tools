@@ -7,9 +7,9 @@
  */
 
 import { aiChat } from "@workspace/ai-client/client";
-import { infoDocBodyPlainText } from "./infoDocHtml";
-import { normalizeCommonQuestions } from "./infoDocs";
-import { findSimilarQa } from "./kbSearch";
+import { infoDocBodyPlainText } from "./infoDocHtml.js";
+import { normalizeCommonQuestions } from "./infoDocs.js";
+import { findSimilarQa } from "./kbSearch.js";
 
 export const SUGGEST_QUESTIONS_COUNT = 5;
 /** How many past forum questions to feed as phrasing inspiration. */

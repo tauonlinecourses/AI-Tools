@@ -2,7 +2,7 @@
  * Check-all run helpers: course list, cursor, tab lock, and error classification.
  */
 
-import type { CourseEntry } from "./courses";
+import type { CourseEntry } from "./courses.js";
 
 export const CHECK_ALL_GAP_MS = 3000;
 export const CHECK_ALL_CURSOR_KEY = "tau-support-check-all-cursor";
