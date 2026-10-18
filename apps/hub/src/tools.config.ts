@@ -94,6 +94,16 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Education",
   },
+  {
+    id:          "virtual-support",
+    name:        "Virtual Support",
+    description: "Organization knowledge base with grounded Q&A over staff documents.",
+    url:         "https://ai-tools-virtual-support.vercel.app",
+    devUrl:      "http://localhost:5179",
+    icon:        "library",
+    status:      "beta",
+    category:    "Education",
+  },
 ];
 
 export const categories = [...new Set(tools.map((t) => t.category))];

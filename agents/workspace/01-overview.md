@@ -85,12 +85,22 @@ workspace/
 │   │                                   react-router SPA + supabase-js (VITE_SUPABASE_* env) + dnd-kit.
 │   │                                   SPA rewrite in vercel.json for deep links.
 │   │
-│   └── mbz-explorer/               ← MBZ Explorer (hub-hosted at /mbz-explorer; no separate Vercel)
-│       ├── agents/                 ← Per-tool agent docs
-│       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
-│       └── …                       Local Vite port 5177
+│   ├── mbz-explorer/               ← MBZ Explorer (hub-hosted at /mbz-explorer; no separate Vercel)
+│   │   ├── agents/                 ← Per-tool agent docs
+│   │   ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
+│   │   └── …                       Local Vite port 5177
+│   │
+│   ├── tau-support/                ← TAU Support (hub id: tau-support; port 5178)
+│   │   └── …                       Own Supabase + Vercel; forum + info-docs RAG
+│   │
+│   └── virtual-support/            ← Virtual Support (hub id: virtual-support; port 5179)
+│       ├── agents/README.md
+│       ├── api/{chat,data,ask}.ts  ← Platform-auth BFF; Ask is server-side RAG
+│       ├── server/                 ← dataHandler, askHandler, embedCore, chunking
+│       ├── supabase/migrations/001_init.sql
+│       └── …                       Own Supabase + Vercel; folders + docs + Ask
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · virtual-support 5179
 │   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`
 │
 ├── packages/

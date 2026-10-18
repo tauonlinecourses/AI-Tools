@@ -32,6 +32,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "course-builder": { he: "פיתוח קורסים", en: "Course Builder" },
   "mbz-explorer": { he: "ניתוח MBZ", en: "MBZ Explorer" },
   "tau-support": { he: "תמיכה טכנית", en: "TAU Support" },
+  "virtual-support": { he: "תמיכה וירטואלית", en: "Virtual Support" },
 };
 
 type Tab = "users" | "groups";

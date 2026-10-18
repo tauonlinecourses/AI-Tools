@@ -75,6 +75,22 @@ function isAllowedToolId(value: string): boolean {
   return (PLATFORM_TOOL_IDS as readonly string[]).includes(value);
 }
 
+/** Map PostgREST / Postgres errors to AuthError when we know the cause. */
+function throwDbError(error: { code?: string; message?: string }): never {
+  const code = error.code ?? "";
+  const message = error.message?.trim() || "Database request failed";
+  if (code === "23505") {
+    throw new AuthError("A team with this slug already exists", 409);
+  }
+  if (code === "23514" && message.includes("group_tools_tool_id_check")) {
+    throw new AuthError(
+      "Tool not allowed in database yet — run migration 012_virtual_support_tool.sql on the platform Supabase project",
+      400
+    );
+  }
+  throw new AuthError(message, 500);
+}
+
 function slugify(raw: string): string {
   return raw
     .trim()
@@ -229,18 +245,13 @@ export async function createAdminGroup(input: {
     })
     .select("id, name, slug, description")
     .single();
-  if (error) {
-    if (error.code === "23505") {
-      throw new AuthError("A team with this slug already exists", 409);
-    }
-    throw error;
-  }
+  if (error) throwDbError(error);
 
   if (toolIds.length > 0) {
     const { error: toolsErr } = await admin.from("group_tools").insert(
       toolIds.map((tool_id) => ({ group_id: group.id, tool_id }))
     );
-    if (toolsErr) throw toolsErr;
+    if (toolsErr) throwDbError(toolsErr);
   }
 
   return {
@@ -290,24 +301,19 @@ export async function updateAdminGroup(input: {
     .eq("id", id)
     .select("id, name, slug, description")
     .single();
-  if (error) {
-    if (error.code === "23505") {
-      throw new AuthError("A team with this slug already exists", 409);
-    }
-    throw error;
-  }
+  if (error) throwDbError(error);
 
   const { error: delErr } = await admin
     .from("group_tools")
     .delete()
     .eq("group_id", id);
-  if (delErr) throw delErr;
+  if (delErr) throwDbError(delErr);
 
   if (toolIds.length > 0) {
     const { error: toolsErr } = await admin.from("group_tools").insert(
       toolIds.map((tool_id) => ({ group_id: id, tool_id }))
     );
-    if (toolsErr) throw toolsErr;
+    if (toolsErr) throwDbError(toolsErr);
   }
 
   const { count, error: countErr } = await admin

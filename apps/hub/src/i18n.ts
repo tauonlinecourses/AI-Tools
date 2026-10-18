@@ -61,6 +61,10 @@ export const toolCopy: Record<
     name:        "תמיכה טכנית - קמפוס IL",
     description: "ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
   },
+  "virtual-support": {
+    name:        "תמיכה וירטואלית",
+    description: "מאגר ידע ארגוני של מחלקת התמיכה ושאלות מבוססות מסמכים",
+  },
 };
 
 export function localizeCategory(locale: Locale, category: string): string {

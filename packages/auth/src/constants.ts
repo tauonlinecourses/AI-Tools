@@ -7,6 +7,7 @@ export const PLATFORM_TOOL_IDS = [
   "course-builder",
   "mbz-explorer",
   "tau-support",
+  "virtual-support",
   "tool-starter",
 ] as const;
 

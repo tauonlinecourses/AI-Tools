@@ -14,6 +14,7 @@ Live prod hosts (from hub `tools.config.ts`):
 | Video Curator | `https://ai-tools-video-curator.vercel.app` |
 | Course Builder | `https://ai-tools-course-builder.vercel.app` |
 | Tau Support | `https://ai-tools-tau-support.vercel.app` |
+| Virtual Support | `https://ai-tools-virtual-support.vercel.app` |
 | MBZ Explorer | Hub path `/mbz-explorer` (same origin as hub) |
 
 ---
@@ -43,7 +44,7 @@ Invite and password-recovery emails both use `/auth/set-password`.
 
 ### A3. Vercel Shared env (all four live projects)
 
-For **hub**, **video-curator**, **course-builder**, **tau-support**:
+For **hub**, **video-curator**, **course-builder**, **tau-support**, **virtual-support**:
 
 | Variable | Projects | Notes |
 |---|---|---|

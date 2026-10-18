@@ -15,8 +15,9 @@
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
-- Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data) require a Platform Bearer token and (where applicable) group tool access.
-- **Tau local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local `/api/tau-data` uses `server/tauDataHandler.ts` via `server.ssrLoadModule`.
+- **Virtual-Support data**: dedicated Supabase project; RLS on with no anon/authenticated policies. The BFF `/api/data` and `/api/ask` verify the Course-Builder JWT + `virtual-support` entitlement, then use `VS_SUPABASE_SERVICE_ROLE_KEY`.
+- Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data, virtual-support data/ask) require a Platform Bearer token and (where applicable) group tool access.
+- **Tau / Virtual Support local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local data/ask routes use `server.ssrLoadModule`.
 - **Vercel APIs**: `@workspace/auth/server` resolves to a **CJS `dist/` build** (`pnpm --filter @workspace/auth build`). Each app `vercel.json` builds auth (then ai-client) before the app so handoff/chat serverless functions do not crash on raw `.ts` imports.
 
 ```text
@@ -78,16 +79,18 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 | `VITE_PLATFORM_SUPABASE_URL` / `ANON_KEY` | Hub + every tool (browser) | Course-Builder project — **required**; do not rely on `VITE_SUPABASE_*` fallback |
 | `VITE_SUPABASE_*` (course-builder) | Course-Builder app | Same project as Platform (also set `VITE_PLATFORM_*`) |
 | `VITE_SUPABASE_*` (tau-support) | Tau browser | Data project URL only; never use as Platform Auth |
-| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` | Hub (+ tau server) | Course-Builder service_role for handoff codes / group checks |
+| `VITE_SUPABASE_*` (virtual-support) | VS browser | Data project URL only; never use as Platform Auth |
+| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` | Hub (+ tau / VS server) | Course-Builder service_role for handoff codes / group checks |
 | `TAU_SUPABASE_SERVICE_ROLE_KEY` | Tau server only | Never `VITE_` |
+| `VS_SUPABASE_URL` / `VS_SUPABASE_SERVICE_ROLE_KEY` | Virtual Support server only | Never `VITE_` for the service role |
 | `OPENAI_API_KEY` | Server only | Never `VITE_` |
 
 ## Permission groups (Course-Builder `groups` / `group_tools`)
 
 | Name | Slug | Tools | Notes |
 |---|---|---|---|
-| Admin | `Admin (all tools)` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
-| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
+| Admin | `Admin (all tools)` | `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
+| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder`, `virtual-support` | |
 
 Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` / hub `platformAuth.ts`.
 
@@ -121,8 +124,9 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`)
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_virtual_support_tool.sql` (**must be applied** on platform project `qpctlsahnyarmrmeplpl`: extends `group_tools_tool_id_check` with `virtual-support` and grants it to Admin / learning-systems; without this, hub admin create/edit group fails when that tool is selected)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
+- Virtual-Support: `001_init.sql` (folders, documents, doc_chunks, match RPC, doc-images bucket; RLS locked)
 
 ## Access-control audit (what blocks unauthenticated / unauthorized use)
 
