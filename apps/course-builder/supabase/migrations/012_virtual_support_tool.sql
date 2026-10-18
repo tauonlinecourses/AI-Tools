@@ -15,10 +15,15 @@ alter table public.group_tools
     )
   );
 
--- Grant to admin / transitional all-staff / learning-systems (slug may be either
--- historical `all-staff` or renamed `Admin (all tools)`).
+-- Grant to admin / transitional all-staff / learning-systems (slug may be
+-- historical `all-staff`, legacy `Admin (all tools)`, or canonical `admin-all-tools`).
 insert into public.group_tools (group_id, tool_id)
 select g.id, 'virtual-support'
 from public.groups g
-where g.slug in ('all-staff', 'Admin (all tools)', 'learning-systems-team')
+where g.slug in (
+  'all-staff',
+  'Admin (all tools)',
+  'admin-all-tools',
+  'learning-systems-team'
+)
 on conflict do nothing;

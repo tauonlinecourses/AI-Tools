@@ -60,8 +60,20 @@ export function serviceClient() {
   });
 }
 
-/** Slug of the Admin group — members may use the hub admin UI/API. */
-export const ADMIN_GROUP_SLUG = "Admin (all tools)";
+/**
+ * Canonical Admin group slug — members may use the hub admin UI/API.
+ * Legacy `"Admin (all tools)"` is still accepted (see `isAdminGroupSlug`).
+ */
+export const ADMIN_GROUP_SLUG = "admin-all-tools";
+export const ADMIN_GROUP_SLUG_LEGACY = "Admin (all tools)";
+export const ADMIN_GROUP_SLUGS = [
+  ADMIN_GROUP_SLUG,
+  ADMIN_GROUP_SLUG_LEGACY,
+] as const;
+
+export function isAdminGroupSlug(slug: string): boolean {
+  return (ADMIN_GROUP_SLUGS as readonly string[]).includes(slug);
+}
 
 export const PLATFORM_TOOL_IDS = [
   "video-curator",
@@ -77,7 +89,7 @@ export async function assertUserIsAdmin(userId: string): Promise<void> {
     .from("group_members")
     .select("group_id, groups!inner(slug)")
     .eq("user_id", userId)
-    .eq("groups.slug", ADMIN_GROUP_SLUG)
+    .in("groups.slug", [...ADMIN_GROUP_SLUGS])
     .limit(1);
   if (error) throw error;
   if (!data?.length) {

@@ -157,8 +157,11 @@ export async function verifyPlatformPassword(
 
 export {
   ADMIN_GROUP_SLUG,
+  ADMIN_GROUP_SLUG_LEGACY,
+  ADMIN_GROUP_SLUGS,
   PLATFORM_TOOL_IDS,
   isAdminFromGroups,
+  isAdminGroupSlug,
   isPlatformToolId,
 } from "./constants.js";
 export type { PlatformToolId } from "./constants.js";

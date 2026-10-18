@@ -4,6 +4,7 @@
 import {
   ADMIN_GROUP_SLUG,
   AuthError,
+  isAdminGroupSlug,
   PLATFORM_TOOL_IDS,
   serviceClient,
 } from "./platformAuth";
@@ -273,15 +274,8 @@ export async function updateAdminGroup(input: {
 }): Promise<AdminGroupRow> {
   const id = input.id.trim();
   const name = input.name.trim();
-  const slug = slugify(input.slug);
   if (!id) throw new AuthError("Team id is required", 400);
   if (!name) throw new AuthError("Team name is required", 400);
-  if (!slug) {
-    throw new AuthError(
-      "Slug is required (use Latin letters for Hebrew team names)",
-      400
-    );
-  }
 
   const toolIds = [...new Set(input.toolIds.map((t) => t.trim()).filter(Boolean))];
   for (const tid of toolIds) {
@@ -291,6 +285,28 @@ export async function updateAdminGroup(input: {
   }
 
   const admin = serviceClient();
+  const { data: existing, error: existingErr } = await admin
+    .from("groups")
+    .select("slug")
+    .eq("id", id)
+    .maybeSingle();
+  if (existingErr) throw existingErr;
+  if (!existing) throw new AuthError("Team not found", 404);
+
+  // Editing Admin via the UI used to run slugify("Admin (all tools)") →
+  // "admin-all-tools", which broke isAdmin until we recognized both forms.
+  // Keep the admin team's slug pinned to the canonical value.
+  const existingSlug = String(existing.slug);
+  const slug = isAdminGroupSlug(existingSlug)
+    ? ADMIN_GROUP_SLUG
+    : slugify(input.slug);
+  if (!slug) {
+    throw new AuthError(
+      "Slug is required (use Latin letters for Hebrew team names)",
+      400
+    );
+  }
+
   const { data: group, error } = await admin
     .from("groups")
     .update({
@@ -742,7 +758,7 @@ export async function listPublicGroups(): Promise<AdminGroupSummary[]> {
     .order("name");
   if (error) throw error;
   return (data ?? [])
-    .filter((g) => String(g.slug) !== ADMIN_GROUP_SLUG)
+    .filter((g) => !isAdminGroupSlug(String(g.slug)))
     .map((g) => ({
       id: String(g.id),
       name: String(g.name),
@@ -777,7 +793,7 @@ export async function registerPendingUser(input: {
     .maybeSingle();
   if (gErr) throw gErr;
   if (!group) throw new AuthError("Team not found", 400);
-  if (String(group.slug) === ADMIN_GROUP_SLUG) {
+  if (isAdminGroupSlug(String(group.slug))) {
     throw new AuthError("Cannot self-register into the Admin team", 400);
   }
 
