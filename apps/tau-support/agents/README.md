@@ -133,8 +133,12 @@ platform.
   answer + sources list.
 - `../server/embedCore.ts` — OpenAI `text-embedding-3-small` (1536 dims).
 - `../api/embed.ts` — Vercel `POST /api/embed` (also wired in Vite middleware).
-- `../api/chat.ts` — Vercel re-export of `@workspace/ai-client/vercel`
-  (`POST /api/chat`). Local Vite middleware mounts the same Web `handler`
+- `../api/chat.ts` — Vercel `POST /api/chat` (Platform Auth, then
+  `@workspace/ai-client/vercel`). Unwraps a CJS default-import quirk under
+  `"type": "module"` (`{ default: fn }` vs `fn`) that caused
+  `FUNCTION_INVOCATION_FAILED` after auth when generating drafts. Package entry
+  is `vercel.cjs` for the same reason. Local Vite middleware mounts the same Web
+  `handler`
   from `@workspace/ai-client/server` (restart `pnpm dev` after Vite config
   changes).
 - `../src/lib/supabase.ts` — Optional browser client for the **dedicated**

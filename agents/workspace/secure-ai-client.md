@@ -251,8 +251,11 @@ calls it as the default export. `@workspace/ai-client/vercel` bridges Vercel's N
 > **3. The Node serverless runtime cannot import raw `.ts` from `node_modules`.** Vercel only
 > compiles app-local files; it treats `node_modules` as pre-compiled JS. So `@workspace/ai-client`
 > must ship **compiled JS** for anything the serverless function imports. The `./vercel` export
-> therefore resolves to `./dist/vercel.js` (built by `pnpm --filter @workspace/ai-client build`),
-> while `types` still points at `./src/vercel.ts` for editor/type-check convenience.
+> resolves to `./vercel.cjs` (wraps `./dist/vercel.js` from
+> `pnpm --filter @workspace/ai-client build`). Plain `exports.default = fn` breaks Node ESM
+> default-import in `"type": "module"` apps (handler becomes `{ default: fn }` →
+> `FUNCTION_INVOCATION_FAILED` after auth). `vercel.cjs` exports the function as
+> `module.exports`. `types` still points at `./src/vercel.ts` for editor/type-check convenience.
 >
 > **4. Workspace deps must use the `workspace:*` protocol, not `file:`.** With `file:`, pnpm
 > copies a snapshot of the package into its store at install time (source only) — the `dist`

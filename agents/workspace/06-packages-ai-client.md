@@ -28,9 +28,13 @@ the `useAI` hook.
 **Build step:** `tsc -p tsconfig.build.json` compiles `src/server.ts` + `src/vercel.ts` →
 `dist/*.js` (+ `.d.ts`). Browser `client.ts` stays source-only (Vite) so the CommonJS build
 does not need to resolve `@workspace/auth/client` package exports.
-The `./vercel` export's `default` points at `./dist/vercel.js` because the Vercel Node
-serverless runtime cannot import raw `.ts` from `node_modules` (it only compiles app-local
-files). Its `types` stays on `./src/vercel.ts` so apps can type-check without a prior build.
+The `./vercel` export's `default` points at **`./vercel.cjs`** (a thin wrapper around
+`./dist/vercel.js`). Vercel Node cannot import raw `.ts` from `node_modules`, and Node ESM
+(`"type": "module"` apps) does not unwrap `exports.default = fn` — a static
+`import handler from '@workspace/ai-client/vercel'` would receive `{ default: fn }` and
+calling it after auth crashes with `FUNCTION_INVOCATION_FAILED`. `vercel.cjs` sets
+`module.exports = fn` so the default import is the function. Its `types` stay on
+`./src/vercel.ts` for editor/type-check convenience.
 `.`/`./client`/`./server` stay on source because they're only consumed by Vite (which
 compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled).
 
@@ -51,7 +55,7 @@ compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled)
     ".":        { "types": "./src/index.ts",  "default": "./src/index.ts" },
     "./client": { "types": "./src/client.ts", "default": "./src/client.ts" },
     "./server": { "types": "./src/server.ts", "default": "./src/server.ts" },
-    "./vercel": { "types": "./src/vercel.ts", "default": "./dist/vercel.js" }
+    "./vercel": { "types": "./src/vercel.ts", "default": "./vercel.cjs" }
   },
   "peerDependencies": {
     "react": ">=18"

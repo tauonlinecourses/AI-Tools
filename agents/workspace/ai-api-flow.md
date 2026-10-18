@@ -72,6 +72,7 @@ flowchart LR
 | `packages/ai-client/src/client.ts` | `useAI()` hook + `aiChat()` fetch wrapper. No SDK, no key. | Browser |
 | `packages/ai-client/src/server.ts` | `handler(request: Request)` — the **only** file that imports the OpenAI SDK and reads `OPENAI_API_KEY`. | Server |
 | `packages/ai-client/src/vercel.ts` | Adapts Vercel Node `(req, res)` ↔ Web `Request`/`Response`; default export used as the function entry. | Server |
+| `packages/ai-client/vercel.cjs` | Package `./vercel` entry — `module.exports = fn` so Node ESM default-import works in `"type": "module"` apps. | Server |
 | `apps/*/api/chat.ts` | Platform Auth gate, then `@workspace/ai-client/vercel`. | Server |
 | `packages/ai-client/tsconfig.build.json` | Compiles `src/*` → `dist/*.js` so the Node runtime can import compiled JS (not raw `.ts`). | Build |
 

@@ -1,7 +1,35 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import vercelHandler from "@workspace/ai-client/vercel";
+import vercelMod from "@workspace/ai-client/vercel";
 import { AuthError, requireToolAccessFromRequest } from "@workspace/auth/server";
+
+type VercelAiHandler = (
+  req: VercelRequest,
+  res: VercelResponse
+) => void | Promise<void>;
+
+/**
+ * Node ESM + CJS `exports.default = fn` can make the default import be
+ * `{ default: fn }` instead of `fn`. Calling that object after auth caused
+ * FUNCTION_INVOCATION_FAILED. Prefer `@workspace/ai-client/vercel.cjs`
+ * (module.exports = fn); still unwrap here as a safety net.
+ */
+function resolveVercelAiHandler(mod: unknown): VercelAiHandler {
+  if (typeof mod === "function") return mod as VercelAiHandler;
+  if (
+    mod &&
+    typeof mod === "object" &&
+    "default" in mod &&
+    typeof (mod as { default: unknown }).default === "function"
+  ) {
+    return (mod as { default: VercelAiHandler }).default;
+  }
+  throw new Error(
+    "@workspace/ai-client/vercel did not export a function (build dist / vercel.cjs?)"
+  );
+}
+
+const vercelHandler = resolveVercelAiHandler(vercelMod);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -12,5 +40,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     return res.status(401).json({ error: "Unauthorized" });
   }
-  return vercelHandler(req, res);
+
+  try {
+    return await vercelHandler(req, res);
+  } catch (err: unknown) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Chat handler failed",
+    });
+  }
 }
