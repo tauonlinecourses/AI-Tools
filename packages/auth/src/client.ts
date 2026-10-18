@@ -218,6 +218,12 @@ export function isToolAccessDeniedError(
 }
 
 export async function assertToolAccess(toolId: string): Promise<void> {
+  // Fail closed on non-approved accounts before checking group entitlements.
+  const status = await getMyAccountStatus();
+  if (status !== "approved") {
+    throw new ToolAccessDeniedError(toolId);
+  }
+
   const { data, error } = await getPlatformClient().rpc("user_has_tool_access", {
     p_tool_id: toolId,
   });

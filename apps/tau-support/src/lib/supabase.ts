@@ -10,6 +10,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const g = globalThis as typeof globalThis & {
   __tauSupabase?: SupabaseClient | null;
+  /** Nested `/api/tau-data` actions share one service client; only clear at 0. */
+  __tauSupabaseBindDepth?: number;
 };
 
 function readEnv(name: string): string | undefined {
@@ -44,7 +46,16 @@ if (typeof window !== "undefined" && !url) {
 }
 
 export function bindTauSupabase(client: SupabaseClient | null): void {
-  g.__tauSupabase = client;
+  if (client) {
+    g.__tauSupabaseBindDepth = (g.__tauSupabaseBindDepth ?? 0) + 1;
+    g.__tauSupabase = client;
+    return;
+  }
+  const next = Math.max(0, (g.__tauSupabaseBindDepth ?? 1) - 1);
+  g.__tauSupabaseBindDepth = next;
+  if (next === 0) {
+    g.__tauSupabase = null;
+  }
 }
 
 export function getTauSupabase(): SupabaseClient {

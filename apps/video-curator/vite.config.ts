@@ -2,12 +2,43 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { YoutubeTranscriptTooManyRequestError } from 'youtube-transcript'
 import { YoutubeTranscriptError, loadYoutubeTranscriptFromUrl } from './server/youtubeTranscriptCore'
+import {
+  DevAuthError,
+  requireVideoCuratorPlatformAuth,
+} from './server/devPlatformAuth'
+
+function bridgePlatformEnv(env: Record<string, string>) {
+  if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY ||= env.OPENAI_API_KEY
+  if (env.VITE_OPENAI_API_KEY) process.env.OPENAI_API_KEY ||= env.VITE_OPENAI_API_KEY
+  if (env.VITE_OPENAI_KEY) process.env.OPENAI_API_KEY ||= env.VITE_OPENAI_KEY
+  if (env.PLATFORM_SUPABASE_URL) process.env.PLATFORM_SUPABASE_URL ||= env.PLATFORM_SUPABASE_URL
+  if (env.PLATFORM_SUPABASE_ANON_KEY) {
+    process.env.PLATFORM_SUPABASE_ANON_KEY ||= env.PLATFORM_SUPABASE_ANON_KEY
+  }
+  if (env.PLATFORM_SUPABASE_SERVICE_ROLE_KEY) {
+    process.env.PLATFORM_SUPABASE_SERVICE_ROLE_KEY ||=
+      env.PLATFORM_SUPABASE_SERVICE_ROLE_KEY
+  }
+  if (env.VITE_PLATFORM_SUPABASE_URL) {
+    process.env.PLATFORM_SUPABASE_URL ||= env.VITE_PLATFORM_SUPABASE_URL
+  }
+  if (env.VITE_PLATFORM_SUPABASE_ANON_KEY) {
+    process.env.PLATFORM_SUPABASE_ANON_KEY ||= env.VITE_PLATFORM_SUPABASE_ANON_KEY
+  }
+}
+
+async function requireVideoAuth(
+  req: import('http').IncomingMessage
+): Promise<void> {
+  const auth = req.headers.authorization
+  await requireVideoCuratorPlatformAuth(
+    typeof auth === 'string' ? auth : undefined
+  )
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  // Prefer server-only OPENAI_API_KEY. Fallbacks cover common misnamed local vars.
-  const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || env.VITE_OPENAI_KEY
 
   return {
     // Force a single React copy. The app runs React 19 while the shared workspace
@@ -33,13 +64,13 @@ export default defineConfig(({ mode }) => {
               return
             }
 
-            // Bridge local .env.local key names into process.env for the shared handler.
-            if (apiKey) process.env.OPENAI_API_KEY ||= apiKey
+            bridgePlatformEnv(env)
 
             let raw = ''
             req.on('data', (chunk) => (raw += chunk))
             req.on('end', async () => {
               try {
+                await requireVideoAuth(req)
                 // Load the shared handler through Vite's SSR pipeline so its TypeScript
                 // source is transformed on the fly (a top-level import would make Node
                 // try to strip types from a file under node_modules and fail).
@@ -48,7 +79,12 @@ export default defineConfig(({ mode }) => {
                 }
                 const request = new Request('http://localhost/api/chat', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(typeof req.headers.authorization === 'string'
+                      ? { Authorization: req.headers.authorization }
+                      : {}),
+                  },
                   body: raw || '{}',
                 })
                 const response = await handler(request)
@@ -56,10 +92,18 @@ export default defineConfig(({ mode }) => {
                 response.headers.forEach((value, key) => res.setHeader(key, value))
                 res.end(await response.text())
               } catch (err: unknown) {
-                res.statusCode = 500
+                const status =
+                  err instanceof DevAuthError ? err.statusCode : 500
+                res.statusCode = status
                 res.setHeader('Content-Type', 'application/json')
                 const message = err instanceof Error ? err.message : String(err)
-                res.end(JSON.stringify({ error: 'Server error', details: message }))
+                res.end(
+                  JSON.stringify(
+                    err instanceof DevAuthError
+                      ? { error: message }
+                      : { error: 'Server error', details: message }
+                  )
+                )
               }
             })
           })
@@ -72,9 +116,26 @@ export default defineConfig(({ mode }) => {
               return
             }
 
+            bridgePlatformEnv(env)
+
             let raw = ''
             req.on('data', (chunk) => (raw += chunk))
             req.on('end', async () => {
+              try {
+                await requireVideoAuth(req)
+              } catch (err: unknown) {
+                const status =
+                  err instanceof DevAuthError ? err.statusCode : 401
+                res.statusCode = status
+                res.setHeader('Content-Type', 'application/json')
+                res.end(
+                  JSON.stringify({
+                    error: err instanceof Error ? err.message : 'Unauthorized',
+                  })
+                )
+                return
+              }
+
               let body: unknown = null
               try {
                 body = JSON.parse(raw || '{}')

@@ -186,11 +186,14 @@ export type AskOptions = {
   responseFormat?: { type: 'text' | 'json_object' };
 };
 
-// Low-level fetch call to /api/chat. Use useAI() in components instead.
+// Attaches Platform JWT via `@workspace/auth/client` (normal dynamic import so
+// Vite rewrites the specifier — `new Function(import)` bypasses Vite and
+// causes `/api/chat` 401 Missing Authorization).
 export async function aiChat(options: AskOptions): Promise<string> {
+  const authHeaders = await platformAuthHeaders();
   const res = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(options),
   });
 

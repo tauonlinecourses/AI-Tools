@@ -10,7 +10,7 @@
 - **Hub admin API** (`/api/admin`): service_role list/create/update of groups + memberships, plus `inviteUser` / `sendInviteEmail` / `approveUser` / `rejectUser` / `removeUser` (Auth `deleteUser`; cannot delete self). Every request verifies JWT then Admin group membership. Non-admins cannot read all users/groups via RLS (member-only selects).
 - **Public register API** (`/api/register`): `GET ?resource=groups` (excludes Admin) and `POST` create pending user with password via `auth.admin.createUser` (**no Auth email**). Self-reg stores `requested_group_id`; no `group_members` until approve.
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub). Handoff requires approved status.
-- **Direct tool links** (bookmark / pasted URL): each standalone app wraps UI in `ToolAuthGate`. **Not signed in** (no Platform session on the tool origin) → redirect to hub login with `?returnUrl=<tool URL>`. **Signed in without that tool’s group entitlement** → redirect to hub home (catalog). After hub login (or when already signed in on the hub), `returnUrl` is resolved only against known catalog origins/`hubPath`s: entitled users are handed off (or navigated in-app for hub-hosted tools); others stay on the hub.
+- **Direct tool links** (bookmark / pasted URL): each standalone app wraps UI in `ToolAuthGate`. **Not signed in** (no Platform session on the tool origin) → redirect to hub login with `?returnUrl=<tool URL>`. **Signed in without that tool’s group entitlement or not approved** → redirect to hub home (catalog). After hub login (or when already signed in on the hub), `returnUrl` is resolved only against known catalog origins/`hubPath`s: entitled users are handed off (or navigated in-app for hub-hosted tools); others stay on the hub. `assertToolAccess` also requires `profiles.status = 'approved'`.
 - **Hub-hosted** tools (`hubPath`, e.g. MBZ Explorer at `/mbz-explorer`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route (and approved gate). Unsigned → login; signed-in without entitlement → redirect to hub home.
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
@@ -63,6 +63,10 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 | UI password not protecting DB/APIs | Critical | Real Supabase Auth + JWT on APIs |
 | `/api/lms-login` open | Critical | Requires Platform JWT + tau-support access |
 | Open `/api/chat` / embed OpenAI proxy | High | JWT + tool entitlement |
+| Video-curator local Vite `/api/*` ungated | High | Dev middleware requires Platform JWT + `video-curator` access |
+| Hub `/api/chat` without approved check | Medium | `assertUserIsApproved` after JWT verify |
+| Pending user + leftover group_members | Medium | RPC helpers require `profiles.status = 'approved'` (migration `011`) |
+| Legacy tau `APP_PASSWORD` / `/api/app-login` | Medium | Endpoint returns `410`; Platform Auth is the only UI gate |
 | Storage SVG + anon write | High | SVG removed; writes via service_role BFF |
 | Forum HTML XSS | High | `sanitizeForumHtml` before `dangerouslySetInnerHTML` |
 | `rls_auto_enable` executable by anon | Medium | EXECUTE revoked from anon/authenticated |
@@ -117,10 +121,27 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata)
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
+
+## Access-control audit (what blocks unauthenticated / unauthorized use)
+
+| Surface | Gate |
+|---|---|
+| Hub `/`, `/en` | `PlatformAuthProvider` → login if no session; pending/rejected → status page |
+| Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin` |
+| Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
+| Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |
+| `returnUrl` after login | Only catalog origins / `hubPath`s; entitlement re-checked before handoff |
+| Tool `/api/*` (chat, embed, lms, tau-data, youtube-transcript, …) | Bearer Platform JWT + approved + `user_has_tool_access(toolId)` |
+| Tau data (Supabase) | Anon/authenticated RLS denied; browser uses `/api/tau-data` BFF only |
+| Course-Builder data | Same Platform JWT; authenticated RLS |
+| Legacy `POST /api/app-login` (tau-support) | **Retired** (`410`) — does not unlock the app |
+
+**Apply migration `011`** on the Course-Builder Supabase project so RPC entitlement helpers enforce approved status at the database layer.
 
 ## Later
 
 - Dedicated Platform Supabase project after Pro (transfer Auth schema)
 - Custom parent domain for cookie SSO (replace handoff)
+- Remove dead tau-support `AppLogin` / `APP_PASSWORD` client helpers once ops confirm no env dependency

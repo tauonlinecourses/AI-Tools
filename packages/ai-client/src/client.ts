@@ -29,16 +29,24 @@ export type AskOptions = {
  */
 async function platformAuthHeaders(): Promise<Record<string, string>> {
   try {
-    // Opaque import: ai-client's CJS build uses moduleResolution "Node", which
-    // cannot resolve package exports like `@workspace/auth/client`.
-    const importer = new Function(
-      "specifier",
-      "return import(specifier)"
-    ) as (specifier: string) => Promise<{
-      getPlatformAccessToken: () => Promise<string | null>;
-    }>;
-    const mod = await importer("@workspace/auth/client");
-    const token = await mod.getPlatformAccessToken();
+    // Prefer a normal dynamic import so Vite rewrites `@workspace/auth/client`
+    // for the browser. `new Function(import)` bypasses Vite and leaves a bare
+    // specifier that fails at runtime → empty headers → /api/chat 401.
+    let getToken: () => Promise<string | null>;
+    try {
+      const mod = await import("@workspace/auth/client");
+      getToken = mod.getPlatformAccessToken;
+    } catch {
+      const importer = new Function(
+        "specifier",
+        "return import(specifier)"
+      ) as (specifier: string) => Promise<{
+        getPlatformAccessToken: () => Promise<string | null>;
+      }>;
+      const mod = await importer("@workspace/auth/client");
+      getToken = mod.getPlatformAccessToken;
+    }
+    const token = await getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

@@ -60,6 +60,22 @@ export async function requireTauPlatformAuth(
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  const { data: profile, error: profileErr } = await admin
+    .from("profiles")
+    .select("status")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (profileErr) {
+    throw new DevAuthError(profileErr.message, 500);
+  }
+  if (profile?.status === "pending") {
+    throw new DevAuthError("Account pending admin approval", 403);
+  }
+  if (profile?.status === "rejected") {
+    throw new DevAuthError("Account was rejected", 403);
+  }
+
   const { data: allowed, error: accessErr } = await admin.rpc(
     "user_has_tool_access",
     {

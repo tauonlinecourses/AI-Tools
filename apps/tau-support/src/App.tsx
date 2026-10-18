@@ -205,26 +205,6 @@ function newCheckAllTabId(): string {
   return `tab-${Math.random().toString(36).slice(2)}`;
 }
 
-function SettingsIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 export default function App() {
   const storedAuth = readStoredAuth();
   const [auth, setAuth] = useState<AuthSettingsValues>({
@@ -1463,10 +1443,6 @@ export default function App() {
     setAuth((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleOpenSettings() {
-    setSettingsOpen(true);
-  }
-
   function handleCloseSettings() {
     setSettingsOpen(false);
   }
@@ -1597,7 +1573,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleSelectHome}
-                className={`flex h-full min-h-full w-full items-center gap-2 py-2.5 pe-12 ps-3 text-right transition-colors ${
+                className={`flex h-full min-h-full w-full items-center gap-2 px-3 py-2.5 text-right transition-colors ${
                   showingHome && !docsMode && !emailMode
                     ? "bg-sky-100 text-sky-950"
                     : "text-surface-900 hover:bg-sky-50"
@@ -1621,15 +1597,6 @@ export default function App() {
                 <span className="truncate text-lg font-semibold sm:text-xl">
                   דף הבית
                 </span>
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenSettings}
-                aria-label="הגדרות"
-                title="הגדרות"
-                className="absolute left-2 top-1/2 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-control border border-surface-200 bg-white text-surface-600 shadow-sm transition-colors hover:bg-surface-50 hover:text-surface-900"
-              >
-                <SettingsIcon />
               </button>
             </div>
             <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">

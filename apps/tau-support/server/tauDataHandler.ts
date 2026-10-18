@@ -42,58 +42,60 @@ export async function runTauDataAction(
   try {
     const p = payload as Record<string, unknown> | null;
     switch (action) {
+      // `return await` is required: bare `return promise` runs `finally`
+      // before the action settles, clearing the bound Supabase client mid-flight.
       case "hydrate":
-        return hydrateThreadStoreFromSupabase();
+        return await hydrateThreadStoreFromSupabase();
       case "syncCourseThreads":
-        return syncCourseThreadsToSupabase(
+        return await syncCourseThreadsToSupabase(
           p?.courseId as string,
           p?.entries as never,
           p?.lastCheckedAt as string | null | undefined,
           p?.options as never
         );
       case "syncThreadUiState":
-        return syncThreadUiStateToSupabase(
+        return await syncThreadUiStateToSupabase(
           p?.threadId as string,
           p?.ui as never,
           p?.fallback as never
         );
       case "listInfoDocs":
-        return listInfoDocs();
+        return await listInfoDocs();
       case "createInfoDoc":
-        return createInfoDoc(p as never);
+        return await createInfoDoc(p as never);
       case "updateInfoDoc":
-        return updateInfoDoc(p?.id as string, p?.input as never);
+        return await updateInfoDoc(p?.id as string, p?.input as never);
       case "deleteInfoDoc":
-        return deleteInfoDoc(p?.id as string);
+        return await deleteInfoDoc(p?.id as string);
       case "reorderInfoDocs":
-        return reorderInfoDocs(p?.orderedIds as string[]);
+        return await reorderInfoDocs(p?.orderedIds as string[]);
       case "uploadPastedImage": {
         const raw = p?.base64 as string;
         const mime = (p?.mime as string) || "image/png";
         if (!raw) throw new Error("base64 required");
         const buf = Buffer.from(raw, "base64");
         const blob = new Blob([buf], { type: mime });
-        return uploadPastedImage(blob);
+        return await uploadPastedImage(blob);
       }
       case "findSimilarQa":
-        return findSimilarQa(
+        return await findSimilarQa(
           p?.questionText as string,
           p?.opts as never
         );
       case "embedQaPairsForCourse":
-        return embedQaPairsForCourse(p?.courseId as string);
+        return await embedQaPairsForCourse(p?.courseId as string);
       case "embedAllPendingQaPairs":
-        return embedAllPendingQaPairs();
+        return await embedAllPendingQaPairs();
       case "countPendingEmbeddings":
-        return countPendingEmbeddings();
+        return await countPendingEmbeddings();
       case "embedInfoDocs":
-        return embedInfoDocs();
+        return await embedInfoDocs();
       case "countPendingInfoDocEmbeddings":
-        return countPendingInfoDocEmbeddings();
+        return await countPendingInfoDocEmbeddings();
       case "syncLastCheckAll":
-        return syncLastCheckAllToSupabase(p as never);
+        return await syncLastCheckAllToSupabase(p as never);
       case "hydrateLastCheckAll":
-        return hydrateLastCheckAllFromSupabase();
+        return await hydrateLastCheckAllFromSupabase();
       default:
         throw new Error(`Unknown action: ${action}`);
     }

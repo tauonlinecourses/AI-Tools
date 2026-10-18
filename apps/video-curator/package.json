@@ -12,6 +12,7 @@
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@supabase/supabase-js": "^2.118.0",
     "@workspace/ai-client": "workspace:*",
     "@workspace/auth": "workspace:*",
     "@workspace/ui": "workspace:*",

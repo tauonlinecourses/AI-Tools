@@ -81,7 +81,9 @@ platform.
   pairing (plain text, `lang`, `content_hash`, `resolution_text`). Used by
   the Supabase sync; no network I/O.
 - `../src/lib/embedClient.ts` — Browser `POST /api/embed` client (server holds
-  `OPENAI_API_KEY`).
+  `OPENAI_API_KEY`). Server path (Vite `/api/tau-data`, Vercel) loads
+  `server/embedCore` via absolute `import.meta.url` URLs (`.ts` then `.js`) so
+  Vite SSR does not mis-resolve a relative specifier into `vite/dist/server/`.
 - `../src/lib/kbEmbed.ts` — Idempotent upsert of `qa_pairs` → `kb_chunks`
   (skip when `content_hash` matches); stale chunk cleanup; Settings backfill
   (**סנכרן הטמעות**).
@@ -106,10 +108,11 @@ platform.
   **הצג תשובות דומות** / **יצירת תשובה**). Supports `filter_source_types`
   and optional `rewriteWithAi` (AI FAQ rewrite before embed). Similar-answers
   stays QA-only while drafts include info docs.
-- `../src/lib/rewriteRetrievalQuery.ts` — `/api/chat` rewrite of a full
-  student paste into one short Hebrew FAQ-shaped search question (used when
-  `findSimilarQa({ rewriteWithAi: true })`). Falls back to regex cleanup if
-  the model call fails.
+- `../src/lib/rewriteRetrievalQuery.ts` — rewrite of a full student paste into
+  one short Hebrew FAQ-shaped search question (used when
+  `findSimilarQa({ rewriteWithAi: true })`). Browser: `/api/chat` + Platform
+  JWT. Server (tau-data): `@workspace/ai-client/server` directly. Falls back
+  to regex cleanup if the model call fails.
 - `../src/lib/draftAnswer.ts` — Phase 3 grounded draft: retrieve via
   `findSimilarQa` (qa_pairs **and** info_docs), confidence gate
   (`DRAFT_MIN_SIMILARITY` on max raw cosine for forum Q↔A;
@@ -190,24 +193,20 @@ platform.
 - `../api/lms-login.ts` — `POST /api/lms-login` (no body). Server password-logs
   in once via `LMS_USERNAME` / `LMS_PASSWORD` and returns reusable session
   cookies (`csrfToken` + `sessionId` and/or JWT pair) for check-all.
-- `../server/appAuth.ts` — Shared check for the **UI gate** password
-  (`APP_PASSWORD` server env; never `VITE_`).
-- `../api/app-login.ts` — `POST /api/app-login` with `{ password }`. Returns
-  `{ ok: true }` on match, `401` on mismatch, `503` if `APP_PASSWORD` is unset.
-- `../src/lib/appAuth.ts` — Client helpers: call `/api/app-login`, persist
-  unlock in `sessionStorage` (`tau-support-app-unlocked`) for the tab session.
-- `../src/components/AppLogin.tsx` — Full-page login (סיסמה / כניסה). Shown from
-  `main.tsx` before `App` mounts so hydrate/sync do not run until unlocked.
+- `../api/app-login.ts` — **Retired.** Always returns `410`. Platform Auth
+  (`ToolAuthGate` in `main.tsx`) is the only entry gate.
+- Legacy `server/appAuth.ts`, `src/lib/appAuth.ts`, `AppLogin.tsx` are unused
+  dead code (safe to delete later); do not set `APP_PASSWORD`.
 - `fetch-forum-comments.mjs` — Stage 2 script. Full multi-course, multi-page
   polling with new-activity detection and a saved "last run" timestamp.
 
 ## Web UI (course hub)
 
-**App password gate:** On first visit (or after closing the tab),
-`main.tsx` shows `AppLogin` until `POST /api/app-login` succeeds. Unlock is
-remembered in `sessionStorage` for that browser tab only. Set
-`APP_PASSWORD` in local `.env` and in Vercel env (server-only — never
-`VITE_APP_PASSWORD`). If unset, login returns 503 and the tool stays locked.
+**Platform auth gate:** `main.tsx` wraps the app in `ToolAuthGate`
+(`toolId="tau-support"`). Unsigned visitors are sent to hub login with
+`returnUrl`; signed-in users without the tool entitlement (or not approved)
+are sent to the hub catalog. Sensitive `/api/*` routes also require a
+Platform Bearer token + `tau-support` group access.
 
 The tau-support page is a **centered max-width hub** (`max-w-[90rem]`, taller
 viewport fill via `calc(100vh-6rem)`; not full-bleed) with an
@@ -218,8 +217,8 @@ RTL split layout inspired by the campus IL forum list:
   (`sky-100` selected full-bleed, `amber-100` while **בודק כעת**, `rose`
   unanswered badges, `violet` new-count badges). The header
   strip above the list (same width as the sidebar)
-  has **דף הבית** (`sky-100` when selected) and the **settings** gear on the
-  visual left of that strip.
+  has **דף הבית** (`sky-100` when selected). The **settings** gear is
+  hidden from the sidebar UI (settings menu still exists).
   The scrollable list starts with **פיד של כל הקורסים** (global inbox) plus all
   courses from
   `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**,
@@ -348,10 +347,10 @@ RTL split layout inspired by the campus IL forum list:
   Existing cards stay visible while syncing. Each course row shows
   **מעודכן לתאריך** as a date only (no clock time) from that course’s
   `lastCheckedAt` watermark (or — if never polled).
-- **Settings popup:** opened from the **gear icon in the sidebar header
-  strip** (visual left of **דף הבית**; `SettingsIcon` in `App.tsx`). Clicking it
-  opens a
-  modal dialog (`AuthSettings`, `open`/`onClose` props) with page size used by
+- **Settings popup:** the sidebar **gear icon is hidden** from the UI, but the
+  settings menu (`AuthSettings`) is kept. It still opens automatically on auth
+  errors (`setSettingsOpen(true)` in `App.tsx`). The modal dialog
+  (`open`/`onClose` props) has page size used by
   **בדוק הכל**, cookie auth, optional **סנכרן הטמעות** (Q↔A) and
   **סנכרן הטמעות מסמכי מידע** (info docs), and
   **טען 20 לכל הקורסים** (backfill: up to 20 unknown/older threads per
@@ -561,9 +560,14 @@ or retrieval failure surfaces a clear error and never blocks poll/sync.
 `@workspace/auth` or `api/tau-data` (Node ESM cannot resolve auth’s extensionless
 graph when bundling the config). Auth for middleware uses
 `server/devPlatformAuth.ts`; `/api/tau-data` calls `server/tauDataHandler.ts`
-via an opaque dynamic import. Browser libs call `tauDataClient` only through
+via `ssrLoadModule`. Browser libs call `tauDataClient` only through
 dynamic `import()` so the Vite config graph stays auth-free. Production still
 uses `api/tau-data.ts` + `@workspace/auth/server`.
+`runTauDataAction` must `return await` every async action: a bare
+`return promise` inside `try/finally` runs `bindTauSupabase(null)` before the
+action finishes (breaks `findSimilarQa` / email draft mid-embed).
+`bindTauSupabase` is reference-counted so overlapping tau-data calls (thread
+UI sync + in-thread draft) do not clear the service client mid-flight.
 
 Later (not this phase): Word-doc hierarchical chunking, hybrid BM25/RRF,
 cross-encoder reranker, auto-posting.
@@ -735,8 +739,6 @@ Credentials stay server-side only (`LMS_BASE_URL`, `LMS_USERNAME`,
 Set these as environment variables when running either script (never
 hardcoded into the files):
 
-- `APP_PASSWORD` — password for the tau-support **UI login screen** (server-only;
-  set in local `.env` and Vercel). Distinct from campus IL credentials below.
 - `LMS_BASE_URL` — your campus IL site's base URL. For campus IL you can use
   either `https://app.campus.gov.il` (discussions UI) or
   `https://courses.campus.gov.il` (LMS backend). The app automatically uses

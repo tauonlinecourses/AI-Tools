@@ -7,12 +7,32 @@
 /** Cap paste length sent to the rewrite model. */
 const MAX_REWRITE_INPUT_CHARS = 2500;
 
-/** Dynamic import so Vercel /api/tau-data does not pull React at module load. */
-async function aiChat(
-  options: Parameters<
-    typeof import("@workspace/ai-client/client").aiChat
-  >[0]
-): Promise<string> {
+type ChatOptions = Parameters<
+  typeof import("@workspace/ai-client/client").aiChat
+>[0];
+
+/**
+ * Browser: `/api/chat` via ai-client (Platform JWT).
+ * Server (tau-data BFF): call the OpenAI handler directly — no bearer token
+ * on the server, and auth already ran at the `/api/tau-data` gate.
+ */
+async function aiChat(options: ChatOptions): Promise<string> {
+  if (typeof window === "undefined") {
+    const { handler } = await import("@workspace/ai-client/server");
+    const webRes = await handler(
+      new Request("http://local/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      })
+    );
+    if (!webRes.ok) {
+      const error = await webRes.text().catch(() => webRes.statusText);
+      throw new Error(`AI request failed (${webRes.status}): ${error}`);
+    }
+    const data = (await webRes.json()) as { content?: string };
+    return data.content ?? "";
+  }
   const mod = await import("@workspace/ai-client/client");
   return mod.aiChat(options);
 }
