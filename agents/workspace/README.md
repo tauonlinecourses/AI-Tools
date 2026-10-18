@@ -34,6 +34,7 @@ Each section file has Previous / Next links at the top.
 | [10-run-deploy-conventions.md](./10-run-deploy-conventions.md) | Run, ship, or style a tool | `pnpm` scripts, Vercel, add-a-tool checklist, design rules |
 | [ai-api-flow.md](./ai-api-flow.md) | Understand or harden the AI request flow | End-to-end `/api/chat` flow diagram, why it's secure, production roadmap (auth, rate limiting, cost caps) |
 | [security.md](./security.md) | Auth, RLS, Supabase, API hardening | Hub Platform Auth (Course-Builder DB), groups/tools, handoff, Tau BFF, env matrix |
+| [prod-smoke-checklist.md](./prod-smoke-checklist.md) | After deploy / env / migration | Live ops (you) + curl + browser smoke for internal prod |
 
 ---
 
@@ -51,6 +52,7 @@ Each section file has Previous / Next links at the top.
 | Change hub homepage UI | `08` |
 | Create a new tool app | `09` then `10` (copy includes `agents/`; do not list starter on hub) |
 | Deploy to Vercel / ports / conventions | `10` |
+| Post-deploy / production smoke | `prod-smoke-checklist` + `security` |
 
 ---
 

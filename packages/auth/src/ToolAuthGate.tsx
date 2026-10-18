@@ -82,7 +82,7 @@ export function ToolAuthGate({
 
       try {
         if (isCallback && code) {
-          setMessage("Completing sign-in…");
+          setMessage("Checking user permissions to the tool…");
           const tokens = await exchangeHandoffOnce(code, hubExchangeUrl());
           await setPlatformSession(tokens);
           await assertToolAccess(toolId);

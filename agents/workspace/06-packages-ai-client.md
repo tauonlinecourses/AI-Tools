@@ -25,7 +25,9 @@ See [secure-ai-client.md](./secure-ai-client.md) for the full refactor guide and
 `openai` is a runtime dependency; `react` is a peer dependency because `client.ts` ships
 the `useAI` hook.
 
-**Build step:** `tsc -p tsconfig.build.json` compiles `src/*` → `dist/*.js` (+ `.d.ts`).
+**Build step:** `tsc -p tsconfig.build.json` compiles `src/server.ts` + `src/vercel.ts` →
+`dist/*.js` (+ `.d.ts`). Browser `client.ts` stays source-only (Vite) so the CommonJS build
+does not need to resolve `@workspace/auth/client` package exports.
 The `./vercel` export's `default` points at `./dist/vercel.js` because the Vercel Node
 serverless runtime cannot import raw `.ts` from `node_modules` (it only compiles app-local
 files). Its `types` stays on `./src/vercel.ts` so apps can type-check without a prior build.
@@ -71,87 +73,28 @@ compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled)
 ### `packages/ai-client/src/server.ts`
 
 The **only** file in the monorepo that imports `openai` or reads the API key. It is a
-Web-standard `(request: Request) => Response` handler, re-exported as the default export
-by each app's `api/chat.ts`. Returns `{ content }`.
+Web-standard `(request: Request) => Response` handler. Live apps wrap it with Platform Auth
+in `api/chat.ts` (`requireToolAccessFromRequest` / hub approved check), then call
+`@workspace/ai-client/vercel`. Returns `{ content }`.
 
-```typescript
-import OpenAI from 'openai';
+**Internal cost / abuse guardrails (shared):**
 
-export type Message = {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-};
+| Rule | Value |
+|---|---|
+| Allowed models | `gpt-4o`, `gpt-4o-mini` (default `gpt-4o`) |
+| `max_tokens` | Always `4096` |
+| Max messages | 40 |
+| Max chars / message (and systemPrompt) | 16 000 |
+| Max total chars | 64 000 → `413` |
+| Stdout metric | `{ event: "ai_chat", status, model, messageCount, latencyMs }` — never prompts |
 
-export type ChatRequest = {
-  messages: Message[];
-  model?: string;
-  systemPrompt?: string;
-  temperature?: number;
-  responseFormat?: { type: 'text' | 'json_object' };
-};
-
-export async function handler(request: Request): Promise<Response> {
-  if (request.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
-  }
-
-  let body: ChatRequest;
-  try {
-    body = (await request.json()) as ChatRequest;
-  } catch {
-    return new Response('Invalid JSON body', { status: 400 });
-  }
-
-  const { messages, model = 'gpt-4o', systemPrompt, temperature, responseFormat } = body;
-
-  if (!messages || !Array.isArray(messages)) {
-    return new Response('messages must be an array', { status: 400 });
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json(
-      { error: 'Missing OPENAI_API_KEY on server.' },
-      { status: 500 }
-    );
-  }
-
-  const fullMessages: Message[] = systemPrompt
-    ? [{ role: 'system', content: systemPrompt }, ...messages]
-    : messages;
-
-  const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, // server env only — never VITE_*
-  });
-
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      messages: fullMessages,
-      ...(temperature !== undefined ? { temperature } : {}),
-      ...(responseFormat ? { response_format: responseFormat } : {}),
-    });
-
-    const content = completion.choices[0]?.message?.content ?? '';
-
-    return Response.json({ content });
-  } catch (err) {
-    const status =
-      typeof (err as { status?: unknown })?.status === 'number'
-        ? (err as { status: number }).status
-        : 500;
-    const details = err instanceof Error ? err.message : String(err);
-    return Response.json(
-      { error: `OpenAI API error: ${status}`, details },
-      { status }
-    );
-  }
-}
-```
+Auth is **not** in this file — each app's `api/chat.ts` must gate before calling the handler.
 
 The optional `temperature` and `responseFormat` (JSON mode) let callers such as
 video-curator's transcript segmentation get deterministic, valid-JSON output while all
 OpenAI logic stays here. On failure the handler returns a structured `{ error, details }`
-body so callers can surface meaningful messages.
+body so callers can surface meaningful messages. See source at
+`packages/ai-client/src/server.ts`.
 
 ### `packages/ai-client/src/client.ts`
 

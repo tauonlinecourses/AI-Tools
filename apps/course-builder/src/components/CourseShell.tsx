@@ -18,6 +18,7 @@ import { SortableList, type DragHandleProps } from "./SortableList";
 import {
   CalendarIcon,
   ChevronDownIcon,
+  DownloadIcon,
   DuplicateIcon,
   FolderIcon,
   GripIcon,
@@ -27,6 +28,7 @@ import {
   TrashIcon,
 } from "./icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
+import { exportCourseBackup } from "../lib/courseBackup";
 
 interface CourseShellProps {
   mode: CourseViewMode;
@@ -171,6 +173,8 @@ export function CourseShell({ mode }: CourseShellProps) {
     perSection: Map<string, StatusRollup>;
   } | null>(null);
   const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
+  const [exportingBackup, setExportingBackup] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
@@ -363,6 +367,19 @@ export function CourseShell({ mode }: CourseShellProps) {
         : prev
     );
   }, []);
+
+  async function handleExportBackup() {
+    if (!courseId || exportingBackup) return;
+    setBackupError(null);
+    setExportingBackup(true);
+    try {
+      await exportCourseBackup(courseId);
+    } catch (e) {
+      setBackupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportingBackup(false);
+    }
+  }
 
   // ─── Section mutations ────────────────────────────────────────────────────
 
@@ -1000,6 +1017,21 @@ export function CourseShell({ mode }: CourseShellProps) {
               <span className="block w-full text-sm text-surface-500">
                 עודכן לאחרונה ב{formatDate(tree.course.updated_at)}
               </span>
+            )}
+            {tree && (
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                disabled={exportingBackup}
+                className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                title="שמירת כל תוכן הקורס לקובץ במחשב"
+              >
+                <DownloadIcon className="w-4 h-4" />
+                {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
+              </button>
+            )}
+            {backupError && (
+              <p className="text-xs text-danger leading-snug">{backupError}</p>
             )}
           </div>
 

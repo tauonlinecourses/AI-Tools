@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageLayout, Card, Button, Input, Spinner } from "@workspace/ui";
 import { listCourses, createCourse, deleteCourse } from "../lib/api";
 import type { CourseListItem } from "../lib/types";
-import { PlusIcon, TrashIcon } from "../components/icons";
+import { PlusIcon, TrashIcon, UploadIcon } from "../components/icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
+import {
+  importCourseBackup,
+  parseCourseBackupFile,
+} from "../lib/courseBackup";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", {
@@ -17,11 +21,13 @@ function formatDate(iso: string): string {
 export function CoursesPage() {
   const navigate = useNavigate();
   const { trackSave } = useSaveStatus();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [courses, setCourses] = useState<CourseListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     listCourses()
@@ -53,6 +59,22 @@ export function CoursesPage() {
     }
   }
 
+  async function handleImportFile(file: File | undefined) {
+    if (!file || importing) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const backup = await parseCourseBackupFile(file);
+      const courseId = await trackSave(importCourseBackup(backup));
+      navigate(`/courses/${courseId}/edit`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setImporting(false);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <PageLayout
       toolName="Course Builder"
@@ -65,12 +87,36 @@ export function CoursesPage() {
         <SaveStatusIndicator />
       </div>
       <div dir="rtl" lang="he" className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold tracking-tight text-surface-900">כל הקורסים</h1>
           {!creating && (
-            <Button size="md" leftIcon={<PlusIcon />} onClick={() => setCreating(true)}>
-              קורס חדש
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,.coursebuilder.json,application/json"
+                className="hidden"
+                onChange={(e) => handleImportFile(e.target.files?.[0])}
+              />
+              <Button
+                size="md"
+                variant="secondary"
+                leftIcon={<UploadIcon />}
+                loading={importing}
+                disabled={importing || saving}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                ייבא גיבוי
+              </Button>
+              <Button
+                size="md"
+                leftIcon={<PlusIcon />}
+                disabled={importing}
+                onClick={() => setCreating(true)}
+              >
+                קורס חדש
+              </Button>
+            </div>
           )}
         </div>
 
@@ -113,7 +159,7 @@ export function CoursesPage() {
         {courses !== null && courses.length === 0 && !creating && (
           <Card>
             <p className="text-sm text-surface-600">
-              אין עדיין קורסים. לחצו על "קורס חדש" כדי להתחיל.
+              אין עדיין קורסים. לחצו על "קורס חדש" או "ייבא גיבוי" כדי להתחיל.
             </p>
           </Card>
         )}

@@ -46,6 +46,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] Lesson overview page per section — open/due dates, files-folder link (schema + edit UI)
 - [ ] Apply pending migrations on live DB if missing (`001_course_home_page`, `002_fix_empty_page_rollup`, `003_component_comments`, `004_section_lesson_info`, `mark_component_implemented`)
 - [x] Bump course `updated_at` when nested content changes (today only title/description)
+- [x] Local course backup — שמור גיבוי (`.coursebuilder.json` download) + ייבא גיבוי (new course); URLs only, no media binaries (`src/lib/courseBackup.ts`)
 - [ ] Soft-delete / undo for destructive actions (today: `window.confirm` only)
 
 ---

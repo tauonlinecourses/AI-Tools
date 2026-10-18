@@ -194,9 +194,7 @@ platform.
   in once via `LMS_USERNAME` / `LMS_PASSWORD` and returns reusable session
   cookies (`csrfToken` + `sessionId` and/or JWT pair) for check-all.
 - `../api/app-login.ts` — **Retired.** Always returns `410`. Platform Auth
-  (`ToolAuthGate` in `main.tsx`) is the only entry gate.
-- Legacy `server/appAuth.ts`, `src/lib/appAuth.ts`, `AppLogin.tsx` are unused
-  dead code (safe to delete later); do not set `APP_PASSWORD`.
+  (`ToolAuthGate` in `main.tsx`) is the only entry gate. Do not set `APP_PASSWORD`.
 - `fetch-forum-comments.mjs` — Stage 2 script. Full multi-course, multi-page
   polling with new-activity detection and a saved "last run" timestamp.
 

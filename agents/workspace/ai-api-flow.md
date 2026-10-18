@@ -72,7 +72,7 @@ flowchart LR
 | `packages/ai-client/src/client.ts` | `useAI()` hook + `aiChat()` fetch wrapper. No SDK, no key. | Browser |
 | `packages/ai-client/src/server.ts` | `handler(request: Request)` — the **only** file that imports the OpenAI SDK and reads `OPENAI_API_KEY`. | Server |
 | `packages/ai-client/src/vercel.ts` | Adapts Vercel Node `(req, res)` ↔ Web `Request`/`Response`; default export used as the function entry. | Server |
-| `apps/*/api/chat.ts` | One-line re-export: `export { default } from "@workspace/ai-client/vercel"`. | Server |
+| `apps/*/api/chat.ts` | Platform Auth gate, then `@workspace/ai-client/vercel`. | Server |
 | `packages/ai-client/tsconfig.build.json` | Compiles `src/*` → `dist/*.js` so the Node runtime can import compiled JS (not raw `.ts`). | Build |
 
 ---
@@ -83,6 +83,12 @@ flowchart LR
   `globalThis.process`), and is never prefixed with `VITE_`, so bundlers cannot inline it.
 - **Single choke point.** All AI traffic flows through one shared `handler()` — one place to
   audit, patch, or add controls.
+- **Auth on every live `/api/chat`.** App wrappers call `requireToolAccessFromRequest` (or hub
+  `assertUserIsApproved`) before the shared handler — Platform Bearer JWT + approved + tool
+  entitlement. See [security.md](./security.md).
+- **Cost / input guardrails in `server.ts`.** Model allowlist (`gpt-4o`, `gpt-4o-mini`), hard
+  `max_tokens` (4096), message count/size caps (`413` when oversized), stdout metrics
+  (`status`, `model`, `messageCount`, `latencyMs` — never prompt text).
 - **Clean separation of concerns.** Browser code imports only `.../client`; the SDK and key
   live exclusively in the serverless function.
 - **Structured errors.** Failures return JSON (`{ error, details? }`) with sensible status
@@ -90,44 +96,29 @@ flowchart LR
 
 ---
 
-## 5. Roadmap — what to do before public production
+## 5. Roadmap — what to do before public / untrusted production
 
-The flow is production-ready for an **internal tool or a demo behind a login**. For a
-**public deployment**, address the items below (roughly in priority order). All of them are
-implemented in the one shared `server.ts`, so they apply to every app at once.
+The flow is production-ready for **internal staff behind Platform Auth**. For a
+**public or less-trusted deployment**, address the items below (roughly in priority order).
 
-### 5.1 Authentication (highest priority)
-- **Problem:** `/api/chat` is currently open. Anyone who finds the deployed URL can POST to it
-  and spend your OpenAI credits — it is effectively an open proxy.
-- **Do:** require a caller identity — e.g. a shared-secret header check in `server.ts`, or (better)
-  validate a real user session/JWT from your auth provider before calling OpenAI.
-
-### 5.2 Rate limiting / abuse protection
-- **Problem:** a single client or bot can hammer the endpoint.
+### 5.1 Rate limiting / abuse protection
+- **Problem:** an approved user (or stolen JWT) can still hammer the endpoint.
 - **Do:** add per-IP / per-user rate limiting (e.g. Vercel KV / Upstash Redis token bucket).
-  Pairs naturally with auth (limit per authenticated user).
 
-### 5.3 Cost guardrails
-- **Problem:** no `max_tokens` cap and no per-user/day budget, so a buggy or malicious caller
-  can run up a large bill.
-- **Do:** set a `max_tokens` ceiling, restrict which `model` values are allowed, and track
-  spend per user/day with a hard cutoff.
+### 5.2 Per-user / day budgets
+- **Problem:** `max_tokens` caps a single response, not cumulative spend.
+- **Do:** track spend per user/day with a hard cutoff.
 
-### 5.4 Input validation limits
-- **Problem:** `messages` size/length is unbounded.
-- **Do:** cap the number of messages and total payload size; reject oversized requests with 413.
+### 5.3 Richer observability
+- **Problem:** stdout metrics are enough for Vercel logs, not dashboards or alerts.
+- **Do:** ship metrics to a sink (latency, error rate, tokens) without logging prompts.
 
-### 5.5 Observability
-- **Problem:** no logging/metrics on usage, latency, or errors.
-- **Do:** log request metadata (user, model, tokens, latency, status) to a metrics/logging sink
-  to detect abuse and debug production issues. Avoid logging prompt contents unless needed and
-  compliant.
-
-### 5.6 Nice-to-haves
+### 5.4 Nice-to-haves
 - **Streaming responses** — replace `Response.json({ content })` with a `ReadableStream` and
   update `client.ts` to consume it, for faster perceived latency.
-- **Per-tool system prompts / model policy** — centralize allowed models and default prompts.
 - **Retries & timeouts** — bounded retry on transient 429/5xx from OpenAI with a request timeout.
+
+After deploy, run [prod-smoke-checklist.md](./prod-smoke-checklist.md).
 
 ---
 
@@ -138,9 +129,10 @@ implemented in the one shared `server.ts`, so they apply to every app at once.
 | API key hidden from browser | Done |
 | Single shared handler | Done |
 | Structured error handling | Done |
-| Authentication on `/api/chat` | **TODO** |
-| Rate limiting | **TODO** |
-| Cost guardrails (`max_tokens`, model allowlist, budgets) | **TODO** |
-| Input size/validation limits | **TODO** |
-| Observability (logging/metrics) | **TODO** |
+| Authentication on `/api/chat` | Done (per-app wrappers + Platform Auth) |
+| Cost guardrails (`max_tokens`, model allowlist) | Done (shared `server.ts`) |
+| Input size/validation limits | Done |
+| Observability (stdout metrics) | Done (internal bar) |
+| Rate limiting | **TODO** (deferred — public / abuse hardening) |
+| Per-user budgets | **TODO** |
 | Streaming | Optional / future |

@@ -45,7 +45,6 @@ function bridgeLmsEnv(env: Record<string, string>) {
   if (env.LMS_JWT_SIGNATURE) {
     process.env.LMS_JWT_SIGNATURE ||= env.LMS_JWT_SIGNATURE;
   }
-  if (env.APP_PASSWORD) process.env.APP_PASSWORD ||= env.APP_PASSWORD;
   if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY ||= env.OPENAI_API_KEY;
   if (env.PLATFORM_SUPABASE_URL) process.env.PLATFORM_SUPABASE_URL ||= env.PLATFORM_SUPABASE_URL;
   if (env.PLATFORM_SUPABASE_ANON_KEY) {

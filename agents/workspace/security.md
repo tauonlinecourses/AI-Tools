@@ -66,7 +66,7 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 | Video-curator local Vite `/api/*` ungated | High | Dev middleware requires Platform JWT + `video-curator` access |
 | Hub `/api/chat` without approved check | Medium | `assertUserIsApproved` after JWT verify |
 | Pending user + leftover group_members | Medium | RPC helpers require `profiles.status = 'approved'` (migration `011`) |
-| Legacy tau `APP_PASSWORD` / `/api/app-login` | Medium | Endpoint returns `410`; Platform Auth is the only UI gate |
+| Legacy tau `APP_PASSWORD` / `/api/app-login` | Medium | Endpoint returns `410`; client `AppLogin` / `appAuth` helpers removed; Platform Auth is the only UI gate |
 | Storage SVG + anon write | High | SVG removed; writes via service_role BFF |
 | Forum HTML XSS | High | `sanitizeForumHtml` before `dangerouslySetInnerHTML` |
 | `rls_auto_enable` executable by anon | Medium | EXECUTE revoked from anon/authenticated |
@@ -144,4 +144,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 - Dedicated Platform Supabase project after Pro (transfer Auth schema)
 - Custom parent domain for cookie SSO (replace handoff)
-- Remove dead tau-support `AppLogin` / `APP_PASSWORD` client helpers once ops confirm no env dependency
+
+## Production smoke
+
+After deploy / env / migration changes, run [prod-smoke-checklist.md](./prod-smoke-checklist.md).
