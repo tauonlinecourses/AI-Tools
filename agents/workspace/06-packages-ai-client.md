@@ -36,7 +36,8 @@ calling it after auth crashes with `FUNCTION_INVOCATION_FAILED`. `vercel.cjs` se
 `module.exports = fn` so the default import is the function. Its `types` stay on
 `./src/vercel.ts` for editor/type-check convenience.
 `.`/`./client`/`./server` stay on source because they're only consumed by Vite (which
-compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled).
+compiles TS). Under `vite dev`, `packages/dev-api` loads `api/chat.ts` through Vite SSR and
+aliases `@workspace/ai-client/vercel` to `src/vercel.ts`, so the dev path never needs `dist`.
 
 > Workspace consumers use the **`workspace:*`** protocol (never `file:`). `file:` makes pnpm
 > copy a source-only snapshot into its store at install time, so a later-built `dist` is
@@ -78,7 +79,8 @@ compiles TS) and by the local `vite dev` `/api/chat` middleware (SSR-transpiled)
 
 The **only** file in the monorepo that imports `openai` or reads the API key. It is a
 Web-standard `(request: Request) => Response` handler. Live apps wrap it with Platform Auth
-in `api/chat.ts` (`requireToolAccessFromRequest` / hub approved check), then call
+in `api/chat.ts` (`withPlatformAuth(vercelHandler, { toolId })` from `@workspace/auth/server`;
+the hub omits `toolId` and only requires approved status), which calls
 `@workspace/ai-client/vercel`. Returns `{ content }`.
 
 **Internal cost / abuse guardrails (shared):**

@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { AuthError } from "./platformAuth";
+import { AuthError } from "@workspace/auth/server";
 import { listPublicGroups, registerPendingUser } from "./adminOps";
 
 function setCors(res: VercelResponse) {

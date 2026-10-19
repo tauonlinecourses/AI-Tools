@@ -228,15 +228,21 @@ export function useAI() {
 
 For **every app** in `apps/` (hub, video-curator, tool-starter, and any others):
 
-Create the file `apps/<app-name>/api/chat.ts` with exactly this content:
+Create the file `apps/<app-name>/api/chat.ts` with this content (use the app's tool id):
 
 ```ts
-export { default } from '@workspace/ai-client/vercel';
+/// <reference types="node" />
+import vercelHandler from '@workspace/ai-client/vercel';
+import { withPlatformAuth } from '@workspace/auth/server';
+
+export default withPlatformAuth(vercelHandler, { toolId: 'your-tool-id' });
 ```
 
 That is the entire file. Vercel picks up any file in `api/` as a serverless function and
-calls it as the default export. `@workspace/ai-client/vercel` bridges Vercel's Node.js
-`req`/`res` API to the shared Web `handler()` in `server.ts`.
+calls it as the default export. `withPlatformAuth` requires a Platform Bearer JWT, approved
+status and access to `toolId` (the hub omits `toolId` and only requires approved status).
+`@workspace/ai-client/vercel` bridges Vercel's Node.js `req`/`res` API to the shared Web
+`handler()` in `server.ts`.
 
 ### Critical constraints (each one caused a real production failure)
 
@@ -356,7 +362,9 @@ vercel dev
 ```
 
 `vercel dev` runs both the Vite frontend and `api/chat.ts` together, reading `OPENAI_API_KEY`
-from your local `.env.local`.
+from your local `.env.local`. Plain `pnpm dev` (`vite dev`) also serves `api/chat.ts` and
+every other `api/*.ts` handler through `packages/dev-api`, so `vercel dev` is optional (see
+[10-run-deploy-conventions.md](./10-run-deploy-conventions.md#local-api-under-vite-dev-packagesdev-api)).
 
 For fast UI iteration without AI calls, mock the response in the component during dev:
 
@@ -409,7 +417,7 @@ Expected: no output.
 - **Never** import `openai` (the SDK) in any file under `apps/*/src/` or in `packages/ai-client/src/client.ts`.
 - **Never** call `aiChat()` or `useAI()` from `server.ts` — those are client-only.
 - **Never** put business logic (prompt construction, model choice) inside `api/chat.ts` — it is a pass-through only. All logic goes in `server.ts` or in the calling component.
-- When creating a new tool by copying `tool-starter`, the `api/chat.ts` file must be copied as-is. No changes needed.
+- When creating a new tool by copying `tool-starter`, copy `api/chat.ts` as-is and only change `TOOL_ID`.
 
 ---
 

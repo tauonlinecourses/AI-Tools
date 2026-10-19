@@ -16,7 +16,9 @@
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
 - Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data) require a Platform Bearer token and (where applicable) group tool access.
-- **Tau local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local `/api/tau-data` uses `server/tauDataHandler.ts` via `server.ssrLoadModule`.
+- **Local Vite (all apps)**: `vite dev` runs the same `api/*.ts` handlers as production through `packages/dev-api` (`vercelApiPlugin`), so local routes get the same Platform JWT, approved-status and tool gates. There is no separate dev auth code. `vite.config.ts` still never statically imports `@workspace/auth` (Node ESM); handlers load through `server.ssrLoadModule`.
+- **Server auth helpers** all live in `@workspace/auth/server`: `verifyPlatformRequest`, `assertUserIsApproved`, `assertUserHasToolAccess`, `requireToolAccessFromRequest`, `assertUserIsAdmin`, handoff codes, and the re-exported `ADMIN_GROUP_SLUG` / `PLATFORM_TOOL_IDS`. The hub uses them too; it no longer has a local copy.
+- **`withPlatformAuth(handler, { toolId? })`** wraps every `api/chat.ts`. With `toolId` it requires approved status plus tool access; without it (the hub) only approved status. `AuthError` becomes `{ error }` with its status; any other auth failure is 401 `Unauthorized`, and a handler throw is 500. It also unwraps a `{ default: fn }` CJS module object.
 - **Vercel APIs**: `@workspace/auth/server` resolves to a **CJS `dist/` build** (`pnpm --filter @workspace/auth build`). Each app `vercel.json` builds auth (then ai-client) before the app so handoff/chat serverless functions do not crash on raw `.ts` imports.
 
 ```text
@@ -63,7 +65,7 @@ Invite create/copy link: keep Supabase’s official `action_link` token and only
 | UI password not protecting DB/APIs | Critical | Real Supabase Auth + JWT on APIs |
 | `/api/lms-login` open | Critical | Requires Platform JWT + tau-support access |
 | Open `/api/chat` / embed OpenAI proxy | High | JWT + tool entitlement |
-| Video-curator local Vite `/api/*` ungated | High | Dev middleware requires Platform JWT + `video-curator` access |
+| Video-curator local Vite `/api/*` ungated | High | Local Vite runs the production handlers (`packages/dev-api`), so Platform JWT + `video-curator` access apply |
 | Hub `/api/chat` without approved check | Medium | `assertUserIsApproved` after JWT verify |
 | Pending user + leftover group_members | Medium | RPC helpers require `profiles.status = 'approved'` (migration `011`) |
 | Legacy tau `APP_PASSWORD` / `/api/app-login` | Medium | Endpoint returns `410`; client `AppLogin` / `appAuth` helpers removed; Platform Auth is the only UI gate |
@@ -89,7 +91,7 @@ Invite create/copy link: keep Supabase’s official `action_link` token and only
 | Admin | `admin-all-tools` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`) |
 | צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
 
-Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` / hub `platformAuth.ts`.
+Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`).
 
 ## Ops — onboard a user
 
@@ -117,7 +119,7 @@ on conflict do nothing;
 
 ### Local Windows + corporate TLS proxy
 
-Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS inspection often breaks Node (`SELF_SIGNED_CERT_IN_CHAIN` / `fetch failed`) while browser login still works. Local hub/tau `vite.config.ts` imports `packages/auth/src/devTls.ts`, which sets `NODE_TLS_REJECT_UNAUTHORIZED=0` on Windows (override with `PLATFORM_STRICT_TLS=1`). Production Vercel is unaffected.
+Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS inspection often breaks Node (`SELF_SIGNED_CERT_IN_CHAIN` / `fetch failed`) while browser login still works. Local hub/tau `vite.config.ts` imports `packages/auth/src/devTls.ts`, which sets `NODE_TLS_REJECT_UNAUTHORIZED=0` on Windows (override with `PLATFORM_STRICT_TLS=1`). Production Vercel is unaffected. The other apps (video-curator, course-builder, mbz-explorer, tool-starter) do not import it, so on such a network their local `/api/*` calls with a token return 503 "Cannot reach Platform Auth from the local server (TLS/proxy)…". Install `win-ca` / set `NODE_EXTRA_CA_CERTS`, or import `devTls` in that app's config.
 
 ## Migrations
 

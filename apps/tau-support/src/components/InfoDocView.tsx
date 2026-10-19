@@ -7,7 +7,9 @@ interface InfoDocViewProps {
   doc: InfoDoc | null;
   loading?: boolean;
   deleting?: boolean;
+  pinning?: boolean;
   onEdit: () => void;
+  onTogglePin: () => void;
   onDelete: () => void;
 }
 
@@ -15,7 +17,9 @@ export function InfoDocView({
   doc,
   loading,
   deleting,
+  pinning,
   onEdit,
+  onTogglePin,
   onDelete,
 }: InfoDocViewProps) {
   const [questionsOpen, setQuestionsOpen] = useState(false);
@@ -53,14 +57,56 @@ export function InfoDocView({
           {doc.title}
         </h2>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={onEdit} disabled={deleting}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onTogglePin();
+            }}
+            disabled={deleting || pinning}
+            aria-label={doc.pinned ? "הסרת נעיצה" : "נעיצה בראש הרשימה"}
+            title={doc.pinned ? "הסרת נעיצה" : "נעיצה בראש הרשימה"}
+            className="!px-2"
+          >
+            {pinning ? (
+              <Spinner size="sm" />
+            ) : (
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className={`pointer-events-none h-4 w-4 ${
+                  doc.pinned
+                    ? "fill-amber-500 text-amber-600"
+                    : "fill-none text-surface-700"
+                }`}
+              >
+                <path
+                  d="M12 2.5l2.6 5.27 5.82.85-4.21 4.1 1 5.78L12 15.77l-5.21 2.73 1-5.78-4.21-4.1 5.82-.85L12 2.5z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onEdit}
+            disabled={deleting || pinning}
+          >
             עריכה
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
             onClick={onDelete}
-            disabled={deleting}
+            disabled={deleting || pinning}
             title="מחיקת נושא"
             className="!text-rose-800 hover:!bg-rose-50"
           >

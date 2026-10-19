@@ -52,6 +52,7 @@ Each section file has Previous / Next links at the top.
 | Change hub homepage UI | `08` |
 | Create a new tool app | `09` then `10` (copy includes `agents/`; do not list starter on hub) |
 | Deploy to Vercel / ports / conventions | `10` |
+| Local `/api/*` under `vite dev`, env bridging | `10` (`packages/dev-api`) |
 | Post-deploy / production smoke | `prod-smoke-checklist` + `security` |
 
 ---
@@ -77,5 +78,5 @@ Assign the next free port when adding a tool.
 - Live (Vercel) apps: `apps/hub`, `apps/video-curator`, `apps/course-builder`, `apps/tau-support`
 - Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool` (`hubPath` in `tools.config.ts`)
 - Scaffold only: `apps/tool-starter` (not listed on the hub)
-- Shared: `packages/config`, `packages/ui`, `packages/ai-client`
+- Shared: `packages/config`, `packages/ui`, `packages/ai-client`, `packages/auth`, `packages/dev-api` (dev-only: serves `api/*.ts` under `vite dev`; see `10`)
 - Root project overview: [`../../README.md`](../../README.md)

@@ -132,15 +132,18 @@ platform.
   paste email question text → same RAG draft as forum threads → editable
   answer + sources list.
 - `../server/embedCore.ts` — OpenAI `text-embedding-3-small` (1536 dims).
-- `../api/embed.ts` — Vercel `POST /api/embed` (also wired in Vite middleware).
-- `../api/chat.ts` — Vercel `POST /api/chat` (Platform Auth, then
-  `@workspace/ai-client/vercel`). Unwraps a CJS default-import quirk under
-  `"type": "module"` (`{ default: fn }` vs `fn`) that caused
-  `FUNCTION_INVOCATION_FAILED` after auth when generating drafts. Package entry
-  is `vercel.cjs` for the same reason. Local Vite middleware mounts the same Web
-  `handler`
-  from `@workspace/ai-client/server` (restart `pnpm dev` after Vite config
-  changes).
+- `../api/embed.ts` — Vercel `POST /api/embed` (also served by `vite dev`).
+- `../api/chat.ts` — Vercel `POST /api/chat`:
+  `withPlatformAuth(vercelHandler, { toolId: "tau-support" })` from
+  `@workspace/auth/server`. The wrapper also unwraps the CJS default-import quirk
+  under `"type": "module"` (`{ default: fn }` vs `fn`) that once caused
+  `FUNCTION_INVOCATION_FAILED` after auth when generating drafts; the package
+  entry is `vercel.cjs` for the same reason.
+- Local dev: `vite.config.ts` only adds `vercelApiPlugin` (`packages/dev-api`),
+  which runs these same `api/*.ts` files under `vite dev` and bridges `LMS_*`,
+  `OPENAI_API_KEY`, `PLATFORM_*`, `TAU_*` and `VITE_SUPABASE_URL` →
+  `TAU_SUPABASE_URL` into `process.env`. Edits to `api/` or `server/` reload
+  without a restart; `.env` changes still need one.
 - `../src/lib/supabase.ts` — Optional browser client for the **dedicated**
   tau-support Supabase project (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`).
   Missing env → client is `null` and a console warning is logged; the inbox
@@ -174,6 +177,8 @@ platform.
   public `info-doc-images` Storage bucket + policies.
 - `../supabase/migrations/007_info_doc_common_questions.sql` — Adds
   `info_docs.common_questions text[]` for question-shaped RAG retrieval.
+- `../supabase/migrations/009_info_doc_pinned.sql` — `info_docs.pinned`
+  (at most one); seeds **הקדמה - חשוב לקרוא!**.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -248,9 +253,12 @@ RTL split layout inspired by the campus IL forum list:
   swaps the right sidebar into an `InfoDocsSidebar` of official topics and the
   main pane into an `InfoDocView` / `InfoDocEditor`. Clicking the button again
   restores the normal courses/threads view (`selectedId` is preserved). Topics
-  support full CRUD (**הוספת נושא** / **עריכה** / **מחיקה**). In the editor, staff
-  paste images (Ctrl+V) into the body textbox; the app uploads the blob to the
-  public Supabase Storage bucket `info-doc-images` and inserts a markdown
+  support full CRUD (**הוספת נושא** / **עריכה** / **מחיקה**). One topic can be
+  **pinned** (`info_docs.pinned`; **נעץ** / **הסר נעיצה** in the view) — it sorts
+  to the top (★ in the sidebar) and opens by default when entering docs mode.
+  Seeded pin: **הקדמה - חשוב לקרוא!** (`009_info_doc_pinned.sql`). In the editor,
+  staff paste images (Ctrl+V) into the body textbox; the app uploads the blob to
+  the public Supabase Storage bucket `info-doc-images` and inserts a markdown
   `![](publicUrl)` at the caret. Viewing uses `ForumBody` so images render
   inline.   Staff fill **דוגמאות לשאלות** in the editor (or click **הצע שאלות לדוגמה** to
   retrieve similar forum Q↔A and generate Hebrew phrasings via `/api/chat`).
@@ -554,22 +562,35 @@ action cluster (`draftAnswer.ts`):
    **no** Campus IL writes.
 
 Reuses the existing server `OPENAI_API_KEY` and `api/chat.ts` (no new Vercel
-route). Locally, `vite.config.ts` also serves `/api/chat` via the same Web
-`handler` as `/api/embed` (restart Vite after middleware changes). Missing key
-or retrieval failure surfaces a clear error and never blocks poll/sync.
+route). Locally, `vite dev` serves the same `api/chat.ts` (see
+`packages/dev-api`). Missing key or retrieval failure surfaces a clear error and
+never blocks poll/sync.
 
 **Local Vite BFF (Platform Auth):** `vite.config.ts` must not statically import
-`@workspace/auth` or `api/tau-data` (Node ESM cannot resolve auth’s extensionless
-graph when bundling the config). Auth for middleware uses
-`server/devPlatformAuth.ts`; `/api/tau-data` calls `server/tauDataHandler.ts`
-via `ssrLoadModule`. Browser libs call `tauDataClient` only through
-dynamic `import()` so the Vite config graph stays auth-free. Production still
-uses `api/tau-data.ts` + `@workspace/auth/server`.
+`@workspace/auth`, `api/*` or `server/*` (Node ESM cannot resolve auth’s
+extensionless graph when bundling the config). `vercelApiPlugin` loads
+`api/tau-data.ts` (and the other routes) through `server.ssrLoadModule`, so local
+requests use the production Platform Auth gate (`requireToolAccessFromRequest`)
+and `server/tauDataHandler.ts`. Browser libs call `tauDataClient` only through
+dynamic `import()` so the Vite config graph stays auth-free.
 `runTauDataAction` must `return await` every async action: a bare
 `return promise` inside `try/finally` runs `bindTauSupabase(null)` before the
 action finishes (breaks `findSimilarQa` / email draft mid-embed).
 `bindTauSupabase` is reference-counted so overlapping tau-data calls (thread
 UI sync + in-thread draft) do not clear the service client mid-flight.
+Focus/visibility UI-flag refresh (`applyRemoteUiFlagsToStore` →
+`fetchRemoteUiFlags`) must also go through `/api/tau-data` — never the browser
+`supabase` proxy (that throws “Tau Supabase client is not available in the
+browser”).
+`infoDocBodyPlainText` must not require `DOMParser` on the Node BFF —
+contenteditable always sends HTML, and create/update info docs run server-side.
+Info-doc save (`editorHtmlToBody`) runs `sanitizeInfoDocHtml` so un-bolded
+`<b style="font-weight:normal">` (common after contenteditable toggle / Docs
+paste) is unwrapped before storage; `sanitizeForumHtml` does the same on
+display so stripped styles cannot revive bold via `[&_b]:font-bold`.
+Docs paste must not promote large body font-size alone to `<h3>` (CSS makes
+headings bold). Only short + bold runs become headings; unbolded or long
+`<h2>`–`<h6>` demote to `<p>` on save and display.
 
 Later (not this phase): Word-doc hierarchical chunking, hybrid BM25/RRF,
 cross-encoder reranker, auto-posting.
@@ -628,8 +649,8 @@ runtime with `Cannot find module '.../commentTree'`.
 Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
-`004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`, and/or
-`007_info_doc_common_questions.sql`.
+`004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`,
+`007_info_doc_common_questions.sql`, and/or `009_info_doc_pinned.sql`.
 
 ### Load behavior
 
@@ -758,8 +779,8 @@ Dedicated tau-support Supabase project (optional; poll still works without them)
 Embeddings / similar-question search / draft answers (server-only):
 
 - `OPENAI_API_KEY` — used by `POST /api/embed` and `POST /api/chat` (never
-  prefix with `VITE_`). Both routes are available on Vercel and in the local
-  Vite middleware.
+  prefix with `VITE_`). Both routes are available on Vercel and under local
+  `vite dev` (same handler files).
 
 **Important:** Open edX v1 login expects the POST field `email`, not
 `email_or_username`. Sending the wrong field name produces a generic Hebrew/English

@@ -68,18 +68,29 @@ export default config;
 
 ### `apps/hub/vite.config.ts`
 
-```typescript
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+Shape of the real file (see the source for the full env bridge list):
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
+```typescript
+import "../../packages/auth/src/devTls";
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
+import { same, vercelApiPlugin } from "../../packages/dev-api/src/index";
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
+    // Serves api/*.ts (admin, register, auth-handoff, auth-exchange, chat, health) under vite dev.
+    plugins: [react(), vercelApiPlugin({ env, bridge: [...same("PLATFORM_SUPABASE_URL" /* … */)] })],
+    resolve: {
+      dedupe: ["react", "react-dom"],
+      alias: { "mbz-explorer": "../mbz-explorer/src", "dictionary-tool": "../dictionary-tool/src" },
+    },
+    server: { port: 5173, strictPort: true, fs: { allow: ["../.."] } },
+  };
 });
 ```
+
+See [10-run-deploy-conventions.md](./10-run-deploy-conventions.md#local-api-under-vite-dev-packagesdev-api) for how the plugin routes and bridges env.
 
 ### `apps/hub/index.html`
 

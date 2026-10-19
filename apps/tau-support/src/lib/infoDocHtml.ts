@@ -43,8 +43,17 @@ function isBoldStyle(style: string): boolean {
   return /font-weight:\s*(bold|[6-9]00)/i.test(style);
 }
 
+/** Contenteditable "unbold" often leaves <b style="font-weight:normal">. */
+function isExplicitlyNotBold(style: string): boolean {
+  return /font-weight:\s*(normal|400|500)\b/i.test(style);
+}
+
 function isItalicStyle(style: string): boolean {
   return /font-style:\s*italic/i.test(style);
+}
+
+function isExplicitlyNotItalic(style: string): boolean {
+  return /font-style:\s*normal\b/i.test(style);
 }
 
 function headingTagForFontSize(px: number): string | null {
@@ -52,6 +61,33 @@ function headingTagForFontSize(px: number): string | null {
   if (px >= 17) return "H3";
   if (px >= 15) return "H4";
   return null;
+}
+
+/** Titles are short; longer “headings” are usually Docs body text with a big font. */
+const MAX_PROMOTED_HEADING_CHARS = 48;
+
+function elementTextLength(el: HTMLElement): number {
+  return (el.textContent ?? "").replace(/\s+/g, " ").trim().length;
+}
+
+function isHeadingTag(tag: string): boolean {
+  return /^H[1-6]$/.test(tag);
+}
+
+/** Body sentences wrongly stored as headings (ends with . ! ? …). */
+function looksLikeSentence(text: string): boolean {
+  return /[.!?…׃]\s*$/.test(text.trim());
+}
+
+function shouldDemoteHeading(el: HTMLElement, tag: string, style: string): boolean {
+  if (!isHeadingTag(tag)) return false;
+  if (isExplicitlyNotBold(style)) return true;
+  const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (text.length > MAX_PROMOTED_HEADING_CHARS) return true;
+  if (looksLikeSentence(text)) return true;
+  // Real headings are rarely nested inside a list item.
+  if (el.closest("li")) return true;
+  return false;
 }
 
 function cleanHref(href: string): string | null {
@@ -103,33 +139,63 @@ export function sanitizeInfoDocHtml(dirty: string): string {
       return null;
     }
 
-    // Google Docs often wraps everything in <b style="font-weight:normal">.
-    if (tag === "B" || tag === "STRONG") {
-      const style = el.getAttribute("style") ?? "";
-      if (/font-weight:\s*normal/i.test(style)) {
-        const frag = document.createDocumentFragment();
-        for (const child of Array.from(el.childNodes)) {
-          const t = transform(child);
-          if (t) frag.appendChild(t);
-        }
-        return frag;
+    const style = el.getAttribute("style") ?? "";
+
+    // Google Docs + contenteditable "unbold" leave <b style="font-weight:normal">.
+    // Unwrap so display CSS (b { font-bold }) cannot revive bold after styles strip.
+    if (
+      (tag === "B" || tag === "STRONG") &&
+      (isExplicitlyNotBold(style) || (!isBoldStyle(style) && style.includes("font-weight")))
+    ) {
+      const frag = document.createDocumentFragment();
+      for (const child of Array.from(el.childNodes)) {
+        const t = transform(child);
+        if (t) frag.appendChild(t);
       }
+      return frag;
+    }
+    if (
+      (tag === "I" || tag === "EM") &&
+      (isExplicitlyNotItalic(style) ||
+        (!isItalicStyle(style) && style.includes("font-style")))
+    ) {
+      const frag = document.createDocumentFragment();
+      for (const child of Array.from(el.childNodes)) {
+        const t = transform(child);
+        if (t) frag.appendChild(t);
+      }
+      return frag;
     }
 
-    const style = el.getAttribute("style") ?? "";
     const fontPx = parseFontSizePx(style);
-    const bold = isBoldStyle(style) || tag === "B" || tag === "STRONG";
+    const textLen = elementTextLength(el);
+    // Unbold / Docs body-as-heading → demote so [&_h3]:font-bold cannot revive bold.
+    const demoteHeading = shouldDemoteHeading(el, tag, style);
+
+    const bold =
+      !demoteHeading &&
+      (isBoldStyle(style) || tag === "B" || tag === "STRONG");
     const italic = isItalicStyle(style) || tag === "I" || tag === "EM";
 
-    let outTag = tag;
-    if (tag === "SPAN" || tag === "FONT") {
-      const heading = fontPx != null ? headingTagForFontSize(fontPx) : null;
+    let outTag = demoteHeading ? "P" : tag;
+    if (!demoteHeading && (tag === "SPAN" || tag === "FONT")) {
+      // Only promote large+bold+short runs to headings (Docs body is often 17–18px).
+      const heading =
+        fontPx != null && bold && textLen > 0 && textLen <= MAX_PROMOTED_HEADING_CHARS
+          ? headingTagForFontSize(fontPx)
+          : null;
       if (heading) outTag = heading;
       else if (bold && italic) outTag = "STRONG";
       else if (bold) outTag = "STRONG";
       else if (italic) outTag = "EM";
       else outTag = "SPAN";
-    } else if (fontPx != null) {
+    } else if (
+      !demoteHeading &&
+      fontPx != null &&
+      bold &&
+      textLen > 0 &&
+      textLen <= MAX_PROMOTED_HEADING_CHARS
+    ) {
       const heading = headingTagForFontSize(fontPx);
       if (heading && (tag === "P" || tag === "DIV")) outTag = heading;
     }
@@ -233,7 +299,29 @@ export function editorHtmlToBody(html: string): string {
   if (!trimmed || trimmed === "<br>" || trimmed === "<div><br></div>") {
     return "";
   }
-  return html;
+  // Normalize on save: unwrap faux-bold <b style="font-weight:normal"> etc.
+  // Contenteditable often leaves those after the user removes bold.
+  return sanitizeInfoDocHtml(trimmed) || trimmed;
+}
+
+/**
+ * Strip HTML to plain text without DOMParser (Node BFF has no DOM).
+ * Used when saving info docs via `/api/tau-data`.
+ */
+function stripHtmlToPlainText(html: string): string {
+  let text = html;
+  text = text.replace(/<\s*br\s*\/?\s*>/gi, "\n");
+  text = text.replace(/<\/\s*(p|div|li|h[1-6]|tr)\s*>/gi, "\n");
+  text = text.replace(/<img[^>]*\salt=["']([^"']*)["'][^>]*>/gi, "$1");
+  text = text.replace(/<[^>]+>/g, "");
+  text = text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Plain text for embeddings / search (strip tags, keep line breaks). */
@@ -241,10 +329,15 @@ export function infoDocBodyPlainText(body: string): string {
   if (!body.trim()) return "";
   if (!/<[a-z][\s\S]*>/i.test(body)) return body.trim();
 
+  // Node BFF (tau-data) has no DOMParser — contenteditable always sends HTML.
+  if (typeof DOMParser === "undefined") {
+    return stripHtmlToPlainText(body);
+  }
+
   const parser = new DOMParser();
   const doc = parser.parseFromString(body, "text/html");
   const root = doc.body;
-  if (!root) return body.replace(/<[^>]+>/g, " ").trim();
+  if (!root) return stripHtmlToPlainText(body);
 
   const blocks = new Set([
     "P",

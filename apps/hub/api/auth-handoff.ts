@@ -4,7 +4,7 @@ import {
   AuthError,
   createHandoffCode,
   verifyPlatformRequest,
-} from "./platformAuth";
+} from "@workspace/auth/server";
 
 function setCors(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");

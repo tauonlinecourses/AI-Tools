@@ -73,10 +73,10 @@ Every app and package exposes the same scripts so the root `turbo` commands cove
 |---|---|---|
 | `type-check` | `tsc --noEmit` (video-curator: `tsc -b`) | All workspaces, including `packages/ui`, `auth`, `ai-client` |
 | `lint` | `eslint .` | Each workspace has `eslint.config.mjs` → `createConfig()` from `@workspace/config/eslint` |
-| `test` | `vitest run` | Only workspaces with tests: `packages/auth`, `packages/ai-client`, `course-builder`, `tau-support`, `video-curator` |
+| `test` | `vitest run` | Only workspaces with tests: `packages/auth`, `packages/ai-client`, `packages/dev-api`, `course-builder`, `tau-support`, `video-curator` |
 
 - `eslint` and `vitest` are installed once at the root; plugins live in `packages/config`.
-- Tests live next to the code as `src/**/*.test.ts`. Each tested workspace has its own `vitest.config.ts` so Vitest does **not** load the dev-API middleware in `vite.config.ts`. Mock modules that create a Supabase client at import time (`vi.mock("./supabase")`).
+- Tests live next to the code as `src/**/*.test.ts`. Each tested workspace has its own `vitest.config.ts` so Vitest does **not** load the dev-API plugin from `vite.config.ts`. Mock modules that create a Supabase client at import time (`vi.mock("./supabase")`).
 - Lint warnings do not fail the run; errors do. Use `// eslint-disable-next-line <rule>` only for intentional patterns (for example control-character regexes that strip null bytes).
 - No Prettier: apps currently use different quote/semicolon styles, and a repo-wide reformat is a separate decision.
 - CI: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes to `main` and on PRs: `pnpm install --frozen-lockfile` → `type-check` → `lint` → `test` → `build`. After adding a dependency, commit the updated `pnpm-lock.yaml` or CI fails.
@@ -96,12 +96,12 @@ OPENAI_API_KEY=your_openai_key_here
 # See README.md for the full linking procedure.
 ```
 
-> Local dev: `vercel dev` runs `api/chat.ts` alongside Vite and reads `OPENAI_API_KEY`
-> from each app's `.env.local`. video-curator also serves `/api/chat` under plain `vite dev`
-> via a local middleware in its `vite.config.ts` that delegates to the shared handler; that
-> middleware bridges legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY` into `OPENAI_API_KEY`
-> for convenience, but `OPENAI_API_KEY` is the only supported name going forward. Restart
-> the dev server after editing `.env.local`.
+> Local dev: plain `vite dev` serves every app's own `api/*.ts` handlers (including
+> `/api/chat`) through `packages/dev-api` (see
+> [10-run-deploy-conventions.md](./10-run-deploy-conventions.md#local-api-under-vite-dev-packagesdev-api)),
+> reading `OPENAI_API_KEY` from the app's `.env` / `.env.local`. video-curator's env bridge also
+> accepts the legacy `VITE_OPENAI_API_KEY` / `VITE_OPENAI_KEY`, but `OPENAI_API_KEY` is the only
+> supported name going forward. Restart the dev server after editing `.env.local`.
 
 **Video Curator segmentation errors:** transcript segmentation ([`segmentTranscript`](../../apps/video-curator/src/lib/segmentTranscript.ts)) now calls the shared `/api/chat` route via `aiChat` (`@workspace/ai-client/client`). It returns `errorMessage` when the AI request fails or when model output cannot be validated (equal-chunk fallback). Repaired partial AI ranges are not treated as a connection failure. The yellow banner in the right panel shows that message so API-key / network issues are distinguishable from validation fallback.
 

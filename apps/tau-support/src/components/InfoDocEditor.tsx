@@ -294,35 +294,42 @@ export function InfoDocEditor({
 
   return (
     <div dir="rtl" className="flex flex-col gap-4 p-4 sm:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-surface-900">
-          {initial ? "עריכת נושא" : "נושא חדש"}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            disabled={busy || suggestBusy}
-          >
-            ביטול
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={!canSave}
-            onClick={handleSave}
-          >
-            {busy ? (
-              <span className="inline-flex items-center gap-2">
-                <Spinner size="sm" />
-                שומר…
-              </span>
-            ) : (
-              "שמור"
-            )}
-          </Button>
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-surface-900">
+            {initial ? "עריכת נושא" : "נושא חדש"}
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              disabled={busy || suggestBusy}
+            >
+              ביטול
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!canSave}
+              onClick={handleSave}
+            >
+              {busy ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size="sm" />
+                  שומר…
+                </span>
+              ) : (
+                "שמור"
+              )}
+            </Button>
+          </div>
         </div>
+        {error ? (
+          <p className="rounded-control border border-danger bg-red-50 px-3 py-2 text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
       </header>
 
       <Input
@@ -427,7 +434,6 @@ export function InfoDocEditor({
         {uploadError ? (
           <p className="text-xs text-danger">{uploadError}</p>
         ) : null}
-        {error ? <p className="text-xs text-danger">{error}</p> : null}
       </div>
     </div>
   );

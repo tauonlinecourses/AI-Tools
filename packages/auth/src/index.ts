@@ -46,15 +46,12 @@ export {
   verifyPlatformRequest,
   listAllowedToolIdsForUser,
   assertUserHasToolAccess,
+  assertUserIsAdmin,
   assertUserIsApproved,
   requireToolAccessFromRequest,
+  withPlatformAuth,
   createHandoffCode,
   redeemHandoffCode,
 } from "./server.js";
 
 export type { VerifiedPlatformUser } from "./server.js";
-
-export {
-  withToolAuth,
-  requireToolAuthFromWebRequest,
-} from "./protectApi.js";

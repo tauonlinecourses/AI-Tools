@@ -4,7 +4,7 @@ import {
   AuthError,
   assertUserIsAdmin,
   verifyPlatformRequest,
-} from "./platformAuth";
+} from "@workspace/auth/server";
 import {
   approveUser,
   createAdminGroup,

@@ -19,6 +19,8 @@ import {
   createInfoDoc,
   deleteInfoDoc,
   listInfoDocs,
+  setInfoDocPinned,
+  sortInfoDocs,
   updateInfoDoc,
   type InfoDoc,
 } from "./lib/infoDocs";
@@ -252,6 +254,7 @@ export default function App() {
   );
   const [infoDocSaveBusy, setInfoDocSaveBusy] = useState(false);
   const [infoDocDeleteBusy, setInfoDocDeleteBusy] = useState(false);
+  const [infoDocPinBusy, setInfoDocPinBusy] = useState(false);
   const [infoDocError, setInfoDocError] = useState<string | null>(null);
 
   const threadStoreRef = useRef(threadStore);
@@ -1284,7 +1287,7 @@ export default function App() {
     []
   );
 
-  const refreshInfoDocs = useCallback(async () => {
+  const refreshInfoDocs = useCallback(async (opts?: { selectDefault?: boolean }) => {
     if (!isSupabaseConfigured) {
       setInfoDocs([]);
       return;
@@ -1299,7 +1302,19 @@ export default function App() {
         }
         return;
       }
-      setInfoDocs(result.docs ?? []);
+      const docs = sortInfoDocs(result.docs ?? []);
+      setInfoDocs(docs);
+      if (opts?.selectDefault) {
+        const pinned = docs.find((d) => d.pinned);
+        setSelectedTopicId(pinned?.id ?? docs[0]?.id ?? null);
+        setInfoDocEditMode(null);
+      } else {
+        setSelectedTopicId((prev) => {
+          if (prev && docs.some((d) => d.id === prev)) return prev;
+          const pinned = docs.find((d) => d.pinned);
+          return pinned?.id ?? docs[0]?.id ?? null;
+        });
+      }
     } finally {
       setInfoDocsLoading(false);
     }
@@ -1307,7 +1322,7 @@ export default function App() {
 
   useEffect(() => {
     if (!docsMode) return;
-    void refreshInfoDocs();
+    void refreshInfoDocs({ selectDefault: true });
   }, [docsMode, refreshInfoDocs]);
 
   const handleToggleDocsMode = useCallback(() => {
@@ -1317,6 +1332,8 @@ export default function App() {
         // Docs mode is entered from the homepage only.
         setEmailMode(false);
         setSelectedId(null);
+        setSelectedTopicId(null);
+        setInfoDocEditMode(null);
       } else {
         setInfoDocEditMode(null);
         setInfoDocError(null);
@@ -1386,10 +1403,13 @@ export default function App() {
           return;
         }
 
-        setInfoDocs((prev) => {
-          if (isNew) return [...prev, result.doc!];
-          return prev.map((d) => (d.id === result.doc!.id ? result.doc! : d));
-        });
+        setInfoDocs((prev) =>
+          sortInfoDocs(
+            isNew
+              ? [...prev, result.doc!]
+              : prev.map((d) => (d.id === result.doc!.id ? result.doc! : d))
+          )
+        );
         setSelectedTopicId(result.doc.id);
         setInfoDocEditMode(null);
 
@@ -1431,13 +1451,42 @@ export default function App() {
         );
         return;
       }
-      setInfoDocs((prev) => prev.filter((d) => d.id !== selectedTopicId));
-      setSelectedTopicId(null);
+      setInfoDocs((prev) => {
+        const next = prev.filter((d) => d.id !== selectedTopicId);
+        const pinned = next.find((d) => d.pinned);
+        setSelectedTopicId(pinned?.id ?? next[0]?.id ?? null);
+        return next;
+      });
       setInfoDocEditMode(null);
     } finally {
       setInfoDocDeleteBusy(false);
     }
   }, [selectedTopicId]);
+
+  const handleTogglePinTopic = useCallback(async () => {
+    if (!selectedTopicId || infoDocPinBusy) return;
+    const current = infoDocs.find((d) => d.id === selectedTopicId);
+    if (!current) return;
+    const nextPinned = !current.pinned;
+    setInfoDocPinBusy(true);
+    setInfoDocError(null);
+    try {
+      const result = await setInfoDocPinned(selectedTopicId, nextPinned);
+      if (!result.ok || !result.doc) {
+        setInfoDocError(
+          result.skipped
+            ? "Supabase לא מוגדר"
+            : result.message ?? "עדכון הנעיצה נכשל"
+        );
+        return;
+      }
+      // Re-fetch so sidebar order + ★ match the DB (avoids stale local pin flags).
+      await refreshInfoDocs();
+      setSelectedTopicId(selectedTopicId);
+    } finally {
+      setInfoDocPinBusy(false);
+    }
+  }, [selectedTopicId, infoDocs, infoDocPinBusy, refreshInfoDocs]);
 
   function handleAuthChange(patch: Partial<AuthSettingsValues>) {
     setAuth((prev) => ({ ...prev, ...patch }));
@@ -1875,7 +1924,9 @@ export default function App() {
                         doc={selectedInfoDoc}
                         loading={infoDocsLoading}
                         deleting={infoDocDeleteBusy}
+                        pinning={infoDocPinBusy}
                         onEdit={handleEditTopic}
+                        onTogglePin={() => void handleTogglePinTopic()}
                         onDelete={() => void handleDeleteTopic()}
                       />
                     </>

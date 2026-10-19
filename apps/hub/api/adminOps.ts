@@ -5,8 +5,8 @@ import {
   ADMIN_GROUP_SLUG,
   AuthError,
   PLATFORM_TOOL_IDS,
-  serviceClient,
-} from "./platformAuth";
+  createPlatformServiceClient as serviceClient,
+} from "@workspace/auth/server";
 
 export type AccountStatus = "pending" | "approved" | "rejected";
 

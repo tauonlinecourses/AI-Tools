@@ -15,11 +15,16 @@ export interface InfoDoc {
   /** Example student phrasings for RAG retrieval. */
   commonQuestions: string[];
   position: number;
+  /** When true, sorts first and opens by default in docs mode (at most one). */
+  pinned: boolean;
   lang: string | null;
   contentHash: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Default intro topic title to pin when seeding / matching. */
+export const DEFAULT_PINNED_INFO_DOC_TITLE = "הקדמה - חשוב לקרוא!";
 
 export interface InfoDocWriteResult {
   ok: boolean;
@@ -41,6 +46,7 @@ type InfoDocRow = {
   body: string;
   common_questions?: string[] | null;
   position: number;
+  pinned?: boolean | null;
   lang: string | null;
   content_hash: string | null;
   created_at: string;
@@ -48,7 +54,7 @@ type InfoDocRow = {
 };
 
 const INFO_DOC_SELECT =
-  "id, title, body, common_questions, position, lang, content_hash, created_at, updated_at";
+  "id, title, body, common_questions, position, pinned, lang, content_hash, created_at, updated_at";
 
 /** Deduped trimmed common questions (empty strings dropped). */
 export function normalizeCommonQuestions(
@@ -74,11 +80,21 @@ function rowToDoc(row: InfoDocRow): InfoDoc {
     body: row.body,
     commonQuestions: normalizeCommonQuestions(row.common_questions),
     position: row.position,
+    pinned: Boolean(row.pinned),
     lang: row.lang,
     contentHash: row.content_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/** Pinned first, then position, then created_at. */
+export function sortInfoDocs(docs: InfoDoc[]): InfoDoc[] {
+  return [...docs].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (a.position !== b.position) return a.position - b.position;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
 }
 
 /** Hash of title + body + common questions for change detection. */
@@ -108,13 +124,14 @@ export async function listInfoDocs(): Promise<InfoDocListResult> {
     const { data, error } = await supabase
       .from("info_docs")
       .select(INFO_DOC_SELECT)
+      .order("pinned", { ascending: false })
       .order("position", { ascending: true })
       .order("created_at", { ascending: true });
 
     if (error) return { ok: false, message: error.message };
     return {
       ok: true,
-      docs: ((data ?? []) as InfoDocRow[]).map(rowToDoc),
+      docs: sortInfoDocs(((data ?? []) as InfoDocRow[]).map(rowToDoc)),
     };
   } catch (err) {
     return {
@@ -297,6 +314,59 @@ export async function deleteInfoDoc(id: string): Promise<{
     return {
       ok: false,
       message: err instanceof Error ? err.message : "Failed to delete info doc",
+    };
+  }
+}
+
+/**
+ * Pin or unpin a topic. Pinning clears any other pinned topic (at most one).
+ */
+export async function setInfoDocPinned(
+  id: string,
+  pinned: boolean
+): Promise<InfoDocWriteResult> {
+  if (!isSupabaseConfigured) return { ok: false, skipped: true };
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient.js");
+      return await tauData<InfoDocWriteResult>("setInfoDocPinned", {
+        id,
+        pinned,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        message:
+          err instanceof Error ? err.message : "Failed to update pin state",
+      };
+    }
+  }
+
+  try {
+    // Clear any existing pin first so the unique partial index never conflicts.
+    if (pinned) {
+      const { error: clearErr } = await supabase
+        .from("info_docs")
+        .update({ pinned: false })
+        .eq("pinned", true);
+      if (clearErr) return { ok: false, message: clearErr.message };
+    }
+
+    const { data, error } = await supabase
+      .from("info_docs")
+      .update({ pinned })
+      .eq("id", id)
+      .select(INFO_DOC_SELECT)
+      .single();
+
+    if (error) return { ok: false, message: error.message };
+    if (!data) return { ok: false, message: "Topic not found" };
+    return { ok: true, doc: rowToDoc(data as InfoDocRow) };
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error ? err.message : "Failed to update pin state",
     };
   }
 }
