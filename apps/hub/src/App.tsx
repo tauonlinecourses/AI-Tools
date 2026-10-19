@@ -5,7 +5,6 @@ import { PlatformAuthProvider, usePlatformAuth } from "@workspace/auth/react";
 import { listAllowedToolIds, startToolHandoff } from "@workspace/auth/client";
 import {
   tools,
-  categories,
   toolHref,
   toolIsOpenable,
   findToolForReturnUrl,
@@ -13,7 +12,6 @@ import {
 import type { Tool } from "./tools.config";
 import {
   ui,
-  localizeCategory,
   localizeTool,
   type Locale,
 } from "./i18n";
@@ -27,6 +25,7 @@ import { RegisterPage } from "./components/RegisterPage";
 import { SetPasswordPage } from "./components/SetPasswordPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { ChangePasswordPage } from "./components/ChangePasswordPage";
+import { fetchPublicGroups, type PublicGroup } from "./lib/registerApi";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 import { DICTIONARY_BASE } from "../../dictionary-tool/src/paths";
 
@@ -304,7 +303,8 @@ function HubPage({ locale }: { locale: Locale }) {
     user,
     accountStatus,
   } = usePlatformAuth();
-  const [activeCategory, setActiveCategory] = useState<string>("All");
+  const [activeGroupId, setActiveGroupId] = useState<string>("All");
+  const [publicGroups, setPublicGroups] = useState<PublicGroup[]>([]);
   const adminHref = locale === "en" ? "/en/admin" : "/admin";
 
   useEffect(() => {
@@ -313,6 +313,23 @@ function HubPage({ locale }: { locale: Locale }) {
     document.title = t.title;
     persistHubLocale(locale);
   }, [t, locale]);
+
+  useEffect(() => {
+    if (loading || !session) return;
+    if (accountStatus && accountStatus !== "approved") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await fetchPublicGroups();
+        if (!cancelled) setPublicGroups(next);
+      } catch {
+        if (!cancelled) setPublicGroups([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, session, accountStatus]);
 
   useEffect(() => {
     if (loading || !session) return;
@@ -388,10 +405,14 @@ function HubPage({ locale }: { locale: Locale }) {
 
   // Always list every tool; unauthorized cards are shown disabled with a tooltip.
   // Available (openable + allowed) tools first; preserve catalog order within each bucket.
+  const activeGroupToolIds =
+    activeGroupId === "All"
+      ? null
+      : (publicGroups.find((g) => g.id === activeGroupId)?.toolIds ?? []);
   const filteredTools = (
-    activeCategory === "All"
+    activeGroupToolIds === null
       ? tools
-      : tools.filter((tool) => tool.category === activeCategory)
+      : tools.filter((tool) => activeGroupToolIds.includes(tool.id))
   )
     .map((tool, index) => ({ tool, index }))
     .sort((a, b) => {
@@ -402,8 +423,6 @@ function HubPage({ locale }: { locale: Locale }) {
       return aAvail - bAvail || a.index - b.index;
     })
     .map(({ tool }) => tool);
-
-  const categoryTabs = ["All", ...categories] as const;
 
   return (
     <div className="relative min-h-screen bg-white" dir={t.dir} lang={t.htmlLang}>
@@ -481,19 +500,31 @@ function HubPage({ locale }: { locale: Locale }) {
         <div className="relative z-10 border-b border-surface-200/80 bg-white/40 backdrop-blur-[2px]">
           <div className="max-w-screen-xl mx-auto px-6">
             <div className="flex gap-1 overflow-x-auto py-2">
-              {categoryTabs.map((cat) => (
+              <button
+                type="button"
+                onClick={() => setActiveGroupId("All")}
+                className={[
+                  "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
+                  activeGroupId === "All"
+                    ? "bg-black text-white"
+                    : "bg-white/90 text-gray-700 border border-gray-200 hover:bg-gray-50",
+                ].join(" ")}
+              >
+                {t.all}
+              </button>
+              {publicGroups.map((group) => (
                 <button
-                  key={cat}
+                  key={group.id}
                   type="button"
-                  onClick={() => setActiveCategory(cat)}
+                  onClick={() => setActiveGroupId(group.id)}
                   className={[
                     "px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-fast rounded-control",
-                    activeCategory === cat
+                    activeGroupId === group.id
                       ? "bg-black text-white"
                       : "bg-white/90 text-gray-700 border border-gray-200 hover:bg-gray-50",
                   ].join(" ")}
                 >
-                  {cat === "All" ? t.all : localizeCategory(locale, cat)}
+                  {group.name}
                 </button>
               ))}
             </div>

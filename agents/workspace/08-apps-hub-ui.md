@@ -1,5 +1,5 @@
 ﻿<!-- AGENT DOC: Step 5b — apps/hub App.tsx -->
-<!-- Topic: hub launcher UI, tool cards, categories, Hebrew locale -->
+<!-- Topic: hub launcher UI, tool cards, group filter strip, Hebrew locale -->
 <!-- Part of: agents/workspace/ — start at README.md -->
 
 > **Agents:** Read [README.md](./README.md) first for the full map. This file is **part 8 of 10**.
@@ -29,12 +29,11 @@ Continues Step 5 from [07-apps-hub-config.md](./07-apps-hub-config.md).
 
 ### `apps/hub/src/i18n.ts`
 
-Single source for hub chrome copy, category labels, and Hebrew tool names/descriptions.
+Single source for hub chrome copy and Hebrew tool names/descriptions.
 
 - `ui.en` / `ui.he` — title, subtitle, All/הכל, empty state, Coming Soon/בקרוב, no-permission tooltip (`אין לך הרשאות לכלי זה` / English equivalent), lang switch label + href, `dir`, `htmlLang`.
-- `categoryLabels` — maps English category keys from `tools.config.ts` (e.g. `Video`, `Education`, `Tech`) to localized tab labels.
 - `toolCopy` — Hebrew `name` + `description` keyed by tool `id`. When adding a tool, add an entry here for the Hebrew page.
-- Helpers: `localizeCategory(locale, category)`, `localizeTool(locale, tool)`.
+- Helper: `localizeTool(locale, tool)`.
 
 ### Favicon
 
@@ -62,10 +61,10 @@ Staff sign-in form (email + password via platform auth). Header block is **cente
 
 Shared launcher UI driven by `locale`:
 
-- **ToolCard** — uses `localizeTool` for name/description; Coming Soon badge uses `ui[locale].comingSoon`. Always rendered for every tool in the filtered category. Clickable only when `toolIsOpenable()` **and** the tool id is in `allowedToolIds`; otherwise dimmed (`opacity-60`, `cursor-not-allowed`) with native `title` tooltip `ui[locale].noPermission` (Hebrew: **אין לך הרשאות לכלי זה**). `hubPath` tools navigate in-app (e.g. MBZ at `/mbz-explorer`); standalone tools use auth handoff.
-- **HubPage** — if session but `accountStatus` is `pending`/`rejected`, shows `AccountStatusPage` instead of the catalog. Category tabs show `ui[locale].all` for `"All"`, otherwise `localizeCategory`; filter logic still keys off English category strings from `tools.config.ts`. **Does not hide** tools the user lacks group access for — the full catalog is always shown; entitlement only disables the card. Within the filtered list, **available** tools (`toolIsOpenable` + in `allowedToolIds`) are sorted first; original catalog order is kept within available / unavailable. When the URL has `?returnUrl=` (from a tool `ToolAuthGate` redirect), an approved session resolves it via `findToolForReturnUrl` (catalog `url` / `devUrl` / `hubPath` only): entitled → handoff or in-app `hubPath` navigate; no entitlement → stay on catalog.
-- Same layout as before: header (logo + title + lang switch), category strip, tool grid.
-- **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and category strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and category strip `z-10` so the user-menu popup is not covered/blurred by the category strip’s backdrop filter.
+- **ToolCard** — uses `localizeTool` for name/description; Coming Soon badge uses `ui[locale].comingSoon`. Always rendered for every tool in the filtered group. Clickable only when `toolIsOpenable()` **and** the tool id is in `allowedToolIds`; otherwise dimmed (`opacity-60`, `cursor-not-allowed`) with native `title` tooltip `ui[locale].noPermission` (Hebrew: **אין לך הרשאות לכלי זה**). `hubPath` tools navigate in-app (e.g. MBZ at `/mbz-explorer`); standalone tools use auth handoff.
+- **HubPage** — if session but `accountStatus` is `pending`/`rejected`, shows `AccountStatusPage` instead of the catalog. Filter strip tabs: `ui[locale].all` plus every **public** permission group (from `fetchPublicGroups` → `GET /api/register?resource=groups`, excludes Admin). Public groups are ordered with `learning-systems-team` (צוות מערכות למידה) first, then by name. Selecting a group shows tools whose catalog `id` is in that group’s `toolIds` (`group_tools`); **All** lists the full catalog. Group tab labels use the DB `name` as-is. **Does not hide** tools the user lacks group access for — the full catalog is always shown under All; entitlement only disables the card. Within the filtered list, **available** tools (`toolIsOpenable` + in `allowedToolIds`) are sorted first; original catalog order is kept within available / unavailable. When the URL has `?returnUrl=` (from a tool `ToolAuthGate` redirect), an approved session resolves it via `findToolForReturnUrl` (catalog `url` / `devUrl` / `hubPath` only): entitled → handoff or in-app `hubPath` navigate; no entitlement → stay on catalog.
+- Same layout as before: header (logo + title + lang switch), group filter strip, tool grid.
+- **Soft page background** — `HubPage` and `LoginPage` both use `SoftPageBg`. Header and group strips use translucent white + light blur so the pattern reads through; tool cards stay solid white. Header is `z-20` and group strip `z-10` so the user-menu popup is not covered/blurred by the strip’s backdrop filter.
 - **User menu** — circular grey placeholder avatar (silhouette). Email + team names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple teams, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full team list** (UI label: **צוותים** / Teams), **שינוי סיסמה** / **Change password** (links to `/auth/change-password` or `/en/auth/change-password`), and red **התנתקות** / **Sign out**; closes on outside click or Escape.
 - **Admin button** — gear icon link to `/admin` (or `/en/admin`), placed **visually to the right** of the user menu (`dir="ltr"` on the header actions cluster). Visible only when `usePlatformAuth().isAdmin` is true (membership in group slug `admin-all-tools`).
 - **MBZ host / route** — wrapped in `ApprovedOnly` (pending/rejected blocked). Host: unsigned → `LoginPage`; signed-in without `mbz-explorer` entitlement → `<Navigate>` to hub home; otherwise mounts the MBZ app.
@@ -85,6 +84,6 @@ API: `GET/POST /api/admin` (`apps/hub/api/admin.ts` + `adminOps.ts`) — actions
 
 ### Adding a new tool (Hebrew)
 
-1. Add the tool in `tools.config.ts` (English name/description/category).
+1. Add the tool in `tools.config.ts` (English name/description; `category` is unused by the strip).
 2. Add Hebrew `name` + `description` in `i18n.ts` → `toolCopy[id]`.
-3. If the category is new, add labels under `categoryLabels.en` and `categoryLabels.he`.
+3. Assign the tool to permission groups in Admin (or via `group_tools`) so it appears under the matching group filter tabs.

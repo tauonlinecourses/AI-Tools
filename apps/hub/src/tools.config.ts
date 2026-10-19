@@ -106,8 +106,6 @@ export const tools: Tool[] = [
   },
 ];
 
-export const categories = [...new Set(tools.map((t) => t.category))];
-
 /**
  * Resolve a tool deep-link / `returnUrl` to a catalog entry.
  * Only matches known `hubPath`, production `url`, or `devUrl` origins (no open redirects).

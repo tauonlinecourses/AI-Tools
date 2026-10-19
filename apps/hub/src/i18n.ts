@@ -27,20 +27,6 @@ export const ui = {
   },
 } as const;
 
-/** Category key (English, from tools.config) → localized label */
-export const categoryLabels: Record<Locale, Record<string, string>> = {
-  en: {
-    Video:      "Video",
-    Education:  "Education",
-    Tech:       "Tech",
-  },
-  he: {
-    Video:      "וידאו",
-    Education:  "חינוך",
-    Tech:       "טכנולוגיה",
-  },
-};
-
 export const toolCopy: Record<
   string,
   { name: string; description: string }
@@ -66,10 +52,6 @@ export const toolCopy: Record<
     description: "המרת קובץ אקסל (מושג, הגדרה) לקובץ XML לייבוא למילון מונחים במודל",
   },
 };
-
-export function localizeCategory(locale: Locale, category: string): string {
-  return categoryLabels[locale][category] ?? category;
-}
 
 export function localizeTool(
   locale: Locale,

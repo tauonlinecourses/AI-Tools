@@ -828,21 +828,44 @@ export async function removeUser(input: {
   return { removed: true };
 }
 
-/** Public groups list for self-registration (excludes Admin). */
-export async function listPublicGroups(): Promise<AdminGroupSummary[]> {
+export type PublicGroupRow = AdminGroupSummary & { toolIds: string[] };
+
+/** Public groups list for self-registration + hub catalog strip (excludes Admin). */
+export async function listPublicGroups(): Promise<PublicGroupRow[]> {
   const admin = serviceClient();
-  const { data, error } = await admin
-    .from("groups")
-    .select("id, name, slug")
-    .order("name");
-  if (error) throw error;
-  return (data ?? [])
+  const [
+    { data: groups, error: gErr },
+    { data: tools, error: tErr },
+  ] = await Promise.all([
+    admin.from("groups").select("id, name, slug").order("name"),
+    admin.from("group_tools").select("group_id, tool_id"),
+  ]);
+  if (gErr) throw gErr;
+  if (tErr) throw tErr;
+
+  const toolMap = new Map<string, string[]>();
+  for (const row of tools ?? []) {
+    const id = String(row.group_id);
+    const list = toolMap.get(id) ?? [];
+    list.push(String(row.tool_id));
+    toolMap.set(id, list);
+  }
+
+  const LEARNING_SYSTEMS_SLUG = "learning-systems-team";
+
+  return (groups ?? [])
     .filter((g) => String(g.slug) !== ADMIN_GROUP_SLUG)
     .map((g) => ({
       id: String(g.id),
       name: String(g.name),
       slug: String(g.slug),
-    }));
+      toolIds: (toolMap.get(String(g.id)) ?? []).sort(),
+    }))
+    .sort((a, b) => {
+      if (a.slug === LEARNING_SYSTEMS_SLUG) return -1;
+      if (b.slug === LEARNING_SYSTEMS_SLUG) return 1;
+      return a.name.localeCompare(b.name, "he");
+    });
 }
 
 export async function registerPendingUser(input: {
