@@ -21,10 +21,13 @@ Create the root `package.json`:
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "type-check": "turbo type-check"
+    "type-check": "turbo type-check",
+    "test": "turbo test"
   },
   "devDependencies": {
-    "turbo": "^2.0.0"
+    "eslint": "^9.39.4",
+    "turbo": "^2.0.0",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18",
@@ -56,10 +59,27 @@ Create `turbo.json`:
       "persistent": true
     },
     "lint": {},
-    "type-check": {}
+    "type-check": {},
+    "test": {}
   }
 }
 ```
+
+### Quality checks (lint, type-check, test, CI)
+
+Every app and package exposes the same scripts so the root `turbo` commands cover the whole repo:
+
+| Script | Command | Notes |
+|---|---|---|
+| `type-check` | `tsc --noEmit` (video-curator: `tsc -b`) | All workspaces, including `packages/ui`, `auth`, `ai-client` |
+| `lint` | `eslint .` | Each workspace has `eslint.config.mjs` → `createConfig()` from `@workspace/config/eslint` |
+| `test` | `vitest run` | Only workspaces with tests: `packages/auth`, `packages/ai-client`, `course-builder`, `tau-support`, `video-curator` |
+
+- `eslint` and `vitest` are installed once at the root; plugins live in `packages/config`.
+- Tests live next to the code as `src/**/*.test.ts`. Each tested workspace has its own `vitest.config.ts` so Vitest does **not** load the dev-API middleware in `vite.config.ts`. Mock modules that create a Supabase client at import time (`vi.mock("./supabase")`).
+- Lint warnings do not fail the run; errors do. Use `// eslint-disable-next-line <rule>` only for intentional patterns (for example control-character regexes that strip null bytes).
+- No Prettier: apps currently use different quote/semicolon styles, and a repo-wide reformat is a separate decision.
+- CI: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes to `main` and on PRs: `pnpm install --frozen-lockfile` → `type-check` → `lint` → `test` → `build`. After adding a dependency, commit the updated `pnpm-lock.yaml` or CI fails.
 
 Create `.env.example` at root. The key must **never** be prefixed with `VITE_` — that
 would expose it in the browser bundle. All AI calls go through serverless `api/chat.ts`

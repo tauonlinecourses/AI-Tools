@@ -101,7 +101,7 @@ async function obtainLoginCookies(authOrigin) {
 
   for (const origin of targets) {
     const loginPageRes = await fetch(`${origin}/login`, { redirect: "manual" });
-    let setCookies = extractSetCookies(loginPageRes.headers);
+    const setCookies = extractSetCookies(loginPageRes.headers);
     let csrftoken = getCookie(setCookies, "csrftoken");
     let cookieJar = setCookies.map((c) => c.split(";")[0]).join("; ");
 

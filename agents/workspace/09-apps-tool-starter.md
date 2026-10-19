@@ -37,6 +37,8 @@ After changing tool behavior, update the matching doc in this folder so it stays
 
 ### `apps/tool-starter/package.json`
 
+New tools copied from the starter also need an `eslint.config.mjs` (see [03-packages-config.md](./03-packages-config.md)). If the tool has testable pure logic, add `"test": "vitest run"`, a `vitest.config.ts`, and `src/**/*.test.ts` files (see [02-monorepo-root.md](./02-monorepo-root.md#quality-checks-lint-type-check-test-ci)).
+
 ```json
 {
   "name": "tool-starter",
@@ -46,7 +48,8 @@ After changing tool behavior, update the matching doc in this folder so it stays
   "scripts": {
     "dev":        "vite",
     "build":      "tsc && vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint":       "eslint ."
   },
   "dependencies": {
     "@workspace/ui":        "file:../../packages/ui",

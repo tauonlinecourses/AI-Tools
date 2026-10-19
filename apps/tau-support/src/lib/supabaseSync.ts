@@ -51,6 +51,7 @@ function nullable(value?: string | null): string | null {
 /** Postgres rejects null bytes in text/jsonb; Campus IL bodies sometimes include them. */
 function stripNullBytes(value: string | null | undefined): string | null {
   if (value == null) return null;
+  // eslint-disable-next-line no-control-regex
   const cleaned = value.replace(/\u0000/g, "");
   return cleaned.trim() ? cleaned : null;
 }
@@ -158,6 +159,7 @@ function buildThreadContentRow(
   try {
     raw = JSON.parse(
       JSON.stringify(rawThread as Record<string, unknown>).replace(
+        // eslint-disable-next-line no-control-regex
         /\u0000/g,
         ""
       )

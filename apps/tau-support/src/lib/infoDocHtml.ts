@@ -174,7 +174,7 @@ export function sanitizeInfoDocHtml(dirty: string): string {
     }
 
     // Promote bold/italic wrappers when style was on a block that stayed a block.
-    let parent: HTMLElement = out;
+    const parent: HTMLElement = out;
     if (bold && outTag !== "STRONG" && outTag !== "B" && !/^H[1-6]$/.test(outTag)) {
       // Keep block; wrap children later via a strong when appropriate.
     }
@@ -203,7 +203,7 @@ export function sanitizeInfoDocHtml(dirty: string): string {
   }
 
   // Normalize empty divs; collapse Google Docs <p><br></p> noise lightly.
-  let html = result.innerHTML
+  const html = result.innerHTML
     .replace(/&nbsp;/gi, " ")
     .replace(/\u200B/g, "")
     .trim();

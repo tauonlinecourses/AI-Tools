@@ -467,6 +467,7 @@ export async function importCourseBackup(backup: CourseBackup): Promise<string> 
 function sanitizeFilename(title: string): string {
   const cleaned = title
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "")
     .replace(/\s+/g, "-")
     .slice(0, 80);
