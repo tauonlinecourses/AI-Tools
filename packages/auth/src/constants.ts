@@ -1,5 +1,5 @@
 /** Slug of the platform admin group (full hub tool access + admin UI). */
-export const ADMIN_GROUP_SLUG = "Admin (all tools)";
+export const ADMIN_GROUP_SLUG = "admin-all-tools";
 
 /** Tool ids allowed in `group_tools.tool_id` (matches DB check constraint). */
 export const PLATFORM_TOOL_IDS = [

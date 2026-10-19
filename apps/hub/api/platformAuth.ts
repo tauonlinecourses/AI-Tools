@@ -61,7 +61,7 @@ export function serviceClient() {
 }
 
 /** Slug of the Admin group — members may use the hub admin UI/API. */
-export const ADMIN_GROUP_SLUG = "Admin (all tools)";
+export const ADMIN_GROUP_SLUG = "admin-all-tools";
 
 export const PLATFORM_TOOL_IDS = [
   "video-curator",

@@ -6,7 +6,7 @@
 
 - **Identity + groups** live in the **Course-Builder** Supabase project (`profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`).
 - **`profiles.status`** is `pending` | `approved` | `rejected` (default `approved` for legacy users). Only **approved** users see hub tools / handoff / admin. Display name is always the email local-part (`handle_new_user`); never user-entered.
-- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu and `accountStatus` from `profiles`. `isAdmin` is true when the user belongs to slug `Admin (all tools)` — gates the header admin button and `/admin` UI.
+- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu and `accountStatus` from `profiles`. `isAdmin` is true when the user belongs to slug `admin-all-tools` — gates the header admin button and `/admin` UI.
 - **Hub admin API** (`/api/admin`): service_role list/create/update of groups + memberships, plus `inviteUser` / `sendInviteEmail` / `approveUser` / `rejectUser` / `removeUser` (Auth `deleteUser`; cannot delete self). Every request verifies JWT then Admin group membership. Non-admins cannot read all users/groups via RLS (member-only selects).
 - **Public register API** (`/api/register`): `GET ?resource=groups` (excludes Admin) and `POST` create pending user with password via `auth.admin.createUser` (**no Auth email**). Self-reg stores `requested_group_id`; no `group_members` until approve.
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub). Handoff requires approved status.
@@ -50,10 +50,10 @@ Helpers live in `@workspace/auth`: `resetPlatformPasswordForEmail`, `verifyPlatf
 
 Supabase Auth URL config (Course-Builder project → Authentication → URL configuration):
 
-- **Site URL** should be the hub (local: `http://localhost:5173`, prod: hub Vercel URL) — not `localhost:3000`.
-- **Redirect URLs** must allow `http://localhost:5173/auth/set-password` and the prod `https://<hub>/auth/set-password`. Invite **and** password-recovery emails reuse this path. If a redirect is not allowlisted, Supabase falls back to Site URL and the invite/`redirect_to` will look wrong (e.g. `http://localhost:3000` with no `/auth/set-password`).
+- **Site URL** must be the **prod** hub (`https://ai-tools-tauonline.vercel.app`) — **not** `http://localhost:3000` or `http://localhost:5173`. Failed verifies and email fallbacks redirect to Site URL; a localhost Site URL is why invite errors open `localhost:3000/#error=…`.
+- **Redirect URLs** must include `https://ai-tools-tauonline.vercel.app/auth/set-password` (and `http://localhost:5173/auth/set-password` for local forgot-password). If the prod path is missing, Auth rejects the invite redirect.
 
-Invite and forgot-password APIs pass `redirectTo` from the browser (`window.location.origin + /auth/set-password`).
+Invite create/copy link: keep Supabase’s official `action_link` token and only rewrite `redirect_to` to the live hub (do not rebuild from `hashed_token` alone — that yields `otp_expired`). Forgot-password still uses `window.location.origin + /auth/set-password`.
 
 ## Threat findings addressed
 
@@ -86,7 +86,7 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 
 | Name | Slug | Tools | Notes |
 |---|---|---|---|
-| Admin | `Admin (all tools)` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
+| Admin | `admin-all-tools` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
 | צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
 
 Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` / hub `platformAuth.ts`.
@@ -107,7 +107,7 @@ select g.id, p.id
 from public.groups g
 join public.profiles p on true
 join auth.users u on u.id = p.id
-where g.slug = 'learning-systems-team'  -- or 'Admin (all tools)'
+where g.slug = 'learning-systems-team'  -- or 'admin-all-tools'
   and u.email = 'YOUR_STAFF_EMAIL'
 on conflict do nothing;
 ```

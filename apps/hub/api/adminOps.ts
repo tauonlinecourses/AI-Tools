@@ -25,27 +25,41 @@ export type AdminUserRow = {
   groups: AdminGroupSummary[];
 };
 
+const HUB_PROD_DEFAULT = "https://ai-tools-tauonline.vercel.app";
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+/** Live hub origin for invite emails (never localhost — invitees cannot open it). */
 function hubOrigin(): string {
   const raw =
     process.env.VITE_HUB_URL?.trim() ||
     process.env.HUB_URL?.trim() ||
-    (process.env.NODE_ENV !== "production"
-      ? "http://localhost:5173"
-      : "https://ai-tools-tauonline.vercel.app");
-  return raw.replace(/\/$/, "");
+    HUB_PROD_DEFAULT;
+  const origin = raw.replace(/\/$/, "");
+  try {
+    if (isLocalHost(new URL(origin).hostname)) return HUB_PROD_DEFAULT;
+  } catch {
+    return HUB_PROD_DEFAULT;
+  }
+  return origin;
 }
 
 function defaultInviteRedirectTo(): string {
   return `${hubOrigin()}/auth/set-password`;
 }
 
-/** Prefer client-provided hub origin; must end with /auth/set-password. */
+/** Prefer client-provided hub origin; rewrite localhost to live hub. */
 function resolveInviteRedirectTo(redirectTo?: string | null): string {
   const raw = redirectTo?.trim() || "";
   if (!raw) return defaultInviteRedirectTo();
   try {
     const url = new URL(raw);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return defaultInviteRedirectTo();
+    }
+    if (isLocalHost(url.hostname)) {
       return defaultInviteRedirectTo();
     }
     // Normalize to the set-password route on that origin.
@@ -471,6 +485,72 @@ async function ensureProfileStatus(
   if (updErr) throw updErr;
 }
 
+type GenerateLinkProperties = {
+  action_link?: string;
+  hashed_token?: string;
+  redirect_to?: string;
+};
+
+/**
+ * Keep Supabase's official `action_link` token intact; only force live-hub
+ * `redirect_to`. Rebuilding from `hashed_token` alone can produce
+ * otp_expired / invalid links. Error redirects still land on whatever is set
+ * as Auth Site URL in the dashboard (must be the prod hub, not localhost:3000).
+ */
+function inviteActionLinkFromProperties(
+  properties: GenerateLinkProperties | null | undefined,
+  redirectTo: string
+): string | null {
+  const supabaseUrl = (
+    process.env.PLATFORM_SUPABASE_URL ||
+    process.env.VITE_PLATFORM_SUPABASE_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/$/, "");
+
+  const raw = properties?.action_link?.trim();
+  if (raw) {
+    try {
+      const url = new URL(raw);
+      // Official links can be rooted at Site URL (e.g. localhost:3000) — move
+      // verify onto the Supabase API host while keeping the same token params.
+      if (isLocalHost(url.hostname) && supabaseUrl) {
+        const token =
+          url.searchParams.get("token") ||
+          url.searchParams.get("token_hash") ||
+          properties?.hashed_token?.trim() ||
+          "";
+        const type = url.searchParams.get("type") || "invite";
+        if (!token) return null;
+        const fixed = new URL(`${supabaseUrl}/auth/v1/verify`);
+        if (url.searchParams.has("token_hash")) {
+          fixed.searchParams.set("token_hash", token);
+        } else {
+          fixed.searchParams.set("token", token);
+        }
+        fixed.searchParams.set("type", type);
+        fixed.searchParams.set("redirect_to", redirectTo);
+        return fixed.toString();
+      }
+
+      url.searchParams.set("redirect_to", redirectTo);
+      url.searchParams.delete("redirectTo");
+      return url.toString();
+    } catch {
+      return raw;
+    }
+  }
+
+  const token = properties?.hashed_token?.trim();
+  if (!token || !supabaseUrl) return null;
+  const url = new URL(`${supabaseUrl}/auth/v1/verify`);
+  url.searchParams.set("token", token);
+  url.searchParams.set("type", "invite");
+  url.searchParams.set("redirect_to", redirectTo);
+  return url.toString();
+}
+
 async function generateInviteActionLink(
   email: string,
   redirectTo: string
@@ -485,10 +565,10 @@ async function generateInviteActionLink(
     },
   });
   if (error) throw error;
-  const link =
-    (data as { properties?: { action_link?: string } } | null)?.properties
-      ?.action_link ?? null;
-  return link;
+  return inviteActionLinkFromProperties(
+    (data as { properties?: GenerateLinkProperties } | null)?.properties,
+    redirectTo
+  );
 }
 
 /** Create approved user + groups; returns shareable invite link (no email yet). */
@@ -524,9 +604,10 @@ export async function inviteUser(input: {
   }
 
   const userId = data.user?.id ?? null;
-  let actionLink =
-    (data as { properties?: { action_link?: string } } | null)?.properties
-      ?.action_link ?? null;
+  let actionLink = inviteActionLinkFromProperties(
+    (data as { properties?: GenerateLinkProperties } | null)?.properties,
+    redirectTo
+  );
   if (!actionLink) {
     actionLink = await generateInviteActionLink(email, redirectTo);
   }

@@ -29,7 +29,7 @@ type AuthState = {
   user: User | null;
   allowedToolIds: string[];
   groups: PlatformGroup[];
-  /** True when the user belongs to the Admin group (`Admin (all tools)`). */
+  /** True when the user belongs to the Admin group (`admin-all-tools`). */
   isAdmin: boolean;
   /** Profile approval status; null while unsigned or still loading membership. */
   accountStatus: AccountStatus | null;
