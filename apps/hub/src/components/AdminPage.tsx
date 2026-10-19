@@ -32,6 +32,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "course-builder": { he: "פיתוח קורסים", en: "Course Builder" },
   "mbz-explorer": { he: "ניתוח MBZ", en: "MBZ Explorer" },
   "tau-support": { he: "תמיכה טכנית", en: "TAU Support" },
+  "dictionary-tool": { he: "מילון מונחים", en: "Dictionary Tool" },
 };
 
 type Tab = "users" | "groups";
@@ -95,8 +96,10 @@ function copy(locale: Locale) {
       copyLink: "העתקה",
       linkCopied: "הועתק",
       emailSent: "נשלח מייל הזמנה",
+      emailSentHint:
+        "המוזמן צריך לפתוח את הקישור מהמייל (הקישור שהועתק קודם כבר לא תקף).",
       inviteSuccess: "המשתמש נוצר",
-      inviteShareHint: "שלחו מייל או העתיקו את הקישור",
+      inviteShareHint: "העתיקו את הקישור, או שלחו מייל הזמנה (לא שניהם — המייל מבטל את הקישור שהועתק).",
       inviteLinkLabel: "קישור הזמנה",
       requestedGroup: "צוות מבוקש",
       done: "סיום",
@@ -151,8 +154,11 @@ function copy(locale: Locale) {
     copyLink: "Copy",
     linkCopied: "Copied",
     emailSent: "Invite email sent",
+    emailSentHint:
+      "The invitee must open the link from the email (any previously copied link is no longer valid).",
     inviteSuccess: "User created",
-    inviteShareHint: "Send an email or copy the invite link",
+    inviteShareHint:
+      "Copy the invite link, or send an invite email (not both — sending email invalidates the copied link).",
     inviteLinkLabel: "Invite link",
     requestedGroup: "Requested team",
     done: "Done",
@@ -549,7 +555,8 @@ function InviteUserModal({
     try {
       const res = await sendAdminInviteEmail(createdUser.email);
       setCreatedUser(res.user);
-      if (res.actionLink) setActionLink(res.actionLink);
+      // Email uses a new one-time token; any prior copyable link is dead.
+      setActionLink(null);
       setEmailSent(true);
       setCopied(false);
       await onSaved();
@@ -626,7 +633,7 @@ function InviteUserModal({
             </dl>
 
             <p className="text-xs font-semibold text-surface-500">
-              {t.inviteShareHint}
+              {emailSent ? t.emailSentHint : t.inviteShareHint}
             </p>
 
             {actionLink && (
@@ -656,15 +663,20 @@ function InviteUserModal({
               </div>
             )}
 
-            <Button
-              type="button"
-              leftIcon={<MailIcon />}
-              loading={sendingEmail}
-              disabled={sendingEmail}
-              onClick={() => void onSendEmail()}
-            >
-              {emailSent ? t.emailSent : t.sendInviteEmail}
-            </Button>
+            {!emailSent && (
+              <Button
+                type="button"
+                leftIcon={<MailIcon />}
+                loading={sendingEmail}
+                disabled={sendingEmail}
+                onClick={() => void onSendEmail()}
+              >
+                {t.sendInviteEmail}
+              </Button>
+            )}
+            {emailSent && (
+              <p className="text-sm font-medium text-surface-700">{t.emailSent}</p>
+            )}
 
             {error && <p className="text-xs text-red-600">{error}</p>}
 

@@ -69,6 +69,7 @@ export const PLATFORM_TOOL_IDS = [
   "mbz-explorer",
   "tau-support",
   "tool-starter",
+  "dictionary-tool",
 ] as const;
 
 export async function assertUserIsAdmin(userId: string): Promise<void> {

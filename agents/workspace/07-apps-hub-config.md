@@ -160,6 +160,15 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Tech",
   },
+  {
+    id:          "dictionary-tool",
+    name:        "Dictionary Tool",
+    description: "Convert an Excel glossary into Moodle-importable XML.",
+    hubPath:     "/dictionary-tool",
+    icon:        "book",
+    status:      "beta",
+    category:    "Education",
+  },
 ];
 ```
 

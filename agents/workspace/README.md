@@ -65,6 +65,8 @@ Each section file has Previous / Next links at the top.
 | tool-starter | 5175 |
 | course-builder | 5176 |
 | mbz-explorer | 5177 |
+| tau-support | 5178 |
+| dictionary-tool | 5179 |
 
 Assign the next free port when adding a tool.
 
@@ -73,7 +75,7 @@ Assign the next free port when adding a tool.
 ## Related paths in the repo
 
 - Live (Vercel) apps: `apps/hub`, `apps/video-curator`, `apps/course-builder`, `apps/tau-support`
-- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → hub route `/mbz-explorer` (`hubPath` in `tools.config.ts`)
+- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool` (`hubPath` in `tools.config.ts`)
 - Scaffold only: `apps/tool-starter` (not listed on the hub)
 - Shared: `packages/config`, `packages/ui`, `packages/ai-client`
 - Root project overview: [`../../README.md`](../../README.md)

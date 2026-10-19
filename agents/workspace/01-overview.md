@@ -85,13 +85,17 @@ workspace/
 │   │                                   react-router SPA + supabase-js (VITE_SUPABASE_* env) + dnd-kit.
 │   │                                   SPA rewrite in vercel.json for deep links.
 │   │
-│   └── mbz-explorer/               ← MBZ Explorer (hub-hosted at /mbz-explorer; no separate Vercel)
-│       ├── agents/                 ← Per-tool agent docs
-│       ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
-│       └── …                       Local Vite port 5177
+│   ├── mbz-explorer/               ← MBZ Explorer (hub-hosted at /mbz-explorer; no separate Vercel)
+│   │   ├── agents/                 ← Per-tool agent docs
+│   │   ├── api/chat.ts             ← AI route: re-exports @workspace/ai-client/vercel
+│   │   └── …                       Local Vite port 5177
+│   │
+│   └── dictionary-tool/            ← Dictionary Tool (hub-hosted at /dictionary-tool; no separate Vercel)
+│       ├── agents/                 ← Per-tool agent docs + Moodle XML fixture
+│       └── …                       Local Vite port 5179 — Excel glossary → Moodle XML (client-side)
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177
-│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · dictionary-tool 5179
+│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`. Hub-hosted tools use `hubPath`.
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs

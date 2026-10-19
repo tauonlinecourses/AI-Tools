@@ -20,6 +20,7 @@ import {
 import { LoginPage } from "./components/LoginPage";
 import { SoftPageBg } from "./components/SoftPageBg";
 import { MbzExplorerHost } from "./components/MbzExplorerHost";
+import { DictionaryToolHost } from "./components/DictionaryToolHost";
 import { AdminPage } from "./components/AdminPage";
 import { AccountStatusPage } from "./components/AccountStatusPage";
 import { RegisterPage } from "./components/RegisterPage";
@@ -27,6 +28,7 @@ import { SetPasswordPage } from "./components/SetPasswordPage";
 import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { ChangePasswordPage } from "./components/ChangePasswordPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
+import { DICTIONARY_BASE } from "../../dictionary-tool/src/paths";
 
 /** Temporarily hide the Hebrew/English header switcher. `/en` route still works. */
 const SHOW_LANG_SWITCHER = false;
@@ -585,6 +587,14 @@ export default function App() {
           element={
             <ApprovedOnly locale="he">
               <MbzExplorerHost locale="he" />
+            </ApprovedOnly>
+          }
+        />
+        <Route
+          path={`${DICTIONARY_BASE}/*`}
+          element={
+            <ApprovedOnly locale="he">
+              <DictionaryToolHost locale="he" />
             </ApprovedOnly>
           }
         />

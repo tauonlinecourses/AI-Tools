@@ -31,6 +31,7 @@ import {
 
 const hubDir = path.dirname(fileURLToPath(import.meta.url));
 const mbzSrc = path.resolve(hubDir, "../mbz-explorer/src");
+const dictionarySrc = path.resolve(hubDir, "../dictionary-tool/src");
 
 function bridgeEnv(env: Record<string, string>) {
   // Local Windows + corporate TLS MITM: Node fetch cannot use the Windows store.
@@ -457,8 +458,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       dedupe: ["react", "react-dom"],
       alias: {
-        // Allow hub to compile the hub-hosted MBZ tool from its sibling app.
+        // Allow hub to compile hub-hosted sibling tools.
         "mbz-explorer": mbzSrc,
+        "dictionary-tool": dictionarySrc,
       },
     },
     server: {

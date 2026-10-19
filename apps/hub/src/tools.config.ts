@@ -94,6 +94,16 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Education",
   },
+  {
+    id:          "dictionary-tool",
+    name:        "Dictionary Tool",
+    description: "Convert an Excel glossary (term + definition) into Moodle-importable XML.",
+    // Hosted inside the hub Vercel project (not a separate app deploy).
+    hubPath:     "/dictionary-tool",
+    icon:        "book",
+    status:      "beta",
+    category:    "Education",
+  },
 ];
 
 export const categories = [...new Set(tools.map((t) => t.category))];

@@ -36,7 +36,7 @@ Signed-in change password → verify current → update password
 
 | Flow | How | Email |
 |---|---|---|
-| **Admin invite** | Admin enters work email + groups → **Create user** (`generateLink`, approved + memberships, no email yet) → same modal shows user details + shareable link (copy) + optional **Send invite email** (`sendInviteEmail` re-invites via delete + `inviteUserByEmail`) → invitee opens `/auth/set-password` | Built-in Auth email ~2/hour — prefer copy link or attach **custom SMTP** for volume |
+| **Admin invite** | Admin enters work email + groups → **Create user** (`generateLink`, approved + memberships, no email yet) → same modal shows shareable link (copy) **or** optional **Send invite email** (`sendInviteEmail` = delete + `inviteUserByEmail`). Use **one** delivery path: sending email issues a new one-time token and invalidates any previously copied link. After email, do **not** call `generateLink` again (that used to rotate the token a second time so the email link landed on `/auth/set-password` with no session). Invitee opens `/auth/set-password` | Built-in Auth email ~2/hour — prefer copy link or attach **custom SMTP** for volume |
 | **Self-register** | Login → Create account → email + password + group (not Admin) → `status=pending` → pending screen until admin **Approve** (confirm/change groups) or **Reject** | **No** Auth confirmation email; admin approval is the trust gate |
 
 ## Forgot + change password
@@ -53,7 +53,7 @@ Supabase Auth URL config (Course-Builder project → Authentication → URL conf
 - **Site URL** must be the **prod** hub (`https://ai-tools-tauonline.vercel.app`) — **not** `http://localhost:3000` or `http://localhost:5173`. Failed verifies and email fallbacks redirect to Site URL; a localhost Site URL is why invite errors open `localhost:3000/#error=…`.
 - **Redirect URLs** must include `https://ai-tools-tauonline.vercel.app/auth/set-password` (and `http://localhost:5173/auth/set-password` for local forgot-password). If the prod path is missing, Auth rejects the invite redirect.
 
-Invite create/copy link: keep Supabase’s official `action_link` token and only rewrite `redirect_to` to the live hub (do not rebuild from `hashed_token` alone — that yields `otp_expired`). Forgot-password still uses `window.location.origin + /auth/set-password`.
+Invite create/copy link: keep Supabase’s official `action_link` token and only rewrite `redirect_to` to the live hub (do not rebuild from `hashed_token` alone — that yields `otp_expired`). After `inviteUserByEmail`, never regenerate an invite link for the same user until you intentionally want to invalidate the email. Forgot-password still uses `window.location.origin + /auth/set-password`. `SetPasswordPage` surfaces `#error` / `error_description` from failed Auth redirects.
 
 ## Threat findings addressed
 
@@ -86,7 +86,7 @@ Invite create/copy link: keep Supabase’s official `action_link` token and only
 
 | Name | Slug | Tools | Notes |
 |---|---|---|---|
-| Admin | `admin-all-tools` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`) |
+| Admin | `admin-all-tools` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`) |
 | צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
 
 Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` / hub `platformAuth.ts`.
@@ -121,7 +121,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`)
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_add_dictionary_tool.sql` (extends `group_tools` check to include `dictionary-tool` + keep production `virtual-support`; seeds `dictionary-tool` on staff/admin groups)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
 
 ## Access-control audit (what blocks unauthenticated / unauthorized use)
@@ -131,6 +131,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 | Hub `/`, `/en` | `PlatformAuthProvider` → login if no session; pending/rejected → status page |
 | Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin` |
 | Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
+| Hub `/dictionary-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `dictionary-tool` |
 | Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |
 | `returnUrl` after login | Only catalog origins / `hubPath`s; entitlement re-checked before handoff |
 | Tool `/api/*` (chat, embed, lms, tau-data, youtube-transcript, …) | Bearer Platform JWT + approved + `user_has_tool_access(toolId)` |

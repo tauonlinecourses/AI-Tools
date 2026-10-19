@@ -1,0 +1,518 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GLOSSARY>
+  <INFO>
+    <NAME>מילון מונחי הקורס</NAME>
+    <INTRO>&lt;p dir=&quot;rtl&quot;&gt;להלן מילון מונחים הכולל מושגים, תיאוריות ודמויות מרכזיות המופיעים בקורס:&lt;/p&gt;</INTRO>
+    <INTROFORMAT>1</INTROFORMAT>
+    <ALLOWDUPLICATEDENTRIES>0</ALLOWDUPLICATEDENTRIES>
+    <DISPLAYFORMAT>dictionary</DISPLAYFORMAT>
+    <SHOWSPECIAL>1</SHOWSPECIAL>
+    <SHOWALPHABET>1</SHOWALPHABET>
+    <SHOWALL>1</SHOWALL>
+    <ALLOWCOMMENTS>0</ALLOWCOMMENTS>
+    <USEDYNALINK>1</USEDYNALINK>
+    <DEFAULTAPPROVAL>0</DEFAULTAPPROVAL>
+    <GLOBALGLOSSARY>0</GLOBALGLOSSARY>
+    <ENTBYPAGE>10</ENTBYPAGE>
+    <ENTRIES>
+      <ENTRY>
+        <CONCEPT>גזענות (Racism)</CONCEPT>
+        <DEFINITION>&lt;p&gt;פגיעה בכבוד, בזכויות ובהזדמנויות על בסיס שיוך קבוצתי, המבוססת על תפיסת עליונות (ביולוגית או תרבותית) המוטמעת במוסדות, בנורמות ובתרבות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>מיתוס הגזע</CONCEPT>
+        <DEFINITION>&lt;p&gt;הקביעה המדעית המוכחת כי האנושות כולה שייכת לגזע אחד (הומו סאפיינס) וכי גזע אינו מציאות ביולוגית אלא מיתוס חברתי.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>מיתוס הגזע</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>גזענות ביולוגית</CONCEPT>
+        <DEFINITION>&lt;p dir=&quot;rtl&quot;&gt;גישה המניחה כי האנושות מחולקת לגזעים הנבדלים גנטית, בעלי תכונות אופי קבועות והיררכיה פנימית.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>גזענות תרבותית</CONCEPT>
+        <DEFINITION>&lt;p&gt;סוג של גזענות המייחסת את ה&quot;נחיתות&quot; של קבוצות מסוימות לתרבות שלהן (במקום לביולוגיה), תוך תפיסת התכונות התרבותיות כמהותניות ובלתי משתנות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>הגזענות החדשה (New Racism)</CONCEPT>
+        <DEFINITION>&lt;p&gt;גזענות מבוססת תרבות המשתמשת בשפה ניטרלית וקורקטית כדי להסוות אפליה והיררכיה חברתית בפועל&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>הגזענות החדשה</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אינטרסקציונליות (Intersectionality / הצטלבותיות)</CONCEPT>
+        <DEFINITION>&lt;p&gt;תיאוריה הבוחנת כיצד מערכות כוח ודיכוי שונות (גזע, מגדר, מעמד) מצטלבות ליצירת חוויות ייחודיות של אפליה.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>אינטרסקציונליות</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>מודל שלושת הממדים</CONCEPT>
+        <DEFINITION>&lt;p&gt;כלי לניתוח גזענות בשלוש רמות המשפיעות זו על זו: המבני (מדיניות ותרבות), הבין-אישי (יחסים בין אנשים) והאישי (הפנמה פסיכולוגית).&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>הגמוניה (Hegemony)</CONCEPT>
+        <DEFINITION>&lt;p&gt;תהליך שבו תפיסת עולם של קבוצה שלטונית הופכת ל&quot;שכל ישר&quot; ולסדר טבעי ומובן מאליו בעיני כלל החברה.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>הגמוניה</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אוריינטליזם</CONCEPT>
+        <DEFINITION>&lt;p&gt;מנגנון שבו המערב בונה דימוי נחות, &quot;אקזוטי&quot; ובלתי רציונלי של ה&quot;מזרח&quot; כדי להגדיר את עצמו כנאור ועליון.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>שרשרת האוריינטליזם</CONCEPT>
+        <DEFINITION>&lt;p&gt;תיאוריה המסבירה כיצד קבוצות שחוו אוריינטליזם (כמו יהודים באירופה) הפנו אותו כלפי קבוצות אחרות (כמו יהודים מזרחים וערבים בישראל) כדי להיחשב &quot;מערביות&quot;.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>מיקרו-אגרסיות (Microaggressions)</CONCEPT>
+        <DEFINITION>&lt;p&gt;ביטויים יומיומיים קטנים, לעיתים לא מודעים (מבטים, הערות), המעבירים מסר של חריגות ונחיתות ומצטברים לכדי פגיעה נפשית.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>מיקרו-אגרסיות</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אפקט פיגמליון</CONCEPT>
+        <DEFINITION>&lt;p&gt;תופעה שבה ציפיות גבוהות של דמות סמכות (כמו מורה) מעצבות ומשפרות את הביצועים של הכפופים לה בפועל.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>הביטוס (Habitus)</CONCEPT>
+        <DEFINITION>&lt;p&gt;מערכת דפוסי חשיבה, הרגלים ותנועות גוף שנרכשים מילדות ומשקפים את המיקום החברתי והמעמדי של הפרט.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>הביטוס</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>הביטוס רפלקסיבי</CONCEPT>
+        <DEFINITION>&lt;p&gt;היכולת של אדם לבקר את דפוסי המחשבה וההרגלים המופנמים שלו ולבחור לפעול אחרת מהמסלול שיועד לו במבנה החברתי.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>הטיות קוגניטיביות</CONCEPT>
+        <DEFINITION>&lt;p&gt;&quot;קיצורי דרך&quot; מחשבתיים של מערכת 1 במוח שעלולים להוביל להחלטות מפלות ולא מודעות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>דילמת השוטר (Shooter Bias)</CONCEPT>
+        <DEFINITION>&lt;p&gt;הטיה קוגניטיבית הגורמת לאנשים לזהות חפץ תמים כנשק מהר יותר כאשר הוא מוחזק בידי אדם מקבוצת מיעוט (לרוב שחורים).&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>דילמת השוטר</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אפרטהייד</CONCEPT>
+        <DEFINITION>&lt;p&gt;משטר של הפרדה גזעית ממוסדת ועליונות של קבוצה אחת על אחרת, כפי שהתקיים בדרום אפריקה.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>העדפה מתקנת (Affirmative Action)</CONCEPT>
+        <DEFINITION>&lt;p&gt;סל כלים אקטיביים (כמו שריון מקומות) שנועדו לתקן אי-שוויון היסטורי ופערים שנוצרו מאפליה ממושכת.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>העדפה מתקנת</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>ייצוג הולם</CONCEPT>
+        <DEFINITION>&lt;p&gt;היעד של מדיניות ההעדפה המתקנת – השגת ייצוג לקבוצות שונות באופן ההולם את שיעורן באוכלוסייה.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אלימות סימבולית</CONCEPT>
+        <DEFINITION>&lt;p&gt;מצב שבו אדם מוותר מראש על זכויותיו או קולו כי הפנים שהוא &quot;פחות שייך&quot; או &quot;פחות טוב&quot; בתוך המבנה החברתי.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>דיכוי מופנם (Internalized Oppression)</CONCEPT>
+        <DEFINITION>&lt;p&gt;תהליך שבו חברי קבוצות מוחלשות מאמצים את הסטריאוטיפים השליליים וההיררכיות שהחברה מטילה עליהם.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>דיכוי מופנם</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>פריבילגיה (Privilege)</CONCEPT>
+        <DEFINITION>&lt;p&gt;יתרונות &quot;שקופים&quot; ובלתי מורגשים שמהם נהנים בני קבוצת הרוב (כמו ביטחון ברחוב או ייצוג תרבותי) מבלי שנדרשו להיאבק עליהם.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>פריבילגיה</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>ריקליימינג (Reclaiming)</CONCEPT>
+        <DEFINITION>&lt;p&gt;תהליך שבו קבוצות מוחלשות לוקחות בעלות מחדש על כינויי גנאי והופכות אותם לסמלי גאווה (כמו המילה &quot;שחור&quot;).&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>ריקליימינג</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>דרוויניזם חברתי</CONCEPT>
+        <DEFINITION>&lt;p&gt;עיוות תורת האבולוציה כדי להצדיק שליטה של &quot;גזעים חזקים&quot; על &quot;חלשים&quot; במסגרת המאבק להישרדות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>גזענות ממסדית/מבנית (Institutional Racism)</CONCEPT>
+        <DEFINITION>&lt;p&gt;דיניות ופרקטיקות של מוסדות המייצרות תוצאות מפלות באופן שיטתי, גם ללא כוונה מפורשת.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>גזענות ממסדית / מבנית</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>פרופיילינג (Profiling):</CONCEPT>
+        <DEFINITION>&lt;p&gt;פרקטיקה של סיווג אנשים וייחוס רמת סיכון על סמך מאפיינים חיצוניים (מוצא, צבע עור) במקום על בסיס מידע קונקרטי.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>פרופיילינג</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>דה-הומניזציה</CONCEPT>
+        <DEFINITION>&lt;p&gt;תהליך של שלילת צלם אנוש מקבוצות מסוימות והצגתן כחיות, אובייקטים או &quot;אחרים&quot; שאינם ראויים לאמפתיה.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>קאסטה (Caste)</CONCEPT>
+        <DEFINITION>&lt;p&gt;מבנה חברתי היררכי נוקשה המבוסס על תורשה, טוהר ודה-הומניזציה, כפי שקיים בהודו ובמערכות גזעניות דומות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>קאסטה</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>כור היתוך</CONCEPT>
+        <DEFINITION>&lt;p&gt;מדיניות ישראלית שביקשה ליצור אחידות לאומית דרך מחיקת זהויות עדתיות ודיכוין לטובת מודל תרבותי הגמוני.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>איום הסטריאוטיפ (Stereotype Threat)</CONCEPT>
+        <DEFINITION>&lt;p&gt;חרדה שחווה אדם מקבוצת מיעוט שמא יאשש סטריאוטיפ שלילי על קבוצתו, דבר הפוגע בפועל בביצועיו.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>איום הסטריאוטיפ</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>פשעי שנאה / עבירות מסר (Message Crimes)</CONCEPT>
+        <DEFINITION>&lt;p&gt;פשעים המונעים משנאה לקבוצה ונועדו להלך אימים על כלל חברי אותה קבוצה דרך פגיעה בפרט.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>פשעי שנאה</NAME>
+          </ALIAS>
+          <ALIAS>
+            <NAME>פשעי שנאה / עבירות מסר</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>תקינות פוליטית (Political Correctness)</CONCEPT>
+        <DEFINITION>&lt;p&gt;הימנעות משימוש בביטויים פוגעניים ואימוץ שפה מכבדת ככלי לשינוי תודעה חברתית.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>תקינות פוליטית</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>לוֹנְג דִירֶה (Longue Durée)</CONCEPT>
+        <DEFINITION>&lt;p&gt;גישה היסטורית המדגישה שתופעות חברתיות משתנות לאורך זמן רב ואינן נצחיות או טבעיות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>איברם אקס קנדי (Ibram X. Kendi)</CONCEPT>
+        <DEFINITION>&lt;p&gt;חוקר המדגיש שמדיניות נמדדת לפי תוצאותיה (קידום שוויון) ולא לפי כוונותיה, וטוען שמדיניות גזענית מייצרת גזענים.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>איברם אקס קנדי</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>בל הוקס (bell hooks)</CONCEPT>
+        <DEFINITION>&lt;p&gt;הוגה שראתה באהבה (כפרקטיקה של צדק וחיבור רגשי) כלי מרכזי להתנגדות לדה-הומניזציה של הגזענות.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+        <ALIASES>
+          <ALIAS>
+            <NAME>בל הוקס</NAME>
+          </ALIAS>
+        </ALIASES>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אדוארד סעיד</CONCEPT>
+        <DEFINITION>&lt;p&gt;מחבר הספר &quot;אוריינטליזם&quot;, שחקר כיצד הידע והתרבות המערביים שימשו ככלי לשליטה במזרח.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>אנטוניו גראמשי</CONCEPT>
+        <DEFINITION>&lt;p&gt;הוגה שפיתח את מושג ההגמוניה והדגיש את חשיבות החברה האזרחית והמאבק התרבותי בשינוי מבני כוח.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>פייר בורדייה</CONCEPT>
+        <DEFINITION>&lt;p&gt;סוציולוג שפיתח את מושגי ההביטוס והאלימות הסימבולית כדי להסביר שיעתוק של אי-שוויון.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>פרנץ פנון</CONCEPT>
+        <DEFINITION>&lt;p&gt;פסיכיאטר שחקר את ההשלכות הנפשיות של הקולוניאליזם ואת מחיקת הזהות של הנכבש (&quot;עור שחור, מסכות לבנות&quot;).&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+      <ENTRY>
+        <CONCEPT>ב.ר. אמבדקר</CONCEPT>
+        <DEFINITION>&lt;p&gt;מנהיג הדליתים בהודו ואבי החוקה ההודית, שנאבק לביטול שיטת הקאסטות ולדמוקרטיה חברתית.&lt;/p&gt;</DEFINITION>
+        <FORMAT>1</FORMAT>
+        <DEFINITIONTRUST>0</DEFINITIONTRUST>
+        <USEDYNALINK>1</USEDYNALINK>
+        <CASESENSITIVE>0</CASESENSITIVE>
+        <FULLMATCH>0</FULLMATCH>
+        <TEACHERENTRY>1</TEACHERENTRY>
+      </ENTRY>
+    </ENTRIES>
+  </INFO>
+</GLOSSARY>

@@ -8,6 +8,7 @@ export const PLATFORM_TOOL_IDS = [
   "mbz-explorer",
   "tau-support",
   "tool-starter",
+  "dictionary-tool",
 ] as const;
 
 export type PlatformToolId = (typeof PLATFORM_TOOL_IDS)[number];

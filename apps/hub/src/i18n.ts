@@ -61,6 +61,10 @@ export const toolCopy: Record<
     name:        "תמיכה טכנית - קמפוס IL",
     description: "ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
   },
+  "dictionary-tool": {
+    name:        "מילון מונחים",
+    description: "המרת קובץ אקסל (מושג, הגדרה) לקובץ XML לייבוא למילון מונחים במודל",
+  },
 };
 
 export function localizeCategory(locale: Locale, category: string): string {

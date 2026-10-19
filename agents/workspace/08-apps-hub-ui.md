@@ -54,7 +54,7 @@ Staff sign-in form (email + password via platform auth). Header block is **cente
 |---|---|---|
 | `/register`, `/en/register` | `RegisterPage` | Email + password + group select (excludes Admin). No display-name field. Creates pending user via `/api/register`, then signs in → pending gate. |
 | `/auth/forgot-password`, `/en/auth/forgot-password` | `ForgotPasswordPage` | Public email form → `resetPasswordForEmail` → neutral success message (no email enumeration). |
-| `/auth/set-password`, `/en/auth/set-password` | `SetPasswordPage` | Invite **or** recovery landing: session from invite/reset link → set new password → continue to hub. Recovery detected via `PASSWORD_RECOVERY` / `type=recovery` (copy switches to reset wording). |
+| `/auth/set-password`, `/en/auth/set-password` | `SetPasswordPage` | Invite **or** recovery landing: session from invite/reset link → set new password → continue to hub. Recovery detected via `PASSWORD_RECOVERY` / `type=recovery` (copy switches to reset wording). No session: prompt to open the email/shared link; if URL has Auth `error` / `error_description` (e.g. `otp_expired`), show expired-link copy instead. |
 | `/auth/change-password`, `/en/auth/change-password` | `ChangePasswordPage` | Signed-in only (unsigned → hub home). Current + new + confirm; verifies current password then `updatePlatformPassword`. |
 | (hub when `accountStatus` is pending/rejected) | `AccountStatusPage` | Blocking message + sign out; no tools. |
 
@@ -69,6 +69,7 @@ Shared launcher UI driven by `locale`:
 - **User menu** — circular grey placeholder avatar (silhouette). Email + team names (from `listUserGroups`) sit to the **right of the avatar** (`dir="ltr"` cluster). The text column width follows the email (`w-fit`); when there are multiple teams, the comma-joined names truncate (ellipsis) to that same width. The **entire** avatar+details block is one clickable control; it opens a menu with email, the **full team list** (UI label: **צוותים** / Teams), **שינוי סיסמה** / **Change password** (links to `/auth/change-password` or `/en/auth/change-password`), and red **התנתקות** / **Sign out**; closes on outside click or Escape.
 - **Admin button** — gear icon link to `/admin` (or `/en/admin`), placed **visually to the right** of the user menu (`dir="ltr"` on the header actions cluster). Visible only when `usePlatformAuth().isAdmin` is true (membership in group slug `admin-all-tools`).
 - **MBZ host / route** — wrapped in `ApprovedOnly` (pending/rejected blocked). Host: unsigned → `LoginPage`; signed-in without `mbz-explorer` entitlement → `<Navigate>` to hub home; otherwise mounts the MBZ app.
+- **Dictionary Tool host / route** — same pattern at `/dictionary-tool/*` (`DictionaryToolHost`, entitlement id `dictionary-tool`).
 
 ### Admin page (`/admin`, `/en/admin`)
 
@@ -77,7 +78,7 @@ Shared launcher UI driven by `locale`:
 | Capability | Behavior |
 |---|---|
 | Gate | Client: redirect/deny if not signed in, not approved, or not `isAdmin`. Server: `/api/admin` requires Bearer JWT + Admin group membership (service_role checks). |
-| Users tab | Table of Auth users (email, display name from email local-part, **status**, groups). Filter by group and status; sort by email or groups. **Create user** modal: step 1 email + groups + create; step 2 user properties, invite URL + **Copy**, and **Send invite email**. Pending: **Approve** / **Reject**. Approved: **Edit** groups. Every row (except self): **Remove** permanently deletes the Auth user (`removeUser`; confirm dialog; cannot remove your own account). |
+| Users tab | Table of Auth users (email, display name from email local-part, **status**, groups). Filter by group and status; sort by email or groups. **Create user** modal: step 1 email + groups + create; step 2 user properties + invite URL **Copy**, or **Send invite email** (mutually exclusive for the live token — email clears the copyable link). Pending: **Approve** / **Reject**. Approved: **Edit** groups. Every row (except self): **Remove** permanently deletes the Auth user (`removeUser`; confirm dialog; cannot remove your own account). |
 | Groups tab | Table of groups (name, slug, tools, member count). Create / edit name, slug, description, and tool checkboxes (`createGroup` / `updateGroup`). **Edit members** opens checkboxes to set who belongs to that group (`setGroupMembers`). |
 
 API: `GET/POST /api/admin` (`apps/hub/api/admin.ts` + `adminOps.ts`) — actions include `inviteUser`, `approveUser`, `rejectUser`. Public `GET/POST /api/register`. Local Vite middleware mirrors both in `vite.config.ts`. Client helpers: `src/lib/adminApi.ts`, `src/lib/registerApi.ts`.
