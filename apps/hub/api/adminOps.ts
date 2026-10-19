@@ -89,6 +89,36 @@ function isAllowedToolId(value: string): boolean {
   return (PLATFORM_TOOL_IDS as readonly string[]).includes(value);
 }
 
+/** Normalize + validate tool ids the admin UI may assign (hub catalog / PLATFORM_TOOL_IDS). */
+function normalizeAssignableToolIds(raw: string[]): string[] {
+  const toolIds = [...new Set(raw.map((t) => t.trim()).filter(Boolean))];
+  for (const id of toolIds) {
+    if (!isAllowedToolId(id)) {
+      throw new AuthError(`Invalid tool id: ${id}`, 400);
+    }
+  }
+  return toolIds;
+}
+
+/**
+ * Tool ids already on a group that are not in this branch's PLATFORM_TOOL_IDS
+ * (e.g. virtual-support from another WIP branch). Preserve them on update so
+ * admin edits on main do not wipe in-progress entitlements.
+ */
+async function preservedUnknownToolIds(
+  admin: ReturnType<typeof serviceClient>,
+  groupId: string
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("group_tools")
+    .select("tool_id")
+    .eq("group_id", groupId);
+  if (error) throw error;
+  return (data ?? [])
+    .map((row) => String(row.tool_id))
+    .filter((id) => !isAllowedToolId(id));
+}
+
 function slugify(raw: string): string {
   return raw
     .trim()
@@ -226,12 +256,7 @@ export async function createAdminGroup(input: {
     );
   }
 
-  const toolIds = [...new Set(input.toolIds.map((t) => t.trim()).filter(Boolean))];
-  for (const id of toolIds) {
-    if (!isAllowedToolId(id)) {
-      throw new AuthError(`Invalid tool id: ${id}`, 400);
-    }
-  }
+  const toolIds = normalizeAssignableToolIds(input.toolIds);
 
   const admin = serviceClient();
   const { data: group, error } = await admin
@@ -286,14 +311,12 @@ export async function updateAdminGroup(input: {
     );
   }
 
-  const toolIds = [...new Set(input.toolIds.map((t) => t.trim()).filter(Boolean))];
-  for (const tid of toolIds) {
-    if (!isAllowedToolId(tid)) {
-      throw new AuthError(`Invalid tool id: ${tid}`, 400);
-    }
-  }
+  const assignableToolIds = normalizeAssignableToolIds(input.toolIds);
 
   const admin = serviceClient();
+  const preserved = await preservedUnknownToolIds(admin, id);
+  const toolIds = [...new Set([...assignableToolIds, ...preserved])];
+
   const { data: group, error } = await admin
     .from("groups")
     .update({
@@ -683,20 +706,17 @@ export async function sendInviteEmail(input: {
     await setUserGroups(userId, groupIds);
   }
 
-  let actionLink: string | null = null;
-  try {
-    actionLink = await generateInviteActionLink(email, redirectTo);
-  } catch {
-    actionLink = null;
-  }
-
+  // Do not call generateLink here — a second invite token invalidates the one
+  // already embedded in the email Supabase just sent (otp_expired / no session
+  // on /auth/set-password). Invitee must use the email link; there is no
+  // shareable action_link from inviteUserByEmail.
   const users = await listAdminUsers();
   const user = users.find((u) => u.id === userId);
   if (!user) {
     throw new AuthError("Invite email sent but user could not be loaded", 500);
   }
 
-  return { emailSent: true, actionLink, user };
+  return { emailSent: true, actionLink: null, user };
 }
 
 export async function approveUser(input: {

@@ -231,8 +231,12 @@ function GroupEditorModal({
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  // Only catalog tools from this branch — ignore WIP ids (e.g. virtual-support)
+  // that live in the DB from other branches; the API preserves those on save.
   const [toolIds, setToolIds] = useState<string[]>(
-    (initial?.toolIds ?? []).filter((id) => id !== "tool-starter")
+    (initial?.toolIds ?? []).filter((id) =>
+      (GROUP_FORM_TOOL_IDS as readonly string[]).includes(id)
+    )
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

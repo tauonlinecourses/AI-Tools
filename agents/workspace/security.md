@@ -129,7 +129,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 | Surface | Gate |
 |---|---|
 | Hub `/`, `/en` | `PlatformAuthProvider` → login if no session; pending/rejected → status page |
-| Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin` |
+| Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin`. Group tool edits only assign `PLATFORM_TOOL_IDS`; unknown/WIP tool ids already on a group are preserved. |
 | Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
 | Hub `/dictionary-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `dictionary-tool` |
 | Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |

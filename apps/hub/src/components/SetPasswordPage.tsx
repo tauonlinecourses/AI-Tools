@@ -10,13 +10,26 @@ import { usePlatformAuth } from "@workspace/auth/react";
 import type { Locale } from "../i18n";
 import { SoftPageBg } from "./SoftPageBg";
 
-function detectRecoveryFromUrl(): boolean {
-  if (typeof window === "undefined") return false;
+function urlAuthParams(): URLSearchParams {
+  if (typeof window === "undefined") return new URLSearchParams();
   const hash = window.location.hash.replace(/^#/, "");
   const search = window.location.search.replace(/^\?/, "");
-  const params = new URLSearchParams(hash || search);
-  const type = params.get("type");
-  return type === "recovery";
+  // Prefer hash (implicit / error redirects); fall back to query (PKCE).
+  return new URLSearchParams(hash || search);
+}
+
+function detectRecoveryFromUrl(): boolean {
+  return urlAuthParams().get("type") === "recovery";
+}
+
+function authErrorFromUrl(): string | null {
+  const params = urlAuthParams();
+  const code = params.get("error_code") || params.get("error");
+  const description = params.get("error_description");
+  if (!code && !description) return null;
+  const desc = description?.replace(/\+/g, " ").trim();
+  if (desc) return desc;
+  return code;
 }
 
 export function SetPasswordPage({ locale }: { locale: Locale }) {
@@ -24,6 +37,7 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
   const navigate = useNavigate();
   const { loading, session } = usePlatformAuth();
   const [isRecovery, setIsRecovery] = useState(() => detectRecoveryFromUrl());
+  const [linkError] = useState(() => authErrorFromUrl());
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +52,8 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           waiting: "ממתין לקישור ההזמנה…",
           noSession:
             "פתח את הקישור מהמייל (או מהקישור שהמנהל שלח) כדי להגדיר סיסמה.",
+          linkExpired:
+            "הקישור פג תוקף או כבר נוצל. בקשו מהמנהל לשלוח הזמנה חדשה.",
         }
       : {
           title: "Set password",
@@ -45,6 +61,8 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           waiting: "Waiting for invite link…",
           noSession:
             "Open the link from your invite email (or the link your admin shared) to set a password.",
+          linkExpired:
+            "This link is expired or already used. Ask your admin to send a new invite.",
         };
 
   const recoveryCopy =
@@ -55,6 +73,8 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           waiting: "ממתין לקישור האיפוס…",
           noSession:
             "פתח את הקישור ממייל שחזור הסיסמה כדי לבחור סיסמה חדשה.",
+          linkExpired:
+            "הקישור פג תוקף או כבר נוצל. בקשו קישור איפוס חדש ממסך ההתחברות.",
         }
       : {
           title: "Reset password",
@@ -62,6 +82,8 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           waiting: "Waiting for reset link…",
           noSession:
             "Open the link from your password reset email to choose a new password.",
+          linkExpired:
+            "This link is expired or already used. Request a new reset link from the sign-in page.",
         };
 
   const mode = isRecovery ? recoveryCopy : inviteCopy;
@@ -186,8 +208,16 @@ export function SetPasswordPage({ locale }: { locale: Locale }) {
           <h1 className="mt-4 text-xl font-semibold text-surface-900">
             {t.title}
           </h1>
-          <p className="mt-3 text-sm text-surface-600">{t.noSession}</p>
-          <p className="mt-2 text-xs text-surface-400">{t.waiting}</p>
+          <p className="mt-3 text-sm text-surface-600">
+            {linkError ? t.linkExpired : t.noSession}
+          </p>
+          {linkError ? (
+            <p className="mt-2 text-xs text-red-600" dir="ltr">
+              {linkError}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-surface-400">{t.waiting}</p>
+          )}
           <div className="mt-5">
             <Link
               to={homeHref}
