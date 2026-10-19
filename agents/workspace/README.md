@@ -29,7 +29,7 @@ Each section file has Previous / Next links at the top.
 | [05-packages-ui-layout.md](./05-packages-ui-layout.md) | Hub nav / layout | Input, Badge, Spinner, `hub.ts`, PageLayout, exports |
 | [06-packages-ai-client.md](./06-packages-ai-client.md) | OpenAI calls from tools | `packages/ai-client` — `useAI`/`aiChat` (client) + `handler` (server) |
 | [07-apps-hub-config.md](./07-apps-hub-config.md) | Hub app wiring / tool list | Hub package, Vite port 5173, `tools.config.ts` |
-| [08-apps-hub-ui.md](./08-apps-hub-ui.md) | Hub launcher UI | `apps/hub/src/App.tsx` |
+| [08-apps-hub-ui.md](./08-apps-hub-ui.md) | Hub launcher UI | `apps/hub/src/App.tsx`, `src/components/HubPage.tsx`, `src/components/admin/`, `server/admin/` |
 | [09-apps-tool-starter.md](./09-apps-tool-starter.md) | New tool from template | `apps/tool-starter`, `/api/chat` (re-exports `ai-client/vercel`) |
 | [10-run-deploy-conventions.md](./10-run-deploy-conventions.md) | Run, ship, or style a tool | `pnpm` scripts, Vercel, add-a-tool checklist, design rules |
 | [ai-api-flow.md](./ai-api-flow.md) | Understand or harden the AI request flow | End-to-end `/api/chat` flow diagram, why it's secure, production roadmap (auth, rate limiting, cost caps) |

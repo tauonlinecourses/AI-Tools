@@ -16,6 +16,12 @@ import type {
   StatusRollup,
 } from "./types";
 import { derivePageType } from "./types";
+import {
+  computeCourseOverviewStats,
+  type CourseOverviewStats,
+} from "./courseOverviewStats";
+
+export type { CourseOverviewStats };
 
 function fail(context: string, error: { message: string } | null): never {
   throw new Error(`${context}: ${error?.message ?? "unknown error"}`);
@@ -858,6 +864,40 @@ export async function getStatusRollups(
   }
 
   return { perPage, perSection };
+}
+
+/**
+ * Course-level dashboard metrics: structure counts, page/component type
+ * distributions, workflow, and summed implement status.
+ * Reuses the lightweight components query + page_status rollups.
+ */
+export async function getCourseOverviewData(
+  tree: CourseTree
+): Promise<CourseOverviewStats> {
+  const pageIds = tree.pages.map((p) => p.id);
+  const sectionIds = tree.sections.map((s) => s.id);
+
+  let componentRows: Array<{ page_id: string; type: ComponentType }> = [];
+  if (pageIds.length > 0) {
+    const { data, error } = await supabase
+      .from("components")
+      .select("page_id, type")
+      .in("page_id", pageIds);
+    if (error) fail("Loading course overview components", error);
+    componentRows = (data ?? []).map((row) => ({
+      page_id: row.page_id as string,
+      type: row.type as ComponentType,
+    }));
+  }
+
+  const { perPage } = await getStatusRollups(sectionIds, pageIds);
+
+  return computeCourseOverviewStats({
+    sections: tree.sections,
+    pages: tree.pages,
+    componentRows,
+    perPageRollups: perPage,
+  });
 }
 
 // ─── Component comments ─────────────────────────────────────────────────────

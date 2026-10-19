@@ -12,11 +12,13 @@ import type {
 } from "../lib/types";
 import { isHomePage, PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
 import * as api from "../lib/api";
+import { CourseOverview } from "./CourseOverview";
 import { PageContent } from "./PageContent";
 import { SectionOverview } from "./SectionOverview";
 import { SortableList, type DragHandleProps } from "./SortableList";
 import {
   CalendarIcon,
+  ChartPieIcon,
   ChevronDownIcon,
   DownloadIcon,
   DuplicateIcon,
@@ -243,10 +245,18 @@ export function CourseShell({ mode }: CourseShellProps) {
     return found;
   }, [tree, searchParams, mode, pagesBySection]);
 
+  /** Course-level analytics view (`?view=overview`); section wins over it. */
+  const showOverview = useMemo(() => {
+    if (!tree || selectedSection) return false;
+    return searchParams.get("view") === "overview";
+  }, [tree, selectedSection, searchParams]);
+
   const selectedPage = useMemo(() => {
     if (!tree) return null;
     // Valid section overview takes precedence over page selection.
     if (selectedSection) return null;
+    // Course overview takes precedence over the default home page.
+    if (showOverview) return null;
     const requested = searchParams.get("page");
     if (requested) {
       const found = tree.pages.find((p) => p.id === requested);
@@ -274,7 +284,15 @@ export function CourseShell({ mode }: CourseShellProps) {
       if (firstAvailable) return firstAvailable;
     }
     return null;
-  }, [tree, pagesBySection, searchParams, homePage, selectedSection, mode]);
+  }, [
+    tree,
+    pagesBySection,
+    searchParams,
+    homePage,
+    selectedSection,
+    showOverview,
+    mode,
+  ]);
 
   const selectedPageLessonFilesUrl = useMemo(() => {
     if (!selectedPage?.section_id || !tree) return null;
@@ -354,6 +372,11 @@ export function CourseShell({ mode }: CourseShellProps) {
       return next;
     });
     setSearchParams({ section: sectionId }, { replace: true });
+  }
+
+  function selectOverview() {
+    setOpenMenu(null);
+    setSearchParams({ view: "overview" }, { replace: true });
   }
 
   /** Refresh sidebar "last updated" after nested content saves (API already bumps DB). */
@@ -996,9 +1019,11 @@ export function CourseShell({ mode }: CourseShellProps) {
                     to={`/courses/${courseId}/${seg.path}${
                       selectedSection
                         ? `?section=${selectedSection.id}`
-                        : selectedPage
-                          ? `?page=${selectedPage.id}`
-                          : ""
+                        : showOverview
+                          ? "?view=overview"
+                          : selectedPage
+                            ? `?page=${selectedPage.id}`
+                            : ""
                     }`}
                     className={`px-2.5 py-1 transition-colors duration-fast ${
                       i > 0 ? "border-s border-surface-200" : ""
@@ -1040,6 +1065,24 @@ export function CourseShell({ mode }: CourseShellProps) {
               <div className="flex items-center gap-2 px-4 py-2 text-base text-surface-600">
                 <Spinner size="sm" />
                 טוען...
+              </div>
+            )}
+            {tree !== null && (
+              <div
+                className={`group flex items-center gap-1.5 mx-2 ps-2 pe-2 h-9 rounded-lg text-base transition-colors duration-fast cursor-pointer mb-1 ${
+                  showOverview
+                    ? "bg-[#0F6CBF] text-white font-medium"
+                    : "text-surface-600 hover:bg-white hover:text-surface-900"
+                }`}
+                onClick={selectOverview}
+                title="סקירת מבנה והתקדמות הקורס"
+              >
+                <ChartPieIcon
+                  className={`w-4 h-4 shrink-0 ${
+                    showOverview ? "text-white" : "text-surface-500"
+                  }`}
+                />
+                <span className="truncate">סקירת קורס</span>
               </div>
             )}
             {tree !== null && homePage && (
@@ -1091,6 +1134,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           {!error &&
             tree !== null &&
             selectedSection === null &&
+            !showOverview &&
             selectedPage === null && (
             <div className="max-w-3xl mx-auto px-6 py-10 text-center">
               <p className="text-sm text-surface-500">
@@ -1105,6 +1149,9 @@ export function CourseShell({ mode }: CourseShellProps) {
                         : "אין עמודים בקורס הזה."}
               </p>
             </div>
+          )}
+          {!error && tree !== null && showOverview && (
+            <CourseOverview key={tree.course.id} tree={tree} />
           )}
           {!error && selectedSection !== null && (
             <SectionOverview
