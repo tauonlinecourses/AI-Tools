@@ -15,15 +15,15 @@ import {
   renameFolder,
   updateDocument,
 } from "./lib/dataClient";
-import type { Document, Folder, Mode } from "./lib/types";
+import type { Document, Folder } from "./lib/types";
 
 type EditMode = null | "new" | string;
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>("documents");
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [editMode, setEditMode] = useState<EditMode>(null);
   const [newFolderId, setNewFolderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,8 @@ export default function App() {
   const selectedFolder = selected?.folderId
     ? folders.find((f) => f.id === selected.folderId) ?? null
     : null;
+
+  const showViewer = viewerOpen || editMode !== null;
 
   const refresh = useCallback(async () => {
     if (!isDataConfigured) return;
@@ -54,6 +56,20 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const openDocument = useCallback((id: string) => {
+    setSelectedId(id);
+    setViewerOpen(true);
+    setEditMode(null);
+    setError(null);
+  }, []);
+
+  const closeViewer = useCallback(() => {
+    setViewerOpen(false);
+    setEditMode(null);
+    setNewFolderId(null);
+    setError(null);
+  }, []);
 
   const handleAddFolder = useCallback(async () => {
     const name = window.prompt("שם התיקייה החדשה:");
@@ -77,28 +93,24 @@ export default function App() {
     }
   }, []);
 
-  const handleDeleteFolder = useCallback(
-    async (id: string) => {
-      setError(null);
-      try {
-        await deleteFolder(id);
-        setFolders((prev) => prev.filter((f) => f.id !== id));
-        setDocuments((prev) =>
-          prev.map((d) =>
-            d.folderId === id ? { ...d, folderId: null } : d
-          )
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "מחיקת תיקייה נכשלה");
-      }
-    },
-    []
-  );
+  const handleDeleteFolder = useCallback(async (id: string) => {
+    setError(null);
+    try {
+      await deleteFolder(id);
+      setFolders((prev) => prev.filter((f) => f.id !== id));
+      setDocuments((prev) =>
+        prev.map((d) => (d.folderId === id ? { ...d, folderId: null } : d))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "מחיקת תיקייה נכשלה");
+    }
+  }, []);
 
   const handleAddDocument = useCallback((folderId: string | null) => {
     setNewFolderId(folderId);
     setEditMode("new");
     setSelectedId(null);
+    setViewerOpen(true);
     setError(null);
   }, []);
 
@@ -124,6 +136,7 @@ export default function App() {
         }
         setEditMode(null);
         setNewFolderId(null);
+        setViewerOpen(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "שמירה נכשלה");
       } finally {
@@ -143,6 +156,7 @@ export default function App() {
       setDocuments((prev) => prev.filter((d) => d.id !== selectedId));
       setSelectedId(null);
       setEditMode(null);
+      setViewerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "מחיקה נכשלה");
     } finally {
@@ -159,29 +173,13 @@ export default function App() {
     <PageLayout
       toolName="Virtual Support"
       toolDescription="Organization knowledge base and grounded Q&A"
-      toolNameHe="תמיכה וירטואלית"
+      toolNameHe="מדריכים - Virtual TAU"
       toolDescriptionHe="מאגר ידע ארגוני ושאלות מבוססות מסמכים"
       maxWidth="full"
       padded={false}
       locale="he"
     >
-      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col">
-        <nav
-          dir="rtl"
-          className="flex shrink-0 items-center gap-1 border-b border-surface-200 bg-white px-3 py-2"
-        >
-          <ModeTab
-            active={mode === "documents"}
-            onClick={() => setMode("documents")}
-            label="מסמכים"
-          />
-          <ModeTab
-            active={mode === "ask"}
-            onClick={() => setMode("ask")}
-            label="שאל"
-          />
-        </nav>
-
+      <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-[#f8f9fa]">
         {!isDataConfigured ? (
           <div
             dir="rtl"
@@ -198,91 +196,89 @@ export default function App() {
             בקובץ{" "}
             <code className="mx-1 rounded bg-surface-100 px-1">.env</code>.
           </div>
-        ) : mode === "ask" ? (
-          <div className="min-h-0 flex-1">
-            <AskPage />
-          </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div
+            dir="rtl"
+            className="flex h-full min-h-0 flex-col gap-3 px-5 py-3 md:flex-row md:items-stretch md:px-6"
+          >
+            {/* RTL flex: first child = right edge — floating panel */}
             <DocumentsSidebar
               folders={folders}
               documents={documents}
               selectedId={selectedId}
               loading={loading}
-              onSelect={(id) => {
-                setSelectedId(id);
-                setEditMode(null);
-                setError(null);
-              }}
+              onSelect={openDocument}
               onAddDocument={handleAddDocument}
               onAddFolder={() => void handleAddFolder()}
               onRenameFolder={(id, name) => void handleRenameFolder(id, name)}
               onDeleteFolder={(id) => void handleDeleteFolder(id)}
             />
-            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-white">
-              {error ? (
-                <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-danger">
-                  {error}
-                </p>
-              ) : null}
-              {editMode !== null ? (
-                <DocEditor
-                  initial={editingDoc}
-                  folders={folders}
-                  folderId={
-                    editMode === "new"
-                      ? newFolderId
-                      : editingDoc?.folderId ?? null
-                  }
-                  busy={saving}
-                  error={error}
-                  onSave={handleSave}
-                  onCancel={() => {
-                    setEditMode(null);
-                    setNewFolderId(null);
-                    setError(null);
-                  }}
-                />
-              ) : (
-                <DocView
-                  doc={selected}
-                  folder={selectedFolder}
-                  loading={loading}
-                  deleting={deleting}
-                  onEdit={() => {
-                    if (selectedId) setEditMode(selectedId);
-                  }}
-                  onDelete={() => void handleDelete()}
-                />
-              )}
+
+            {/* flex-1 (not fixed 50%) so 25%+25%+gaps do not clip the outer left margin */}
+            <main className="order-first h-full min-h-0 min-w-0 flex-1 overflow-hidden md:order-none">
+              <AskPage
+                onOpenDocument={(doc: Document) => {
+                  setDocuments((prev) => {
+                    const exists = prev.some((d) => d.id === doc.id);
+                    return exists
+                      ? prev.map((d) => (d.id === doc.id ? doc : d))
+                      : [...prev, doc];
+                  });
+                  openDocument(doc.id);
+                }}
+              />
             </main>
+
+            {showViewer ? (
+              <section className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[1.5rem] bg-white ring-1 ring-black/5 md:w-[25%] md:max-w-[25%] md:flex-none">
+                {error ? (
+                  <p className="shrink-0 border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-danger">
+                    {error}
+                  </p>
+                ) : null}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {editMode !== null ? (
+                    <DocEditor
+                      initial={editingDoc}
+                      folders={folders}
+                      folderId={
+                        editMode === "new"
+                          ? newFolderId
+                          : editingDoc?.folderId ?? null
+                      }
+                      busy={saving}
+                      deleting={deleting}
+                      error={error}
+                      onSave={handleSave}
+                      onDelete={
+                        editMode !== "new"
+                          ? () => void handleDelete()
+                          : undefined
+                      }
+                      onCancel={() => {
+                        setEditMode(null);
+                        setNewFolderId(null);
+                        setError(null);
+                        if (!selectedId) setViewerOpen(false);
+                      }}
+                    />
+                  ) : (
+                    <DocView
+                      doc={selected}
+                      folder={selectedFolder}
+                      loading={loading}
+                      onClose={closeViewer}
+                      onEdit={() => {
+                        if (selectedId) setEditMode(selectedId);
+                      }}
+                    />
+                  )}
+                </div>
+              </section>
+            ) : null}
           </div>
         )}
       </div>
     </PageLayout>
-  );
-}
-
-function ModeTab({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-control px-3 py-1.5 text-sm font-semibold transition-colors ${
-        active
-          ? "bg-sky-50 text-sky-950"
-          : "text-surface-600 hover:bg-surface-50 hover:text-surface-900"
-      }`}
-    >
-      {label}
-    </button>
   );
 }

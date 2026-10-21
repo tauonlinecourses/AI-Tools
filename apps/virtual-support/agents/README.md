@@ -1,15 +1,32 @@
 # Virtual Support
 
+Hebrew hub/tool display name: **מדריכים - Virtual TAU**. English remains "Virtual Support".
+
 Hebrew staff knowledge base for an organization technical-support department, plus grounded Ask (RAG) over those documents.
 
-## Workspaces
+## Workspace (NotebookLM-style)
 
-| Mode | Purpose |
-|------|---------|
-| **מסמכים (Documents)** | One level of folders; rich-text topics (title, HTML body, pasted images). Create / edit / delete. |
-| **שאל (Ask)** | Session chat over the whole knowledge base. Answers cite sources; opening a source shows the stored document HTML. |
+Single screen with three columns (RTL):
 
-Out of scope for v1: nested folders, PDF/Word uploads, saved notebooks, durable chat history.
+| Column | Width | Purpose |
+|--------|-------|---------|
+| **מקורות (right)** | ~26% | Floating rounded panel, RTL. Header **Virtual TAU מסמכים**, then OneNote-style split: **נושאים** (folders, right, colored tabs) + **עמודים** (documents in the selected topic, left). |
+| **צ׳אט (middle)** | `flex-1` (~50% with both side panels) | Session Ask over the knowledge base. Answers cite numbered sources. |
+| **מסמך (left)** | ~25%, hidden until open | Floating rounded panel matching sources height. Viewer / editor from sidebar or chat citations. Delete lives on the edit form (not the read-only viewer). |
+
+Workspace height is locked to `calc(100vh - header)`; side panels share that height via the padded flex row (`px-5` / `md:px-6`, `py-3`, `gap-3`) so left/right read as floating cards inset from the screen edges.
+
+**Rounding note:** shared `@workspace/config` sets Tailwind `rounded-*` (except `control` / `timeline` / `full`) to `0`. Side panels must use arbitrary radii (e.g. `rounded-[1.5rem]`), not `rounded-2xl` / `rounded-3xl`.
+
+### מקורות interaction
+
+- Click a topic → shows its pages in the pages column.
+- Click a page → opens it in the left document viewer.
+- Opening a doc from chat citations selects its topic automatically.
+- `+ הוספת נושא` / `+ הוספת עמוד` (page goes into the active topic).
+- Double-click or hover ✎ to rename a topic; hover × to delete (docs move to ללא תיקייה).
+
+Out of scope for v1: nested folders, PDF/Word uploads, saved notebooks, durable chat history, source checkboxes / web research.
 
 ## Architecture
 
@@ -49,6 +66,7 @@ Deleting a folder moves its documents to unfiled, then deletes the folder. Delet
 4. If no hits → Hebrew “not in the knowledge base” message (no model call).
 5. Else call `@workspace/ai-client/server` with a Hebrew system prompt that answers only from excerpts.
 6. Return `{ answer, sources: [{ documentId, title, folderName, excerpt, similarity }] }`.
+7. UI shows numbered citation chips on the answer; clicking a chip (or a row in מקורות) opens that document in the left viewer column.
 
 ## BFF actions (`/api/data`)
 

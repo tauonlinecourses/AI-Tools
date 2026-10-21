@@ -30,5 +30,3 @@ export type ChatTurn = {
   content: string;
   sources?: AskSource[];
 };
-
-export type Mode = "documents" | "ask";

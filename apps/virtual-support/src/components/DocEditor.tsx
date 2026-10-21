@@ -21,6 +21,7 @@ interface DocEditorProps {
   folders: Folder[];
   folderId: string | null;
   busy?: boolean;
+  deleting?: boolean;
   error?: string | null;
   onSave: (input: {
     title: string;
@@ -28,6 +29,8 @@ interface DocEditorProps {
     folderId: string | null;
   }) => void | Promise<void>;
   onCancel: () => void;
+  /** Shown only when editing an existing document. */
+  onDelete?: () => void;
 }
 
 function dataUrlToBlob(dataUrl: string): Blob | null {
@@ -104,9 +107,11 @@ export function DocEditor({
   folders,
   folderId: initialFolderId,
   busy,
+  deleting,
   error,
   onSave,
   onCancel,
+  onDelete,
 }: DocEditorProps) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [folderId, setFolderId] = useState<string | null>(
@@ -231,6 +236,15 @@ export function DocEditor({
 
   const canSave = title.trim().length > 0 && !busy && !uploading;
 
+  const saveLabel = busy ? (
+    <span className="inline-flex items-center gap-2">
+      <Spinner size="sm" />
+      שומר…
+    </span>
+  ) : (
+    "שמירה"
+  );
+
   return (
     <div dir="rtl" className="flex flex-col gap-4 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-2">
@@ -238,28 +252,51 @@ export function DocEditor({
           {initial ? "עריכת מסמך" : "מסמך חדש"}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
+          {initial && onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={busy || deleting}
+              title="מחיקת מסמך"
+              aria-label="מחיקת מסמך"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+            >
+              {deleting ? (
+                <Spinner size="sm" />
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                  aria-hidden
+                >
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <path d="M10 11v6M14 11v6" />
+                </svg>
+              )}
+            </button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
             onClick={onCancel}
-            disabled={busy}
+            disabled={busy || deleting}
           >
             ביטול
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={!canSave}
+            disabled={!canSave || deleting}
             onClick={handleSave}
           >
-            {busy ? (
-              <span className="inline-flex items-center gap-2">
-                <Spinner size="sm" />
-                שומר…
-              </span>
-            ) : (
-              "שמור"
-            )}
+            {saveLabel}
           </Button>
         </div>
       </header>
@@ -294,10 +331,7 @@ export function DocEditor({
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-surface-800">
-          תוכן
-          <span className="ms-2 font-normal text-surface-500">
-            (הדביקו מ־Docs / Word עם Ctrl+V — כולל כותרות, הדגשות ורשימות)
-          </span>
+          תוכן המסמך
         </label>
         <div
           ref={editorRef}
@@ -321,6 +355,17 @@ export function DocEditor({
           <p className="text-xs text-danger">{uploadError}</p>
         ) : null}
         {error ? <p className="text-xs text-danger">{error}</p> : null}
+      </div>
+
+      <div className="flex justify-end border-t border-surface-200 pt-4">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!canSave || deleting}
+          onClick={handleSave}
+        >
+          {saveLabel}
+        </Button>
       </div>
     </div>
   );

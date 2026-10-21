@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Spinner } from "@workspace/ui";
+import { Spinner } from "@workspace/ui";
 import { askQuestion, getDocument } from "../lib/dataClient";
 import type { AskSource, ChatTurn, Document } from "../lib/types";
-import { DocBody } from "./DocBody";
 
 interface AskPageProps {
   onOpenDocument?: (doc: Document) => void;
@@ -13,9 +12,6 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeSources, setActiveSources] = useState<AskSource[]>([]);
-  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -45,7 +41,6 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
           sources: result.sources,
         },
       ]);
-      setActiveSources(result.sources);
     } catch (err) {
       setError(err instanceof Error ? err.message : "השאלה נכשלה");
       setTurns((prev) => [
@@ -62,69 +57,65 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
 
   const openSource = useCallback(
     async (source: AskSource) => {
-      setPreviewLoading(true);
-      setPreviewDoc(null);
       try {
         const doc = await getDocument(source.documentId);
-        setPreviewDoc(doc);
         onOpenDocument?.(doc);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "טעינת המסמך נכשלה"
         );
-      } finally {
-        setPreviewLoading(false);
       }
     },
     [onOpenDocument]
   );
 
   return (
-    <div dir="rtl" className="flex h-full min-h-0 flex-col gap-0 lg:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-6">
-          {turns.length === 0 && !busy ? (
-            <div className="flex h-full min-h-[200px] items-center justify-center text-center text-sm text-surface-600">
-              שאלו שאלה על מאגר הידע. התשובה תתבסס על המסמכים ותציג מקורות.
+    <div dir="rtl" className="relative flex h-full min-h-0 flex-col bg-[#f8f9fa]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-6 sm:px-8">
+        {turns.length === 0 && !busy ? (
+          <div className="flex h-full min-h-[200px] items-center justify-center text-center">
+            <div className="max-w-md space-y-2">
+              <p className="text-lg font-medium text-surface-800">
+                שאלו שאלה על מאגר הידע
+              </p>
+              <p className="text-sm text-surface-500">
+                התשובה תתבסס על המסמכים. לחצו על מקור בתשובה או בתיקיות כדי
+                לפתוח את המסמך.
+              </p>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {turns.map((turn, i) => (
-            <div
-              key={i}
-              className={`flex ${
-                turn.role === "user" ? "justify-start" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[90%] rounded-control px-3 py-2 text-sm leading-relaxed ${
-                  turn.role === "user"
-                    ? "bg-sky-50 text-sky-950"
-                    : "border border-surface-200 bg-white text-surface-900"
-                }`}
-              >
-                <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-surface-500">
-                  {turn.role === "user" ? "שאלה" : "תשובה"}
-                </p>
-                <p className="whitespace-pre-wrap">{turn.content}</p>
-                {turn.sources && turn.sources.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5 border-t border-surface-100 pt-2">
-                    {turn.sources.map((s) => (
-                      <button
-                        key={s.documentId}
-                        type="button"
-                        onClick={() => {
-                          setActiveSources(turn.sources ?? []);
-                          void openSource(s);
-                        }}
-                        className="rounded-control border border-surface-200 bg-surface-50 px-2 py-0.5 text-xs font-medium text-surface-700 hover:bg-sky-50 hover:text-sky-950"
-                      >
-                        {s.title}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+            <div key={i} className="flex flex-col gap-2">
+              {turn.role === "user" ? (
+                <div className="self-start rounded-[1rem] bg-white px-4 py-3 text-sm leading-relaxed text-surface-900 ring-1 ring-black/5">
+                  <p className="whitespace-pre-wrap">{turn.content}</p>
+                </div>
+              ) : (
+                <div className="rounded-[1rem] bg-white px-4 py-4 text-sm leading-relaxed text-surface-900 ring-1 ring-black/5">
+                  <p className="whitespace-pre-wrap">{turn.content}</p>
+                  {turn.sources && turn.sources.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-surface-100 pt-3">
+                      <span className="me-1 text-xs text-surface-500">
+                        מקורות:
+                      </span>
+                      {turn.sources.map((s, idx) => (
+                        <button
+                          key={s.documentId}
+                          type="button"
+                          title={s.title}
+                          onClick={() => void openSource(s)}
+                          className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-100 px-2 text-[0.7rem] font-semibold text-surface-700 transition-colors hover:bg-sky-100 hover:text-sky-950"
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
           ))}
 
@@ -136,16 +127,17 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
           ) : null}
           <div ref={bottomRef} />
         </div>
+      </div>
 
-        {error ? (
-          <p className="px-4 text-xs text-danger sm:px-6">{error}</p>
-        ) : null}
-
-        <div className="shrink-0 border-t border-surface-200 p-3 sm:p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#f8f9fa] via-[#f8f9fa] to-transparent px-4 pb-3 pt-10 sm:px-8">
+        <div className="pointer-events-auto mx-auto max-w-3xl">
+          {error ? (
+            <p className="mb-2 text-center text-xs text-danger">{error}</p>
+          ) : null}
+          <div className="flex items-end gap-2 rounded-full border border-surface-200 bg-white px-3 py-2 shadow-md shadow-black/5 ring-1 ring-black/[0.03]">
             <textarea
               dir="rtl"
-              rows={2}
+              rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -154,78 +146,32 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
                   void handleAsk();
                 }
               }}
-              placeholder="כתבו שאלה על המסמכים…"
+              placeholder="שאלו שאלה או בקשו משהו…"
               disabled={busy}
-              className="min-h-[2.75rem] w-full flex-1 resize-y rounded-control border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:opacity-60"
+              className="max-h-28 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-surface-900 outline-none placeholder:text-surface-400 disabled:opacity-60"
             />
-            <Button
-              variant="primary"
+            <button
+              type="button"
               disabled={busy || !input.trim()}
               onClick={() => void handleAsk()}
+              aria-label="שליחה"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-900 text-white transition-opacity disabled:opacity-30"
             >
-              שלח
-            </Button>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4"
+                aria-hidden
+              >
+                <path d="M10 16.5a.75.75 0 0 1-.75-.75V6.56L6.53 9.28a.75.75 0 1 1-1.06-1.06l4-4a.75.75 0 0 1 1.06 0l4 4a.75.75 0 1 1-1.06 1.06L10.75 6.56v9.19a.75.75 0 0 1-.75.75Z" />
+              </svg>
+            </button>
           </div>
+          <p className="mt-2 text-center text-[0.65rem] text-surface-400">
+            התשובות מבוססות על המסמכים במאגר. מומלץ לוודא מול המקור.
+          </p>
         </div>
       </div>
-
-      <aside className="flex w-full shrink-0 flex-col border-t border-surface-200 bg-surface-50 lg:w-[36%] lg:border-t-0 lg:border-s">
-        <div className="border-b border-surface-200 px-3 py-2.5">
-          <p className="text-sm font-semibold text-surface-900">מקורות</p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {activeSources.length === 0 && !previewDoc ? (
-            <p className="text-sm text-surface-500">
-              מקורות מהתשובה האחרונה יופיעו כאן. לחצו על מקור כדי לפתוח את
-              המסמך כפי שהוא שמור.
-            </p>
-          ) : null}
-
-          {activeSources.length > 0 ? (
-            <ul className="mb-4 space-y-2">
-              {activeSources.map((s) => (
-                <li key={s.documentId}>
-                  <button
-                    type="button"
-                    onClick={() => void openSource(s)}
-                    className="w-full rounded-control border border-surface-200 bg-white p-2.5 text-start transition-colors hover:border-sky-300 hover:bg-sky-50"
-                  >
-                    <p className="text-sm font-semibold text-surface-900">
-                      {s.title}
-                    </p>
-                    {s.folderName ? (
-                      <p className="text-xs text-surface-500">{s.folderName}</p>
-                    ) : null}
-                    <p className="mt-1 line-clamp-3 text-xs text-surface-600">
-                      {s.excerpt}
-                    </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {previewLoading ? (
-            <div className="flex items-center gap-2 text-sm text-surface-600">
-              <Spinner size="sm" />
-              טוען מסמך…
-            </div>
-          ) : null}
-
-          {previewDoc ? (
-            <Card className="!p-3">
-              <h3 className="mb-2 text-base font-semibold text-surface-900">
-                {previewDoc.title}
-              </h3>
-              {previewDoc.body.trim() ? (
-                <DocBody body={previewDoc.body} />
-              ) : (
-                <p className="text-sm text-surface-500">אין תוכן.</p>
-              )}
-            </Card>
-          ) : null}
-        </div>
-      </aside>
     </div>
   );
 }

@@ -48,7 +48,7 @@ export const toolCopy: Record<
     description: "ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
   },
   "virtual-support": {
-    name:        "תמיכה וירטואלית",
+    name:        "מדריכים - Virtual TAU",
     description: "מאגר ידע ארגוני של מחלקת התמיכה ושאלות מבוססות מסמכים",
   },
   "dictionary-tool": {
