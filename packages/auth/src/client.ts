@@ -103,11 +103,13 @@ export type AccountStatus = "pending" | "approved" | "rejected";
 /** Current user's profile status (RLS: own row only). */
 export async function getMyAccountStatus(): Promise<AccountStatus> {
   const client = getPlatformClient();
+  // Prefer local session (no network) over getUser(), which always hits Auth.
   const {
-    data: { user },
-    error: userErr,
-  } = await client.auth.getUser();
-  if (userErr) throw userErr;
+    data: { session },
+    error: sessionErr,
+  } = await client.auth.getSession();
+  if (sessionErr) throw sessionErr;
+  const user = session?.user;
   if (!user) throw new Error("Not signed in");
 
   const { data, error } = await client
@@ -217,20 +219,30 @@ export function isToolAccessDeniedError(
   );
 }
 
-export async function assertToolAccess(toolId: string): Promise<void> {
-  // Fail closed on non-approved accounts before checking group entitlements.
-  const status = await getMyAccountStatus();
-  if (status !== "approved") {
-    throw new ToolAccessDeniedError(toolId);
-  }
+/** Dedupe StrictMode / remount races for the same tool entitlement check. */
+const toolAccessInflight = new Map<string, Promise<void>>();
 
-  const { data, error } = await getPlatformClient().rpc("user_has_tool_access", {
-    p_tool_id: toolId,
-  });
-  if (error) throw error;
-  if (data !== true) {
-    throw new ToolAccessDeniedError(toolId);
-  }
+/**
+ * Ensures the signed-in user may use `toolId`.
+ * Relies on `user_has_tool_access`, which already requires `profiles.status = 'approved'`.
+ */
+export async function assertToolAccess(toolId: string): Promise<void> {
+  const existing = toolAccessInflight.get(toolId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const { data, error } = await getPlatformClient().rpc(
+      "user_has_tool_access",
+      { p_tool_id: toolId }
+    );
+    if (error) throw error;
+    if (data !== true) {
+      throw new ToolAccessDeniedError(toolId);
+    }
+  })();
+  // Keep settled promise so StrictMode remounts reuse it (same pattern as handoff).
+  toolAccessInflight.set(toolId, promise);
+  return promise;
 }
 
 export async function authFetch(

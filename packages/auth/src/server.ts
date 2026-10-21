@@ -183,7 +183,7 @@ export async function requireToolAccessFromRequest(
   toolId: string
 ): Promise<VerifiedPlatformUser> {
   const verified = await verifyPlatformRequest(req);
-  await assertUserIsApproved(verified.user.id);
+  // `user_has_tool_access` already requires profiles.status = 'approved'.
   await assertUserHasToolAccess(verified.user.id, toolId);
   return verified;
 }
@@ -254,7 +254,7 @@ export async function createHandoffCode(params: {
   accessToken: string;
   refreshToken: string;
 }): Promise<string> {
-  await assertUserIsApproved(params.userId);
+  // RPC requires approved status; skip a separate profiles round-trip.
   await assertUserHasToolAccess(params.userId, params.toolId);
   const code = randomBytes(24).toString("hex");
   const admin = createPlatformServiceClient();

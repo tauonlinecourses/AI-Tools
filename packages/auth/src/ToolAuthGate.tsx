@@ -82,16 +82,18 @@ export function ToolAuthGate({
 
       try {
         if (isCallback && code) {
-          setMessage("Checking user permissions to the tool…");
+          // Handoff mint already verified approved + tool access; skip a second
+          // entitlement RPC so entry feels instant after exchange.
+          setMessage("Signing in…");
           const tokens = await exchangeHandoffOnce(code, hubExchangeUrl());
           await setPlatformSession(tokens);
-          await assertToolAccess(toolId);
           if (cancelled) return;
           window.history.replaceState({}, "", "/");
           setReady(true);
           return;
         }
 
+        setMessage("Checking user permissions to the tool…");
         const session = await getPlatformSession();
         if (!session) {
           redirectToLogin();
@@ -113,7 +115,11 @@ export function ToolAuthGate({
         try {
           const session = await getPlatformSession();
           if (session) {
-            await assertToolAccess(toolId);
+            // Callback path already trusted the handoff; only re-check on
+            // direct visits where exchange did not run in this attempt.
+            if (!isCallback) {
+              await assertToolAccess(toolId);
+            }
             if (cancelled) return;
             if (isCallback) window.history.replaceState({}, "", "/");
             setReady(true);

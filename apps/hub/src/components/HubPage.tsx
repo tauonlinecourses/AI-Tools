@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { persistHubLocale, Spinner } from "@workspace/ui";
 import { usePlatformAuth } from "@workspace/auth/react";
-import { listAllowedToolIds } from "@workspace/auth/client";
 import {
   tools,
   toolIsOpenable,
@@ -83,24 +82,19 @@ export function HubPage({ locale }: { locale: Locale }) {
       return;
     }
 
+    // Provider already finished membership load (`loading` is false); reuse it
+    // instead of a second `user_allowed_tools` RPC before handoff.
+    if (!allowedToolIds.includes(tool.id)) {
+      // Signed in but no entitlement for this tool → stay on hub catalog.
+      return;
+    }
+
+    if (tool.hubPath) {
+      navigate(tool.hubPath);
+      return;
+    }
+
     void (async () => {
-      // Fresh entitlement check avoids racing PlatformAuthProvider membership state.
-      let ids: string[];
-      try {
-        ids = await listAllowedToolIds();
-      } catch {
-        return;
-      }
-      if (!ids.includes(tool.id)) {
-        // Signed in but no entitlement for this tool → stay on hub catalog.
-        return;
-      }
-
-      if (tool.hubPath) {
-        navigate(tool.hubPath);
-        return;
-      }
-
       try {
         const target = await handoffToTool(tool);
         window.location.href = target;
@@ -108,7 +102,7 @@ export function HubPage({ locale }: { locale: Locale }) {
         // Stay on hub if handoff fails; user can open the tool from the catalog.
       }
     })();
-  }, [loading, session, accountStatus, navigate]);
+  }, [loading, session, accountStatus, allowedToolIds, navigate]);
 
   if (loading) {
     return (
