@@ -67,6 +67,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 
 ## UX polish
 
+- [x] Optimistic add/duplicate component — show block immediately, persist client UUID in background (`PageContent.handleAdd` / `handleDuplicate` + api options)
 - [ ] Course description editing in the UI (column exists; surface if needed)
 - [ ] Empty states / onboarding for a brand-new course
 - [ ] Keyboard / a11y pass on DnD and status controls

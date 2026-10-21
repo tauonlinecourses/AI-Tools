@@ -591,15 +591,24 @@ export async function addComponent(
   pageId: string,
   type: ComponentType,
   position: number,
-  props: BlockProps = {}
+  props: BlockProps = {},
+  options?: { id?: string; courseId?: string }
 ): Promise<PageComponent> {
-  const courseId = await courseIdFromPage(pageId);
+  // Insert first so the UI can paint with a client-generated id before
+  // the course lookup / timestamp bump finishes.
   const { data, error } = await supabase
     .from("components")
-    .insert({ page_id: pageId, type, position, props })
+    .insert({
+      ...(options?.id ? { id: options.id } : {}),
+      page_id: pageId,
+      type,
+      position,
+      props,
+    })
     .select()
     .single();
   if (error) fail("Adding component", error);
+  const courseId = options?.courseId ?? (await courseIdFromPage(pageId));
   await touchCourse(courseId);
   return data;
 }
@@ -644,65 +653,8 @@ export async function deleteComponent(id: string): Promise<void> {
   await touchCourse(courseId);
 }
 
-/**
- * Clone a component immediately after the source on the same page.
- * Copies type + props (question option ids are regenerated). Comments are not copied.
- */
-export async function duplicateComponent(sourceId: string): Promise<PageComponent> {
-  const { data: source, error: sourceErr } = await supabase
-    .from("components")
-    .select("*")
-    .eq("id", sourceId)
-    .single();
-  if (sourceErr) fail("Loading component to duplicate", sourceErr);
-
-  const pageId = source.page_id as string;
-  const courseId = await courseIdFromPage(pageId);
-
-  const { data: siblings, error: sibErr } = await supabase
-    .from("components")
-    .select("id, position")
-    .eq("page_id", pageId)
-    .order("position");
-  if (sibErr) fail("Loading page components", sibErr);
-
-  const siblingIds = (siblings ?? []).map((c) => c.id);
-  const sourceIndex = siblingIds.indexOf(sourceId);
-  if (sourceIndex < 0) {
-    fail("Duplicating component", { message: "source component not on page" });
-  }
-
-  const { data: created, error: createErr } = await supabase
-    .from("components")
-    .insert({
-      page_id: pageId,
-      type: source.type,
-      position: siblingIds.length,
-      props: propsForDuplicatedBlock(source as PageComponent),
-    })
-    .select()
-    .single();
-  if (createErr) fail("Duplicating component", createErr);
-
-  const orderedIds = [
-    ...siblingIds.slice(0, sourceIndex + 1),
-    created.id,
-    ...siblingIds.slice(sourceIndex + 1),
-  ];
-  await renumber("components", orderedIds);
-  await touchCourse(courseId);
-
-  const { data: finalComponent, error: finalErr } = await supabase
-    .from("components")
-    .select("*")
-    .eq("id", created.id)
-    .single();
-  if (finalErr) fail("Loading duplicated component", finalErr);
-  return finalComponent as PageComponent;
-}
-
 /** Full props copy for block duplicate; regenerate question option ids. */
-function propsForDuplicatedBlock(c: PageComponent): BlockProps {
+export function propsForDuplicatedBlock(c: PageComponent): BlockProps {
   if (c.type !== "question") return { ...c.props };
 
   const options = c.props.options ?? [];
@@ -721,6 +673,83 @@ function propsForDuplicatedBlock(c: PageComponent): BlockProps {
     options: nextOptions,
     correctOptionId,
   };
+}
+
+/**
+ * Clone a component immediately after the source on the same page.
+ * Copies type + props (question option ids are regenerated). Comments are not copied.
+ * Pass client-prepared fields to skip round-trips (optimistic UI).
+ */
+export async function duplicateComponent(
+  sourceId: string,
+  options?: {
+    id?: string;
+    courseId?: string;
+    pageId?: string;
+    type?: ComponentType;
+    props?: BlockProps;
+    /** Full ordered id list after insert (includes the new id). */
+    orderedIds?: string[];
+  }
+): Promise<PageComponent> {
+  let pageId = options?.pageId;
+  let type = options?.type;
+  let props = options?.props;
+  let courseId = options?.courseId;
+  let orderedIds = options?.orderedIds;
+
+  if (!pageId || !type || !props) {
+    const { data: source, error: sourceErr } = await supabase
+      .from("components")
+      .select("*")
+      .eq("id", sourceId)
+      .single();
+    if (sourceErr) fail("Loading component to duplicate", sourceErr);
+    pageId = source.page_id as string;
+    type = source.type as ComponentType;
+    props = propsForDuplicatedBlock(source as PageComponent);
+  }
+
+  if (!orderedIds) {
+    const { data: siblings, error: sibErr } = await supabase
+      .from("components")
+      .select("id")
+      .eq("page_id", pageId)
+      .order("position");
+    if (sibErr) fail("Loading page components", sibErr);
+    const siblingIds = (siblings ?? []).map((c) => c.id);
+    const sourceIndex = siblingIds.indexOf(sourceId);
+    if (sourceIndex < 0) {
+      fail("Duplicating component", { message: "source component not on page" });
+    }
+    // Placeholder id until insert returns; replaced below when no client id.
+    orderedIds = [
+      ...siblingIds.slice(0, sourceIndex + 1),
+      options?.id ?? "__new__",
+      ...siblingIds.slice(sourceIndex + 1),
+    ];
+  }
+
+  const insertPosition = orderedIds.indexOf(options?.id ?? "__new__");
+  const { data: created, error: createErr } = await supabase
+    .from("components")
+    .insert({
+      ...(options?.id ? { id: options.id } : {}),
+      page_id: pageId,
+      type,
+      position: insertPosition >= 0 ? insertPosition : orderedIds.length - 1,
+      props,
+    })
+    .select()
+    .single();
+  if (createErr) fail("Duplicating component", createErr);
+
+  const finalOrderedIds = orderedIds.map((id) =>
+    id === "__new__" ? created.id : id
+  );
+  await renumber("components", finalOrderedIds);
+  await touchCourse(courseId ?? (await courseIdFromPage(pageId)));
+  return created as PageComponent;
 }
 
 export async function reorderComponents(orderedIds: string[]): Promise<void> {

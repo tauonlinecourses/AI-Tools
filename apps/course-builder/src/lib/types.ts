@@ -50,9 +50,19 @@ export type ComponentType =
   | "word_cloud"
   | "forum";
 
-/** Activity component types — only one kind allowed per page. */
+/**
+ * Activity component types — only one kind allowed per page.
+ * `question` may repeat; `notes_board` / `word_cloud` / `forum` are singletons.
+ */
 export const ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
   "question",
+  "notes_board",
+  "word_cloud",
+  "forum",
+]);
+
+/** Non-question activities — at most one instance per page. */
+export const SINGLETON_ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
   "notes_board",
   "word_cloud",
   "forum",

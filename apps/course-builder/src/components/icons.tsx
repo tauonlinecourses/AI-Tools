@@ -118,16 +118,29 @@ export const CopyIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
-/** Page/document with a plus — duplicate (distinct from clipboard copy). */
+/**
+ * Two overlapping dog-eared documents — duplicate (distinct from clipboard copy).
+ * Front page is filled so it covers the back page.
+ */
 export const DuplicateIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
-  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    {/* Back page (up-right), dog-ear bottom-right */}
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
-      d="M8 3.5h5.5L18 8v10.5A1.5 1.5 0 0116.5 20h-8A1.5 1.5 0 017 18.5v-13A1.5 1.5 0 018 3.5z"
+      d="M9 3.5h6a1.5 1.5 0 011.5 1.5v8.5L14 16H9a1.5 1.5 0 01-1.5-1.5v-9A1.5 1.5 0 019 3.5z"
     />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.5V8H18" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11.5v5M9.5 14h5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14 16v-2.5h2.5" />
+    {/* Front page (filled) + dog-ear + text lines */}
+    <path
+      fill="white"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5 8h6a1.5 1.5 0 011.5 1.5v8.5L10 20.5H5A1.5 1.5 0 013.5 19v-9A1.5 1.5 0 015 8z"
+    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10 20.5V18h2.5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 11.5h3.5M6.25 14h3.5M6.25 16.5h3.5" />
   </svg>
 );
 

@@ -16,6 +16,7 @@ import {
   componentStatus,
   ACTIVITY_TYPES,
   PINNED_BOTTOM_TYPES,
+  SINGLETON_ACTIVITY_TYPES,
   derivePageType,
   isHomePage,
   PAGE_TYPE_LABEL,
@@ -241,6 +242,8 @@ export interface HomeCourseStructure {
 
 interface PageContentProps {
   page: Page;
+  /** Course id for nested mutations (avoids an extra page→course lookup on add). */
+  courseId: string;
   numbering: string;
   mode: CourseViewMode;
   /** Lesson files folder URL for implement-mode header button (lesson pages only). */
@@ -263,6 +266,7 @@ interface PageContentProps {
 
 export function PageContent({
   page,
+  courseId,
   numbering,
   mode,
   lessonFilesFolderUrl,
@@ -294,12 +298,19 @@ export function PageContent({
   // Debounced persistence for block props and page fields.
   const timers = useRef(new Map<string, number>());
   const pendingProps = useRef(new Map<string, BlockProps>());
+  /** In-flight optimistic inserts — later mutations wait so the row exists first. */
+  const pendingInserts = useRef(new Map<string, Promise<void>>());
 
   // The shell re-creates these callbacks on every render (including the ones
   // caused by the save indicator), so they must stay out of the load effect's
   // deps — otherwise any save would refetch the page and close open panels.
   const flushDeps = useRef({ trackSave, endSave, onContentChange });
   flushDeps.current = { trackSave, endSave, onContentChange };
+
+  async function waitForInsert(id: string) {
+    const pending = pendingInserts.current.get(id);
+    if (pending) await pending;
+  }
 
   useEffect(() => {
     setComponents(null);
@@ -334,12 +345,16 @@ export function PageContent({
         flush.endSave(key);
       }
       timersMap.clear();
+      const insertsMap = pendingInserts.current;
       for (const [id, props] of pendingMap) {
         flush
           .trackSave(
-            api.updateComponentProps(id, props).then(() => {
+            (async () => {
+              const pending = insertsMap.get(id);
+              if (pending) await pending;
+              await api.updateComponentProps(id, props);
               flush.onContentChange();
-            })
+            })()
           )
           .catch(() => undefined);
       }
@@ -368,6 +383,7 @@ export function PageContent({
     );
     pendingProps.current.set(id, props);
     scheduleSave(`component:${id}`, async () => {
+      await waitForInsert(id);
       pendingProps.current.delete(id);
       const updated = await api.updateComponentProps(id, props);
       setComponents((prev) =>
@@ -390,6 +406,7 @@ export function PageContent({
       prev ? prev.map((c) => (c.id === component.id ? { ...c, type: newType, props: newProps } : c)) : prev
     );
     scheduleSave(`component:${component.id}`, async () => {
+      await waitForInsert(component.id);
       const updated = await api.updateComponentType(component.id, newType, newProps);
       setComponents((prev) =>
         prev ? prev.map((c) => (c.id === component.id ? { ...c, updated_at: updated.updated_at } : c)) : prev
@@ -448,51 +465,97 @@ export function PageContent({
 
   async function handleAdd(type: ComponentType) {
     setError(null);
-    try {
-      const list = components ?? [];
+    const list = components ?? [];
 
-      if (isHome && ACTIVITY_TYPES.has(type)) {
-        window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבים מרכזיים.");
+    if (isHome && ACTIVITY_TYPES.has(type)) {
+      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבים מרכזיים.");
+      return;
+    }
+
+    if (ACTIVITY_TYPES.has(type)) {
+      const otherKind = list.find(
+        (c) => ACTIVITY_TYPES.has(c.type) && c.type !== type
+      );
+      if (otherKind) {
+        const existingLabel = typeMeta[otherKind.type]?.label ?? otherKind.type;
+        const newLabel = typeMeta[type]?.label ?? type;
+        window.alert(
+          `לא ניתן להוסיף "${newLabel}" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
+        );
         return;
       }
-
-      if (ACTIVITY_TYPES.has(type)) {
-        const existingActivity = list.find(
-          (c) => ACTIVITY_TYPES.has(c.type) && c.type !== type
+      // notes_board / word_cloud / forum: only one instance; question may repeat.
+      if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
+        const label = typeMeta[type]?.label ?? type;
+        window.alert(
+          `לא ניתן להוסיף עוד "${label}" — ניתן להוסיף פעילות זו פעם אחת בלבד בכל עמוד (רק שאלה ניתנת להוספה יותר מפעם אחת).`
         );
-        if (existingActivity) {
-          const existingLabel = typeMeta[existingActivity.type]?.label ?? existingActivity.type;
-          const newLabel = typeMeta[type]?.label ?? type;
-          window.alert(
-            `לא ניתן להוסיף "${newLabel}" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
-          );
-          return;
-        }
+        return;
       }
+    }
 
-      const isPinned = PINNED_BOTTOM_TYPES.has(type);
-      let insertIdx: number;
-      if (isPinned) {
-        insertIdx = list.length;
-      } else {
-        const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
-        insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
-      }
-      const created = await trackSave(
-        api.addComponent(page.id, type, insertIdx, defaultProps(type))
+    const isPinned = PINNED_BOTTOM_TYPES.has(type);
+    let insertIdx: number;
+    if (isPinned) {
+      insertIdx = list.length;
+    } else {
+      const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+      insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+    }
+
+    const props = defaultProps(type);
+    const now = new Date().toISOString();
+    const optimistic: PageComponent = {
+      id: crypto.randomUUID(),
+      page_id: page.id,
+      type,
+      position: insertIdx,
+      props,
+      implemented_at: null,
+      updated_at: now,
+    };
+    const next = [
+      ...list.slice(0, insertIdx),
+      optimistic,
+      ...list.slice(insertIdx),
+    ].map((c, position) => ({ ...c, position }));
+    // Paint immediately; persist in the background with the same client id.
+    setComponents(next);
+
+    let resolveInsert!: () => void;
+    let rejectInsert!: (reason: unknown) => void;
+    const insertReady = new Promise<void>((resolve, reject) => {
+      resolveInsert = resolve;
+      rejectInsert = reject;
+    });
+    pendingInserts.current.set(optimistic.id, insertReady);
+
+    let inserted = false;
+    try {
+      await trackSave(
+        (async () => {
+          try {
+            await api.addComponent(page.id, type, insertIdx, props, {
+              id: optimistic.id,
+              courseId,
+            });
+            inserted = true;
+            resolveInsert();
+          } catch (err) {
+            rejectInsert(err);
+            throw err;
+          }
+          if (insertIdx < list.length) {
+            await api.reorderComponents(next.map((c) => c.id));
+          }
+        })()
       );
-      const next = [
-        ...list.slice(0, insertIdx),
-        created,
-        ...list.slice(insertIdx),
-      ].map((c, position) => ({ ...c, position }));
-      setComponents(next);
-      if (insertIdx < list.length) {
-        await trackSave(api.reorderComponents(next.map((c) => c.id)));
-      }
+      pendingInserts.current.delete(optimistic.id);
       onContentChange();
       onStatusChange();
     } catch (e) {
+      pendingInserts.current.delete(optimistic.id);
+      if (!inserted) setComponents(list);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -500,40 +563,100 @@ export function PageContent({
   async function handleDelete(id: string) {
     if (!window.confirm("למחוק את הרכיב?")) return;
     setError(null);
+    const previous = components;
+    setComponents((prev) => prev?.filter((c) => c.id !== id) ?? prev);
+    setCommentsByComponent((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    if (openCommentId === id) setOpenCommentId(null);
     try {
+      await waitForInsert(id);
       await trackSave(api.deleteComponent(id));
-      setComponents((prev) => prev?.filter((c) => c.id !== id) ?? prev);
-      setCommentsByComponent((prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
-      if (openCommentId === id) setOpenCommentId(null);
       onContentChange();
       onStatusChange();
     } catch (e) {
+      setComponents(previous);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
 
   async function handleDuplicate(component: PageComponent) {
     setError(null);
+    if (SINGLETON_ACTIVITY_TYPES.has(component.type)) {
+      const label = typeMeta[component.type]?.label ?? component.type;
+      window.alert(
+        `לא ניתן לשכפל "${label}" — ניתן להוסיף פעילות זו פעם אחת בלבד בכל עמוד (רק שאלה ניתנת להוספה יותר מפעם אחת).`
+      );
+      return;
+    }
+
+    const list = components ?? [];
+    const idx = list.findIndex((c) => c.id === component.id);
+    if (idx < 0) return;
+
+    // Source must be persisted before we clone it server-side.
     try {
-      const created = await trackSave(api.duplicateComponent(component.id));
-      setComponents((prev) => {
-        if (!prev) return [created];
-        const idx = prev.findIndex((c) => c.id === component.id);
-        if (idx < 0) return [...prev, created];
-        const next = [
-          ...prev.slice(0, idx + 1),
-          created,
-          ...prev.slice(idx + 1),
-        ].map((c, position) => ({ ...c, position }));
-        return next;
-      });
+      await waitForInsert(component.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+
+    const props = api.propsForDuplicatedBlock(component);
+    const now = new Date().toISOString();
+    const optimistic: PageComponent = {
+      id: crypto.randomUUID(),
+      page_id: page.id,
+      type: component.type,
+      position: idx + 1,
+      props,
+      implemented_at: null,
+      updated_at: now,
+    };
+    const next = [
+      ...list.slice(0, idx + 1),
+      optimistic,
+      ...list.slice(idx + 1),
+    ].map((c, position) => ({ ...c, position }));
+    setComponents(next);
+
+    let resolveInsert!: () => void;
+    let rejectInsert!: (reason: unknown) => void;
+    const insertReady = new Promise<void>((resolve, reject) => {
+      resolveInsert = resolve;
+      rejectInsert = reject;
+    });
+    pendingInserts.current.set(optimistic.id, insertReady);
+
+    let inserted = false;
+    try {
+      await trackSave(
+        (async () => {
+          try {
+            await api.duplicateComponent(component.id, {
+              id: optimistic.id,
+              courseId,
+              pageId: page.id,
+              type: component.type,
+              props,
+              orderedIds: next.map((c) => c.id),
+            });
+            inserted = true;
+            resolveInsert();
+          } catch (err) {
+            rejectInsert(err);
+            throw err;
+          }
+        })()
+      );
+      pendingInserts.current.delete(optimistic.id);
       onContentChange();
       onStatusChange();
     } catch (e) {
+      pendingInserts.current.delete(optimistic.id);
+      if (!inserted) setComponents(list);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -541,6 +664,7 @@ export function PageContent({
   async function handleAddComment(componentId: string, body: string) {
     setError(null);
     try {
+      await waitForInsert(componentId);
       const created = await trackSave(api.addComment(componentId, mode, body));
       setCommentsByComponent((prev) => {
         const next = new Map(prev);
@@ -615,7 +739,12 @@ export function PageContent({
 
   function handleReorder(next: PageComponent[]) {
     setComponents(next);
-    trackSave(api.reorderComponents(next.map((c) => c.id)))
+    trackSave(
+      (async () => {
+        await Promise.all(next.map((c) => waitForInsert(c.id)));
+        await api.reorderComponents(next.map((c) => c.id));
+      })()
+    )
       .then(() => {
         onContentChange();
         onStatusChange();
@@ -1147,7 +1276,7 @@ export function PageContent({
                 {!isHome && (
                   <div>
                     <span className="text-xs font-semibold text-surface-400 mb-1.5 block">
-                      פעילויות (ניתן להוסיף רק סוג פעילות אחת בעמוד)
+                      פעילויות (סוג אחד בעמוד; רק שאלה — יותר מאחת)
                     </span>
                     <div className="flex flex-wrap gap-2">
                       {(["question", "notes_board", "word_cloud", "forum"] as ComponentType[]).map((type) => (

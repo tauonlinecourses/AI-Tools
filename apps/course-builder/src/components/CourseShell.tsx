@@ -1176,6 +1176,7 @@ export function CourseShell({ mode }: CourseShellProps) {
             <PageContent
               key={selectedPage.id}
               page={selectedPage}
+              courseId={courseId!}
               numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
               lessonFilesFolderUrl={selectedPageLessonFilesUrl}
