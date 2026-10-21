@@ -67,7 +67,7 @@ export function StructureOverview({
         {types.map(([type, n]) => {
           const icon = activityTypeIcon(type);
           const isSelected = selectedType === type;
-          const isInteractive = !!onSelectType && (!!selectableTypes ? selectableTypes.includes(type) : true);
+          const isInteractive = !!onSelectType && (selectableTypes ? selectableTypes.includes(type) : true);
           const className = `inline-flex items-center gap-1.5 border px-2 py-0.5 rounded-control font-medium transition-colors ${
             compact ? "text-xs" : "text-2xs"
           } ${

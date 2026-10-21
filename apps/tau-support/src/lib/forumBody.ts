@@ -52,7 +52,15 @@ export function sanitizeForumHtml(dirty: string): string {
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
     const el = node as HTMLElement;
     const tag = el.tagName.toUpperCase();
-    if (!FORUM_ALLOWED_TAGS.has(tag)) {
+    const style = el.getAttribute("style") ?? "";
+
+    // Contenteditable / Docs leave <b style="font-weight:normal">. We strip
+    // styles below, so unwrap first or CSS [&_b]:font-bold makes them bold again.
+    const unwrapFormatting =
+      ((tag === "B" || tag === "STRONG") &&
+        /font-weight:\s*(normal|400|500)\b/i.test(style)) ||
+      ((tag === "I" || tag === "EM") && /font-style:\s*normal\b/i.test(style));
+    if (unwrapFormatting || !FORUM_ALLOWED_TAGS.has(tag)) {
       const frag = document.createDocumentFragment();
       for (const child of Array.from(el.childNodes)) {
         const t = walk(child);
@@ -60,8 +68,19 @@ export function sanitizeForumHtml(dirty: string): string {
       }
       return frag;
     }
-    const out = document.createElement(tag.toLowerCase());
-    if (tag === "A") {
+
+    // Unbold / Docs body-as-heading → demote or CSS [&_h3]:font-bold revives bold.
+    const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    const demoteHeading =
+      /^H[1-6]$/.test(tag) &&
+      (/font-weight:\s*(normal|400|500)\b/i.test(style) ||
+        text.length > 48 ||
+        /[.!?…׃]\s*$/.test(text) ||
+        Boolean(el.closest("li")));
+    const outTag = demoteHeading ? "P" : tag;
+
+    const out = document.createElement(outTag.toLowerCase());
+    if (outTag === "A") {
       const href = el.getAttribute("href")?.trim() ?? "";
       if (/^https?:\/\//i.test(href) || href.startsWith("/") || href.startsWith("#")) {
         out.setAttribute("href", href);
@@ -69,7 +88,7 @@ export function sanitizeForumHtml(dirty: string): string {
         out.setAttribute("target", "_blank");
       }
     }
-    if (tag === "IMG") {
+    if (outTag === "IMG") {
       const src = el.getAttribute("src")?.trim() ?? "";
       if (/^https?:\/\//i.test(src) || src.startsWith("data:image/")) {
         out.setAttribute("src", src);

@@ -1,10 +1,19 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
+import { ADMIN_GROUP_SLUG } from "./constants";
 import {
   getPlatformPublicConfig,
   getPlatformServiceRoleKey,
   requirePlatformPublicConfig,
 } from "./envServer";
+
+export {
+  ADMIN_GROUP_SLUG,
+  PLATFORM_TOOL_IDS,
+  isPlatformToolId,
+  type PlatformToolId,
+} from "./constants";
+
 function getServerEnv(): Record<string, string | undefined> {
   return (
     (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -155,6 +164,20 @@ export async function assertUserIsApproved(userId: string): Promise<void> {
   }
 }
 
+export async function assertUserIsAdmin(userId: string): Promise<void> {
+  const admin = createPlatformServiceClient();
+  const { data, error } = await admin
+    .from("group_members")
+    .select("group_id, groups!inner(slug)")
+    .eq("user_id", userId)
+    .eq("groups.slug", ADMIN_GROUP_SLUG)
+    .limit(1);
+  if (error) throw error;
+  if (!data?.length) {
+    throw new AuthError("Admin access required", 403);
+  }
+}
+
 export async function requireToolAccessFromRequest(
   req: { headers?: { authorization?: string | string[] | undefined } } | Request,
   toolId: string
@@ -163,6 +186,63 @@ export async function requireToolAccessFromRequest(
   await assertUserIsApproved(verified.user.id);
   await assertUserHasToolAccess(verified.user.id, toolId);
   return verified;
+}
+
+type ApiRequest = {
+  headers?: { authorization?: string | string[] | undefined };
+};
+
+type ApiResponse = {
+  status: (code: number) => { json: (body: unknown) => unknown };
+};
+
+/**
+ * Wrap a Vercel Node handler so it only runs for an approved Platform user
+ * (and, with `toolId`, one who has access to that tool). Auth failures become
+ * `{ error }` JSON with the AuthError status; anything else is 401.
+ *
+ * Accepts a `{ default: fn }` module object too: Node ESM can hand that shape
+ * to `"type": "module"` apps importing a CJS default export.
+ */
+export function withPlatformAuth<Req extends ApiRequest, Res extends ApiResponse>(
+  handler: (req: Req, res: Res) => unknown,
+  options: { toolId?: string } = {}
+): (req: Req, res: Res) => Promise<unknown> {
+  const run = resolveHandlerFunction<Req, Res>(handler);
+  return async (req, res) => {
+    try {
+      if (options.toolId) {
+        await requireToolAccessFromRequest(req, options.toolId);
+      } else {
+        const verified = await verifyPlatformRequest(req);
+        await assertUserIsApproved(verified.user.id);
+      }
+    } catch (err: unknown) {
+      if (err instanceof AuthError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+      if (!run) throw new Error("API handler is not a function (stale build output?)");
+      return await run(req, res);
+    } catch (err: unknown) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : "Handler failed",
+      });
+    }
+  };
+}
+
+function resolveHandlerFunction<Req, Res>(
+  mod: unknown
+): ((req: Req, res: Res) => unknown) | null {
+  if (typeof mod === "function") return mod as (req: Req, res: Res) => unknown;
+  const inner = (mod as { default?: unknown } | null)?.default;
+  return typeof inner === "function"
+    ? (inner as (req: Req, res: Res) => unknown)
+    : null;
 }
 
 const HANDOFF_TTL_MS = 2 * 60 * 1000;

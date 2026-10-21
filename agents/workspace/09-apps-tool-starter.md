@@ -37,6 +37,8 @@ After changing tool behavior, update the matching doc in this folder so it stays
 
 ### `apps/tool-starter/package.json`
 
+New tools copied from the starter also need an `eslint.config.mjs` (see [03-packages-config.md](./03-packages-config.md)). If the tool has testable pure logic, add `"test": "vitest run"`, a `vitest.config.ts`, and `src/**/*.test.ts` files (see [02-monorepo-root.md](./02-monorepo-root.md#quality-checks-lint-type-check-test-ci)).
+
 ```json
 {
   "name": "tool-starter",
@@ -46,7 +48,8 @@ After changing tool behavior, update the matching doc in this folder so it stays
   "scripts": {
     "dev":        "vite",
     "build":      "tsc && vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint":       "eslint ."
   },
   "dependencies": {
     "@workspace/ui":        "file:../../packages/ui",
@@ -72,14 +75,20 @@ After changing tool behavior, update the matching doc in this folder so it stays
 
 ### `apps/tool-starter/api/chat.ts`
 
-Serverless AI route. It is a **pass-through only** — a 1-line re-export of the shared
-handler in `packages/ai-client/src/server.ts`, which is the sole place that touches the
-OpenAI SDK and `OPENAI_API_KEY`. Copy this file as-is into every new tool; no changes
-needed. See [06-packages-ai-client.md](./06-packages-ai-client.md) and
+Serverless AI route. It is a **pass-through only**: Platform Auth (`withPlatformAuth`) around the
+shared handler in `packages/ai-client/src/server.ts`, which is the sole place that touches the
+OpenAI SDK and `OPENAI_API_KEY`. Copy this file into every new tool and change only `TOOL_ID`.
+See [06-packages-ai-client.md](./06-packages-ai-client.md) and
 [secure-ai-client.md](./secure-ai-client.md).
 
 ```typescript
-export { default } from "@workspace/ai-client/vercel";
+/// <reference types="node" />
+import vercelHandler from "@workspace/ai-client/vercel";
+import { withPlatformAuth } from "@workspace/auth/server";
+
+const TOOL_ID = "your-tool-id";
+
+export default withPlatformAuth(vercelHandler, { toolId: TOOL_ID });
 ```
 
 ### `apps/tool-starter/tailwind.config.ts`
@@ -102,16 +111,30 @@ export default config;
 
 ### `apps/tool-starter/vite.config.ts`
 
-```typescript
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+`vercelApiPlugin` serves `api/*.ts` (here `/api/chat`) under `vite dev`; `PLATFORM_ENV` bridges
+`PLATFORM_SUPABASE_*` (with `VITE_PLATFORM_*` fallbacks) and `OPENAI_API_KEY` into `process.env`.
+Add app-specific keys to `bridge` when new handlers read them (see
+[10-run-deploy-conventions.md](./10-run-deploy-conventions.md#local-api-under-vite-dev-packagesdev-api)).
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5175,
-    strictPort: true,
-  },
+```typescript
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
+import { PLATFORM_ENV, vercelApiPlugin } from "../../packages/dev-api/src/index";
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return {
+    plugins: [react(), vercelApiPlugin({ env, bridge: PLATFORM_ENV })],
+    // Force a single React copy across workspace packages (avoids React error #525).
+    resolve: {
+      dedupe: ["react", "react-dom"],
+    },
+    server: {
+      port: 5175,
+      strictPort: true,
+    },
+  };
 });
 ```
 

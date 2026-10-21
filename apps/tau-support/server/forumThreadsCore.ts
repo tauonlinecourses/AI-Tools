@@ -893,7 +893,7 @@ async function obtainLoginCookies(authOrigin: string): Promise<{
     const loginPageHtml = await readLmsResponseBody(loginPageRes);
     assertNotCaptcha(loginPageHtml);
 
-    let setCookies = extractSetCookieHeaders(loginPageRes.headers);
+    const setCookies = extractSetCookieHeaders(loginPageRes.headers);
     let csrftoken = getCookie(setCookies, "csrftoken");
     let cookieJar = setCookies.map((c) => c.split(";")[0]).join("; ");
 

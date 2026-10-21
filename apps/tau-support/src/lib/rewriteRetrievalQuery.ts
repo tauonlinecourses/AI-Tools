@@ -57,7 +57,7 @@ function sanitizeRewrittenQuery(raw: string): string | null {
   // Drop accidental markdown / quotes / labels the model may add.
   t = t.replace(/^```(?:\w+)?\s*/i, "").replace(/\s*```$/i, "");
   t = t.replace(/^["'«»]+|["'«»]+$/g, "").trim();
-  t = t.replace(/^(?:שאלה(?:\s*מנוקה)?|query)\s*[:：\-]\s*/i, "").trim();
+  t = t.replace(/^(?:שאלה(?:\s*מנוקה)?|query)\s*[:：-]\s*/i, "").trim();
   t = t.replace(/\s+/g, " ").trim();
 
   // Reject if the model clearly answered instead of rewriting.

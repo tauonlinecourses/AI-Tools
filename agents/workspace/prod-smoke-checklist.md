@@ -16,6 +16,7 @@ Live prod hosts (from hub `tools.config.ts`):
 | Tau Support | `https://ai-tools-tau-support.vercel.app` |
 | Virtual Support | `https://ai-tools-virtual-support.vercel.app` |
 | MBZ Explorer | Hub path `/mbz-explorer` (same origin as hub) |
+| Dictionary Tool | Hub path `/dictionary-tool` (same origin as hub) |
 
 ---
 
@@ -122,6 +123,7 @@ Use an **approved** user with known group entitlements.
 - [ ] Paste a standalone tool URL while **signed out** → redirect to hub login with `returnUrl`
 - [ ] Paste a tool URL while signed in **without** that tool’s entitlement → hub home
 - [ ] Hub-hosted MBZ Explorer `/mbz-explorer` respects entitlement (no access → hub home)
+- [ ] Hub-hosted Dictionary Tool `/dictionary-tool` respects entitlement (no access → hub home)
 
 ### AI & admin
 

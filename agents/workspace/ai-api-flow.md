@@ -73,7 +73,7 @@ flowchart LR
 | `packages/ai-client/src/server.ts` | `handler(request: Request)` — the **only** file that imports the OpenAI SDK and reads `OPENAI_API_KEY`. | Server |
 | `packages/ai-client/src/vercel.ts` | Adapts Vercel Node `(req, res)` ↔ Web `Request`/`Response`; default export used as the function entry. | Server |
 | `packages/ai-client/vercel.cjs` | Package `./vercel` entry — `module.exports = fn` so Node ESM default-import works in `"type": "module"` apps. | Server |
-| `apps/*/api/chat.ts` | Platform Auth gate, then `@workspace/ai-client/vercel`. | Server |
+| `apps/*/api/chat.ts` | One line: `withPlatformAuth(vercelHandler, { toolId })` from `@workspace/auth/server` (Platform Auth gate), then `@workspace/ai-client/vercel`. | Server |
 | `packages/ai-client/tsconfig.build.json` | Compiles `src/*` → `dist/*.js` so the Node runtime can import compiled JS (not raw `.ts`). | Build |
 
 ---
@@ -84,9 +84,9 @@ flowchart LR
   `globalThis.process`), and is never prefixed with `VITE_`, so bundlers cannot inline it.
 - **Single choke point.** All AI traffic flows through one shared `handler()` — one place to
   audit, patch, or add controls.
-- **Auth on every live `/api/chat`.** App wrappers call `requireToolAccessFromRequest` (or hub
-  `assertUserIsApproved`) before the shared handler — Platform Bearer JWT + approved + tool
-  entitlement. See [security.md](./security.md).
+- **Auth on every live `/api/chat`.** Each app wraps the shared handler in `withPlatformAuth`
+  (`@workspace/auth/server`): Platform Bearer JWT + approved + tool entitlement (the hub passes
+  no `toolId`, so approved only). Local `vite dev` runs the same file. See [security.md](./security.md).
 - **Cost / input guardrails in `server.ts`.** Model allowlist (`gpt-4o`, `gpt-4o-mini`), hard
   `max_tokens` (4096), message count/size caps (`413` when oversized), stdout metrics
   (`status`, `model`, `messageCount`, `latencyMs` — never prompt text).

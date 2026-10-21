@@ -11,11 +11,13 @@ AI-Tools/
 │   ├── tool-starter/     ← Template for creating a new tool
 │   ├── video-curator/    ← Tool for curating video transcripts and exporting clips
 │   ├── course-builder/   ← Course structure and page authoring
-│   └── mbz-explorer/     ← Explore and work with MBZ packages
+│   ├── mbz-explorer/     ← Explore and work with MBZ packages (hub-hosted)
+│   └── dictionary-tool/  ← Excel glossary → Moodle XML (hub-hosted)
 │
 ├── packages/             ← Shared code
 │   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
 │   ├── ui/               ← Shared React component library
+│   ├── auth/             ← Platform auth (session, handoff, entitlements)
 │   └── ai-client/        ← Shared AI client (useAI hook) + server handler (OpenAI SDK)
 │
 ├── agents/               ← Build instructions for the Cursor agent
@@ -66,9 +68,9 @@ flowchart LR
 **Key points:**
 - `client.ts` is browser-safe — no SDK, no key. Components import `useAI()` or `aiChat()` from `@workspace/ai-client/client`.
 - `server.ts` is the **only** file that imports the OpenAI SDK or reads `OPENAI_API_KEY`. It runs as a Vercel serverless function (Node.js runtime — Edge cannot bundle monorepo workspace imports).
-- Each app's `api/chat.ts` is a one-line re-export: `export { default } from "@workspace/ai-client/vercel"` (bridges Vercel `req`/`res` → Web `handler`).
+- Each app's `api/chat.ts` is one line: `export default withPlatformAuth(vercelHandler, { toolId })`. `withPlatformAuth` (from `@workspace/auth/server`) checks the Platform login, approved status and tool access; `@workspace/ai-client/vercel` bridges Vercel `req`/`res` → Web `handler`.
 - Supports `model`, `systemPrompt`, `temperature`, and `responseFormat` (JSON mode) — e.g. video-curator uses `gpt-4o-mini` with `temperature: 0` and `responseFormat: { type: 'json_object' }` for transcript segmentation.
-- Local dev: `vite dev` serves `/api/chat` via a middleware in `vite.config.ts` that delegates to the same shared handler.
+- Local dev: `vite dev` runs each app's real `api/*.ts` handlers (including `/api/chat`) through `packages/dev-api`, the dev-only `vercelApiPlugin` in every `vite.config.ts`.
 
 See [`agents/workspace/secure-ai-client.md`](agents/workspace/secure-ai-client.md) for the full architecture guide and rules.
 
@@ -87,7 +89,7 @@ pnpm dev
 
 1. Copy `apps/tool-starter/` → `apps/tool-myname/`
 2. In the copy, set `"name": "tool-myname"` in `package.json`
-3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, course-builder `5176`, mbz-explorer `5177`, next free…)
+3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, course-builder `5176`, mbz-explorer `5177`, tau-support `5178`, dictionary-tool `5179`, next free…)
 4. Build the tool in `src/App.tsx` (keep `PageLayout`)
 5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
 6. Deploy on Vercel (one project per app):

@@ -21,6 +21,7 @@ export const PLATFORM_TOOL_IDS = [
   "tau-support",
   "virtual-support",
   "tool-starter",
+  "dictionary-tool",
 ] as const;
 
 export type PlatformToolId = (typeof PLATFORM_TOOL_IDS)[number];

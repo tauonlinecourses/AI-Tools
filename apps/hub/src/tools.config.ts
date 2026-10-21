@@ -99,14 +99,22 @@ export const tools: Tool[] = [
     name:        "Virtual Support",
     description: "Organization knowledge base with grounded Q&A over staff documents.",
     url:         "https://ai-tools-virtual-support.vercel.app",
-    devUrl:      "http://localhost:5179",
+    devUrl:      "http://localhost:5180",
     icon:        "library",
     status:      "beta",
     category:    "Education",
   },
+  {
+    id:          "dictionary-tool",
+    name:        "Dictionary Tool",
+    description: "Convert an Excel glossary (term + definition) into Moodle-importable XML.",
+    // Hosted inside the hub Vercel project (not a separate app deploy).
+    hubPath:     "/dictionary-tool",
+    icon:        "book",
+    status:      "beta",
+    category:    "Education",
+  },
 ];
-
-export const categories = [...new Set(tools.map((t) => t.category))];
 
 /**
  * Resolve a tool deep-link / `returnUrl` to a catalog entry.

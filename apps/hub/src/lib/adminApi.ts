@@ -1,4 +1,5 @@
 import { authFetch } from "@workspace/auth/client";
+import { HUB_PROD_URL } from "@workspace/ui";
 
 export type AdminGroupSummary = {
   id: string;
@@ -112,9 +113,21 @@ export async function saveGroupMembers(
   return parseJson<{ memberCount: number }>(res);
 }
 
-/** Hub set-password URL for invite redirects (must be allowlisted in Supabase Auth). */
+/**
+ * Hub set-password URL for invite redirects (must be allowlisted in Supabase Auth).
+ * Always uses the live hub — never `window.location.origin` — so invite emails
+ * work when the admin creates users from localhost.
+ */
 export function inviteSetPasswordRedirectTo(): string {
-  return `${window.location.origin}/auth/set-password`;
+  const fromEnv =
+    typeof import.meta.env.VITE_HUB_URL === "string"
+      ? import.meta.env.VITE_HUB_URL.trim()
+      : "";
+  const origin = (fromEnv || HUB_PROD_URL).replace(/\/$/, "");
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+    return `${HUB_PROD_URL.replace(/\/$/, "")}/auth/set-password`;
+  }
+  return `${origin}/auth/set-password`;
 }
 
 export async function inviteAdminUser(input: {

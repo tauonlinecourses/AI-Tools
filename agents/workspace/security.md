@@ -17,7 +17,9 @@
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
 - **Virtual-Support data**: dedicated Supabase project; RLS on with no anon/authenticated policies. The BFF `/api/data` and `/api/ask` verify the Course-Builder JWT + `virtual-support` entitlement, then use `VS_SUPABASE_SERVICE_ROLE_KEY`.
 - Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data, virtual-support data/ask) require a Platform Bearer token and (where applicable) group tool access.
-- **Tau / Virtual Support local Vite**: `vite.config.ts` stays free of static `@workspace/auth` imports (Node ESM). Local JWT gate is `server/devPlatformAuth.ts`; local data/ask routes use `server.ssrLoadModule`.
+- **Local Vite (all apps)**: `vite dev` runs the same `api/*.ts` handlers as production through `packages/dev-api` (`vercelApiPlugin`), so local routes get the same Platform JWT, approved-status and tool gates. There is no separate dev auth code. `vite.config.ts` still never statically imports `@workspace/auth` (Node ESM); handlers load through `server.ssrLoadModule`.
+- **Server auth helpers** all live in `@workspace/auth/server`: `verifyPlatformRequest`, `assertUserIsApproved`, `assertUserHasToolAccess`, `requireToolAccessFromRequest`, `assertUserIsAdmin`, handoff codes, and the re-exported `ADMIN_GROUP_SLUG` / `PLATFORM_TOOL_IDS`. The hub uses them too; it no longer has a local copy.
+- **`withPlatformAuth(handler, { toolId? })`** wraps every `api/chat.ts`. With `toolId` it requires approved status plus tool access; without it (the hub) only approved status. `AuthError` becomes `{ error }` with its status; any other auth failure is 401 `Unauthorized`, and a handler throw is 500. It also unwraps a `{ default: fn }` CJS module object.
 - **Vercel APIs**: `@workspace/auth/server` resolves to a **CJS `dist/` build** (`pnpm --filter @workspace/auth build`). Each app `vercel.json` builds auth (then ai-client) before the app so handoff/chat serverless functions do not crash on raw `.ts` imports.
 
 ```text
@@ -37,7 +39,7 @@ Signed-in change password → verify current → update password
 
 | Flow | How | Email |
 |---|---|---|
-| **Admin invite** | Admin enters work email + groups → **Create user** (`generateLink`, approved + memberships, no email yet) → same modal shows user details + shareable link (copy) + optional **Send invite email** (`sendInviteEmail` re-invites via delete + `inviteUserByEmail`) → invitee opens `/auth/set-password` | Built-in Auth email ~2/hour — prefer copy link or attach **custom SMTP** for volume |
+| **Admin invite** | Admin enters work email + groups → **Create user** (`generateLink`, approved + memberships, no email yet) → same modal shows shareable link (copy) **or** optional **Send invite email** (`sendInviteEmail` = delete + `inviteUserByEmail`). Use **one** delivery path: sending email issues a new one-time token and invalidates any previously copied link. After email, do **not** call `generateLink` again (that used to rotate the token a second time so the email link landed on `/auth/set-password` with no session). Invitee opens `/auth/set-password` | Built-in Auth email ~2/hour — prefer copy link or attach **custom SMTP** for volume |
 | **Self-register** | Login → Create account → email + password + group (not Admin) → `status=pending` → pending screen until admin **Approve** (confirm/change groups) or **Reject** | **No** Auth confirmation email; admin approval is the trust gate |
 
 ## Forgot + change password
@@ -51,10 +53,10 @@ Helpers live in `@workspace/auth`: `resetPlatformPasswordForEmail`, `verifyPlatf
 
 Supabase Auth URL config (Course-Builder project → Authentication → URL configuration):
 
-- **Site URL** should be the hub (local: `http://localhost:5173`, prod: hub Vercel URL) — not `localhost:3000`.
-- **Redirect URLs** must allow `http://localhost:5173/auth/set-password` and the prod `https://<hub>/auth/set-password`. Invite **and** password-recovery emails reuse this path. If a redirect is not allowlisted, Supabase falls back to Site URL and the invite/`redirect_to` will look wrong (e.g. `http://localhost:3000` with no `/auth/set-password`).
+- **Site URL** must be the **prod** hub (`https://ai-tools-tauonline.vercel.app`) — **not** `http://localhost:3000` or `http://localhost:5173`. Failed verifies and email fallbacks redirect to Site URL; a localhost Site URL is why invite errors open `localhost:3000/#error=…`.
+- **Redirect URLs** must include `https://ai-tools-tauonline.vercel.app/auth/set-password` (and `http://localhost:5173/auth/set-password` for local forgot-password). If the prod path is missing, Auth rejects the invite redirect.
 
-Invite and forgot-password APIs pass `redirectTo` from the browser (`window.location.origin + /auth/set-password`).
+Invite create/copy link: keep Supabase’s official `action_link` token and only rewrite `redirect_to` to the live hub (do not rebuild from `hashed_token` alone — that yields `otp_expired`). After `inviteUserByEmail`, never regenerate an invite link for the same user until you intentionally want to invalidate the email. Forgot-password still uses `window.location.origin + /auth/set-password`. `SetPasswordPage` surfaces `#error` / `error_description` from failed Auth redirects.
 
 ## Threat findings addressed
 
@@ -64,7 +66,7 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 | UI password not protecting DB/APIs | Critical | Real Supabase Auth + JWT on APIs |
 | `/api/lms-login` open | Critical | Requires Platform JWT + tau-support access |
 | Open `/api/chat` / embed OpenAI proxy | High | JWT + tool entitlement |
-| Video-curator local Vite `/api/*` ungated | High | Dev middleware requires Platform JWT + `video-curator` access |
+| Video-curator local Vite `/api/*` ungated | High | Local Vite runs the production handlers (`packages/dev-api`), so Platform JWT + `video-curator` access apply |
 | Hub `/api/chat` without approved check | Medium | `assertUserIsApproved` after JWT verify |
 | Pending user + leftover group_members | Medium | RPC helpers require `profiles.status = 'approved'` (migration `011`) |
 | Legacy tau `APP_PASSWORD` / `/api/app-login` | Medium | Endpoint returns `410`; client `AppLogin` / `appAuth` helpers removed; Platform Auth is the only UI gate |
@@ -89,10 +91,10 @@ Invite and forgot-password APIs pass `redirectTo` from the browser (`window.loca
 
 | Name | Slug | Tools | Notes |
 |---|---|---|---|
-| Admin | `admin-all-tools` (legacy: `Admin (all tools)`) | `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `video-curator` | Also unlocks hub **User admin** (`/admin`). `isAdminGroupSlug` accepts both forms. |
+| Admin | `admin-all-tools` (legacy: `Admin (all tools)`) | `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`). `isAdminGroupSlug` accepts both forms. |
 | צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder`, `virtual-support` | |
 
-Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` (`admin-all-tools`) in `@workspace/auth` / hub `platformAuth.ts`.
+Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` (`admin-all-tools`) in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`).
 
 ## Ops — onboard a user
 
@@ -120,11 +122,11 @@ on conflict do nothing;
 
 ### Local Windows + corporate TLS proxy
 
-Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS inspection often breaks Node (`SELF_SIGNED_CERT_IN_CHAIN` / `fetch failed`) while browser login still works. Local hub/tau `vite.config.ts` imports `packages/auth/src/devTls.ts`, which sets `NODE_TLS_REJECT_UNAUTHORIZED=0` on Windows (override with `PLATFORM_STRICT_TLS=1`). Production Vercel is unaffected.
+Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS inspection often breaks Node (`SELF_SIGNED_CERT_IN_CHAIN` / `fetch failed`) while browser login still works. Local hub/tau `vite.config.ts` imports `packages/auth/src/devTls.ts`, which sets `NODE_TLS_REJECT_UNAUTHORIZED=0` on Windows (override with `PLATFORM_STRICT_TLS=1`). Production Vercel is unaffected. The other apps (video-curator, course-builder, mbz-explorer, tool-starter) do not import it, so on such a network their local `/api/*` calls with a token return 503 "Cannot reach Platform Auth from the local server (TLS/proxy)…". Install `win-ca` / set `NODE_EXTRA_CA_CERTS`, or import `devTls` in that app's config.
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_virtual_support_tool.sql` (**must be applied** on platform project `qpctlsahnyarmrmeplpl`: extends `group_tools_tool_id_check` with `virtual-support` and grants it to Admin / learning-systems; without this, hub admin create/edit group fails when that tool is selected), `013_normalize_admin_group_slug.sql` (pins Admin slug to `admin-all-tools` after hub UI `slugify` rewrote `Admin (all tools)`)
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_add_dictionary_tool.sql` (extends `group_tools` check to include `dictionary-tool` + keep production `virtual-support`; seeds `dictionary-tool` on staff/admin groups), `013_normalize_admin_group_slug.sql` (pins Admin slug to `admin-all-tools` after hub UI `slugify` rewrote `Admin (all tools)`), `014_seed_virtual_support_groups.sql` (grants `virtual-support` to Admin / learning-systems / all-staff)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
 - Virtual-Support: `001_init.sql` (folders, documents, doc_chunks, match RPC, doc-images bucket; RLS locked)
 
@@ -133,8 +135,9 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 | Surface | Gate |
 |---|---|
 | Hub `/`, `/en` | `PlatformAuthProvider` → login if no session; pending/rejected → status page |
-| Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin` |
+| Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin`. Group tool edits only assign `PLATFORM_TOOL_IDS`; unknown/WIP tool ids already on a group are preserved. |
 | Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
+| Hub `/dictionary-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `dictionary-tool` |
 | Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |
 | `returnUrl` after login | Only catalog origins / `hubPath`s; entitlement re-checked before handoff |
 | Tool `/api/*` (chat, embed, lms, tau-data, youtube-transcript, …) | Bearer Platform JWT + approved + `user_has_tool_access(toolId)` |

@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { AuthError, redeemHandoffCode } from "./platformAuth";
+import { AuthError, redeemHandoffCode } from "@workspace/auth/server";
 
 function setCors(res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");

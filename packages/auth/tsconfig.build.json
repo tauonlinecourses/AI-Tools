@@ -14,5 +14,5 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/envServer.ts", "src/server.ts", "src/protectApi.ts"]
+  "include": ["src/constants.ts", "src/envServer.ts", "src/server.ts"]
 }

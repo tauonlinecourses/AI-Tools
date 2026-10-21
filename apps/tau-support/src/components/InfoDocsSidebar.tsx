@@ -65,11 +65,20 @@ export function InfoDocsSidebar({
                 }`}
               >
                 <span
-                  className={`text-sm font-semibold leading-snug ${
+                  className={`flex items-start gap-1.5 text-sm font-semibold leading-snug ${
                     selected ? "text-sky-950" : "text-surface-900"
                   }`}
                 >
-                  {doc.title || "ללא כותרת"}
+                  {doc.pinned ? (
+                    <span
+                      aria-label="נעוץ"
+                      title="נעוץ בראש הרשימה"
+                      className="mt-0.5 shrink-0 text-amber-600"
+                    >
+                      ★
+                    </span>
+                  ) : null}
+                  <span className="min-w-0">{doc.title || "ללא כותרת"}</span>
                 </span>
               </button>
             </li>

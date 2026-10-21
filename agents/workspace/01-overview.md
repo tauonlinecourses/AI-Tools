@@ -93,15 +93,19 @@ workspace/
 │   ├── tau-support/                ← TAU Support (hub id: tau-support; port 5178)
 │   │   └── …                       Own Supabase + Vercel; forum + info-docs RAG
 │   │
-│   └── virtual-support/            ← Virtual Support (hub id: virtual-support; port 5179)
-│       ├── agents/README.md
-│       ├── api/{chat,data,ask}.ts  ← Platform-auth BFF; Ask is server-side RAG
-│       ├── server/                 ← dataHandler, askHandler, embedCore, chunking
-│       ├── supabase/migrations/001_init.sql
-│       └── …                       Own Supabase + Vercel; folders + docs + Ask
+│   ├── virtual-support/            ← Virtual Support (hub id: virtual-support; port 5180)
+│   │   ├── agents/README.md
+│   │   ├── api/{chat,data,ask}.ts  ← Platform-auth BFF; Ask is server-side RAG
+│   │   ├── server/                 ← dataHandler, askHandler, embedCore, chunking
+│   │   ├── supabase/migrations/001_init.sql
+│   │   └── …                       Own Supabase + Vercel; folders + docs + Ask
+│   │
+│   └── dictionary-tool/            ← Dictionary Tool (hub-hosted at /dictionary-tool; no separate Vercel)
+│       ├── agents/                 ← Per-tool agent docs + Moodle XML fixture
+│       └── …                       Local Vite port 5179 — Excel glossary → Moodle XML (client-side)
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · virtual-support 5179
-│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · dictionary-tool 5179 · virtual-support 5180
+│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`. Hub-hosted tools use `hubPath`.
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs

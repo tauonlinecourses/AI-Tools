@@ -5,7 +5,10 @@
 
 import { createTauServiceClient } from "./tauSupabase.js";
 import { bindTauSupabase } from "../src/lib/supabase.js";
-import { hydrateThreadStoreFromSupabase } from "../src/lib/supabaseHydrate.js";
+import {
+  fetchRemoteUiFlags,
+  hydrateThreadStoreFromSupabase,
+} from "../src/lib/supabaseHydrate.js";
 import {
   syncCourseThreadsToSupabase,
   syncThreadUiStateToSupabase,
@@ -15,6 +18,7 @@ import {
   deleteInfoDoc,
   listInfoDocs,
   reorderInfoDocs,
+  setInfoDocPinned,
   updateInfoDoc,
 } from "../src/lib/infoDocs.js";
 import { uploadPastedImage } from "../src/lib/infoDocImages.js";
@@ -46,6 +50,8 @@ export async function runTauDataAction(
       // before the action settles, clearing the bound Supabase client mid-flight.
       case "hydrate":
         return await hydrateThreadStoreFromSupabase();
+      case "fetchRemoteUiFlags":
+        return await fetchRemoteUiFlags();
       case "syncCourseThreads":
         return await syncCourseThreadsToSupabase(
           p?.courseId as string,
@@ -69,6 +75,11 @@ export async function runTauDataAction(
         return await deleteInfoDoc(p?.id as string);
       case "reorderInfoDocs":
         return await reorderInfoDocs(p?.orderedIds as string[]);
+      case "setInfoDocPinned":
+        return await setInfoDocPinned(
+          p?.id as string,
+          Boolean(p?.pinned)
+        );
       case "uploadPastedImage": {
         const raw = p?.base64 as string;
         const mime = (p?.mime as string) || "image/png";

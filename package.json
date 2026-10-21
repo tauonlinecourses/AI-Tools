@@ -6,10 +6,13 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "type-check": "turbo type-check"
+    "type-check": "turbo type-check",
+    "test": "turbo test"
   },
   "devDependencies": {
-    "turbo": "^2.1.3"
+    "eslint": "^9.39.4",
+    "turbo": "^2.1.3",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18",

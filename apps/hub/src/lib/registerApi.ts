@@ -2,6 +2,7 @@ export type PublicGroup = {
   id: string;
   name: string;
   slug: string;
+  toolIds: string[];
 };
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -21,7 +22,12 @@ async function parseJson<T>(res: Response): Promise<T> {
 export async function fetchPublicGroups(): Promise<PublicGroup[]> {
   const res = await fetch("/api/register?resource=groups");
   const data = await parseJson<{ groups: PublicGroup[] }>(res);
-  return data.groups ?? [];
+  return (data.groups ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    slug: g.slug,
+    toolIds: Array.isArray(g.toolIds) ? g.toolIds.map(String) : [],
+  }));
 }
 
 export async function registerAccount(input: {

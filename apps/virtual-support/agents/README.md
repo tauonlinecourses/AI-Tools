@@ -68,7 +68,7 @@ See `.env.example`.
 ## Local
 
 ```bash
-pnpm --filter virtual-support dev   # http://localhost:5179
+pnpm --filter virtual-support dev   # http://localhost:5180
 ```
 
 Vite middleware proxies `/api/data`, `/api/ask`, `/api/chat` with the same Platform JWT gate as production.

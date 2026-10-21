@@ -7,13 +7,18 @@
     ".": "./src/index.ts",
     "./styles": "./src/styles/globals.css"
   },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "lint": "eslint ."
+  },
   "peerDependencies": {
     "react": "^18.0.0",
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "@workspace/config": "workspace:*",
     "@types/react": "^18.0.0",
-    "typescript": "^5.0.0"
+    "@workspace/config": "workspace:*",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
   }
 }

@@ -21,7 +21,7 @@ Implement a small utility or single-page tool as a route in `apps/hub` (for exam
 - does not need isolated environment variables, serverless APIs, or scaling; and
 - is simple enough that it does not justify a standalone application.
 
-It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and list it in `tools.config.ts` with `hubPath` (e.g. `"/mbz-explorer"`) instead of a Vercel `url`. Opening a hub-hosted tool navigates in-app (same Platform session — no auth handoff). **MBZ Explorer** is the reference: source stays in `apps/mbz-explorer`, hub imports it and mounts `/mbz-explorer/*`.
+It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and list it in `tools.config.ts` with `hubPath` (e.g. `"/mbz-explorer"`) instead of a Vercel `url`. Opening a hub-hosted tool navigates in-app (same Platform session — no auth handoff). **MBZ Explorer** and **Dictionary Tool** are the references: source stays in `apps/mbz-explorer` / `apps/dictionary-tool`; the hub imports them and mounts `/mbz-explorer/*` and `/dictionary-tool/*`.
 
 ### Create a standalone app
 
@@ -49,6 +49,18 @@ pnpm --filter tool-starter dev
 # Build everything
 pnpm build
 ```
+
+### Local `/api/*` under `vite dev` (`packages/dev-api`)
+
+Every app's `vite.config.ts` adds `vercelApiPlugin` from `packages/dev-api`, so plain `pnpm dev` serves the app's **real** `api/*.ts` Vercel handlers. There are no hand-written dev copies of the handlers.
+
+- **Routing:** `/api/<path>` runs `api/<path>.ts` (or `api/<path>/index.ts`) when that file exists. Segments starting with `_` and unknown paths fall through to Vite. A file under `api/` without a default export returns 404, so put shared helpers outside `api/` (e.g. `apps/hub/server/`, `apps/tau-support/server/`). On Vercel every `api/` file becomes its own function.
+- **Loading:** handlers load through `server.ssrLoadModule`, which transpiles TypeScript, maps `.js` imports to `.ts`, and picks up edits without restarting. In dev only, the plugin aliases `@workspace/auth/server` and `@workspace/ai-client/vercel` to their `src/*.ts` files, because their production `exports` point at compiled CJS. The SSR module graph shares one copy of each, so `instanceof AuthError` works across files.
+- **Vercel shim:** `req.body` is parsed JSON or urlencoded data, and other bodies stay strings; an empty body is `undefined`. `req.query` comes from the URL. `res.status()` / `res.json()` / `res.send()` behave like `@vercel/node`. An uncaught handler error returns 500 `{ error: "Server error", details }` and is logged as `[dev-api]`.
+- **Env bridge:** `bridge` is a list of `[target, source]` pairs. Each copies `loadEnv` values into `process.env` (first non-empty source wins; values already in `process.env` are kept). `same(...keys)` copies keys as-is. `PLATFORM_ENV` covers `PLATFORM_SUPABASE_*` with `VITE_PLATFORM_*` fallbacks, plus `OPENAI_API_KEY`. Apps that need more keys list them explicitly: the hub (course-builder-style `VITE_SUPABASE_*` fallbacks), tau-support (`LMS_*`, `TAU_*`, `VITE_SUPABASE_URL` → `TAU_SUPABASE_URL`), video-curator (legacy `VITE_OPENAI_*`) and course-builder.
+- **Import by relative path** (`../../packages/dev-api/src/index`), not by package name. Vite bundles the config with esbuild, and a workspace import would make Node try to load raw `.ts` from `node_modules`. The package imports nothing from `vite` at runtime and uses structural types, because Vite 5 and Vite 8 (video-curator) coexist.
+- `apply: "serve"`: the plugin never runs during `vite build`, and nothing in it ships to Vercel.
+- Windows corporate TLS: only the hub and tau-support import `packages/auth/src/devTls.ts`. In the other apps, Node calls to Platform Auth can fail locally with 503 "Cannot reach Platform Auth…" (see [security.md](./security.md#local-windows--corporate-tls-proxy)).
 
 ---
 
@@ -83,7 +95,7 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool
 
 1. Copy `apps/tool-starter/` to `apps/tool-myname/` (includes `agents/` — keep it; put tool-specific agent docs there)
 2. In the copy, rename `"name": "tool-starter"` in `package.json` to `"name": "tool-myname"`
-3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175, course-builder 5176, mbz-explorer 5177 — pick the next free one)
+3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175, course-builder 5176, mbz-explorer 5177, tau-support 5178, dictionary-tool 5179, virtual-support 5180 — pick the next free one)
 4. Edit `apps/tool-myname/src/App.tsx` to build the tool
 5. Update `apps/tool-myname/agents/README.md` (and add specs as needed) for this tool
 6. Ensure `public/favicon.png` matches `apps/hub/public/favicon.png` and `index.html` links `<link rel="icon" type="image/png" href="/favicon.png" />`

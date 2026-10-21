@@ -23,9 +23,34 @@ This package owns all design tokens and shared configs. Everything visual derive
   "main": "./tailwind.base.ts",
   "exports": {
     "./tailwind": "./tailwind.base.ts",
-    "./tsconfig": "./tsconfig.base.json"
+    "./tsconfig": "./tsconfig.base.json",
+    "./eslint": "./eslint.config.mjs"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "typescript-eslint": "^8.58.2"
   }
 }
+```
+
+### `packages/config/eslint.config.mjs`
+
+Shared ESLint flat config. It exports `createConfig({ ignores })`:
+
+- `@eslint/js` recommended + `typescript-eslint` recommended for all TS/JS files (browser globals).
+- Classic React hooks rules (`rules-of-hooks` error, `exhaustive-deps` warn) and `react-refresh/only-export-components` (warn) for `.tsx`.
+- Node globals for `api/**`, `server/**`, `vite.config.ts` and other `*.config.*` files.
+- Ignores `dist`, `node_modules`, `.turbo`, `*.cjs` and Vite's `*.timestamp-*.mjs` temp files.
+
+Each workspace adds an `eslint.config.mjs` (`.mjs` because not every package is `"type": "module"`):
+
+```js
+import { createConfig } from "@workspace/config/eslint";
+
+export default createConfig();
 ```
 
 Apps and packages should **extend the base file by relative path** (not `@workspace/config/tsconfig`) so the IDE TypeScript language service can resolve it:

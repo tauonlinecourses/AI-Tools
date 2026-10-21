@@ -226,6 +226,63 @@ export function mergeLocalUiFlags(
   return { version: remote.version, courses };
 }
 
+export type RemoteUiFlagRow = {
+  campus_thread_id: string;
+  course_id: string;
+  no_answer_needed: boolean | null;
+  seen_at: string | null;
+  is_new: boolean | null;
+  is_updated: boolean | null;
+};
+
+export type FetchRemoteUiFlagsResult = {
+  ok: boolean;
+  skipped?: boolean;
+  message?: string;
+  rows?: RemoteUiFlagRow[];
+};
+
+/**
+ * Fetch shared UX flags (אין צורך במענה / seen / new / updated) from Supabase.
+ * Browser goes through `/api/tau-data`; server uses the bound service client.
+ */
+export async function fetchRemoteUiFlags(): Promise<FetchRemoteUiFlagsResult> {
+  if (!isSupabaseConfigured) {
+    return { ok: false, skipped: true, message: "Supabase not configured" };
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const { tauData } = await import("./tauDataClient.js");
+      return await tauData<FetchRemoteUiFlagsResult>("fetchRemoteUiFlags");
+    } catch (err) {
+      return {
+        ok: false,
+        message:
+          err instanceof Error ? err.message : "Failed to refresh UI flags",
+      };
+    }
+  }
+
+  try {
+    const res = await supabase
+      .from("threads")
+      .select(
+        "campus_thread_id,course_id,no_answer_needed,seen_at,is_new,is_updated"
+      );
+    if (res.error) throw res.error;
+    return {
+      ok: true,
+      rows: (res.data ?? []) as RemoteUiFlagRow[],
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error ? err.message : "Failed to refresh UI flags",
+    };
+  }
+}
+
 /**
  * Pull only shared UX flags from Supabase and overlay onto an existing store.
  * Used after load and on window focus so localhost picks up marks made elsewhere.
@@ -254,26 +311,21 @@ export async function applyRemoteUiFlagsToStore(
     isUpdated: boolean;
   }>;
 }> {
-  if (!isSupabaseConfigured || !supabase) {
+  if (!isSupabaseConfigured) {
     return { ok: false, store, message: "Supabase not configured" };
   }
 
   try {
-    const res = await supabase
-      .from("threads")
-      .select(
-        "campus_thread_id,course_id,no_answer_needed,seen_at,is_new,is_updated"
-      );
-    if (res.error) throw res.error;
+    const fetched = await fetchRemoteUiFlags();
+    if (!fetched.ok) {
+      return {
+        ok: false,
+        store,
+        message: fetched.message ?? "Failed to refresh UI flags",
+      };
+    }
 
-    const rows = (res.data ?? []) as Array<{
-      campus_thread_id: string;
-      course_id: string;
-      no_answer_needed: boolean | null;
-      seen_at: string | null;
-      is_new: boolean | null;
-      is_updated: boolean | null;
-    }>;
+    const rows = fetched.rows ?? [];
 
     let marked = 0;
     let changed = false;
