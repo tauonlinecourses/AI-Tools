@@ -48,7 +48,7 @@ export function PageNotes({
   }, [open, onToggle]);
 
   return (
-    <div className={`relative mb-4 ${open ? "z-40" : "z-0"}`}>
+    <div className={`relative ${open ? "z-40" : "z-0"}`}>
       <div className="min-w-0 w-full">{children}</div>
 
       {!open && (

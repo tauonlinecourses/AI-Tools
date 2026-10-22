@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, Spinner } from "@workspace/ui";
+import { Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
   ComponentComment,
@@ -49,6 +49,7 @@ import {
   DuplicateIcon,
   GripIcon,
   LinkIcon,
+  LockIcon,
   PencilIcon,
   PlusIcon,
   QuestionIcon,
@@ -57,11 +58,13 @@ import {
   TrashIcon,
   VideoIcon,
 } from "./icons";
-import { LessonFilesButton } from "./LessonFilesButton";
+import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 
 /** Sentinel for the open page-notes panel (mutually exclusive with block threads). */
 const PAGE_NOTES_OPEN_ID = "__page_notes__";
+
+const COPIED_FEEDBACK_MS = 2000;
 
 type ClipboardPayload = { html?: string; plain: string };
 type HeaderField = "banner-url" | "video-title" | "video-url" | "image-image-url" | "image-file-url";
@@ -164,13 +167,16 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
 
 const SAVE_DEBOUNCE_MS = 700;
 
-function activityTypeLogo(pageType: "notes_board" | "word_cloud" | "forum") {
+function activityTypeLogo(
+  pageType: "h5p" | "notes_board" | "word_cloud" | "forum",
+  className = "w-4 h-4 object-contain shrink-0"
+) {
   return (
     <img
       src={PAGE_TYPE_LOGO[pageType]}
       alt=""
       title={PAGE_TYPE_LABEL[pageType]}
-      className="w-4 h-4 object-contain shrink-0"
+      className={className}
     />
   );
 }
@@ -186,6 +192,98 @@ const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> 
   word_cloud: { label: "ענן מילים", icon: activityTypeLogo("word_cloud") },
   forum: { label: "פורום", icon: activityTypeLogo("forum") },
 };
+
+/** Implement-sidebar page-type logo for each activity component type. */
+function activityPickerPageType(
+  type: "question" | "notes_board" | "word_cloud" | "forum"
+): "h5p" | "notes_board" | "word_cloud" | "forum" {
+  return type === "question" ? "h5p" : type;
+}
+
+const MAIN_COMPONENT_TYPES: ComponentType[] = ["banner", "video", "text", "image"];
+const ACTIVITY_COMPONENT_TYPES: ComponentType[] = [
+  "question",
+  "notes_board",
+  "word_cloud",
+  "forum",
+];
+
+/** Larger icons for the add-component picker tiles. */
+function pickerTileIcon(type: ComponentType): React.ReactNode {
+  const cls = "w-5 h-5";
+  switch (type) {
+    case "banner":
+      return <BannerIcon className={cls} />;
+    case "video":
+    case "interactive_video":
+      return <VideoIcon className={cls} />;
+    case "text":
+      return <TextIcon className={cls} />;
+    case "image":
+      return <ThumbnailIcon className={cls} />;
+    case "question":
+    case "notes_board":
+    case "word_cloud":
+    case "forum":
+      return activityTypeLogo(
+        activityPickerPageType(type),
+        "w-5 h-5 object-contain shrink-0"
+      );
+  }
+}
+
+function canAddActivityType(
+  type: ComponentType,
+  list: PageComponent[],
+  isHome: boolean
+): boolean {
+  if (isHome || !ACTIVITY_TYPES.has(type)) return false;
+  const otherKind = list.find((c) => ACTIVITY_TYPES.has(c.type) && c.type !== type);
+  if (otherKind) return false;
+  if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
+    return false;
+  }
+  return true;
+}
+
+function AddComponentTile({
+  type,
+  disabled,
+  onAdd,
+}: {
+  type: ComponentType;
+  disabled?: boolean;
+  onAdd: (type: ComponentType) => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onAdd(type)}
+      className={`flex flex-col items-center justify-center gap-2 rounded-[12px] bg-white px-2 py-3.5 transition-colors duration-fast ${
+        disabled
+          ? "cursor-not-allowed opacity-40 shadow-none"
+          : "shadow-[0_1px_3px_rgba(15,108,191,0.1)] hover:bg-[#F8FBFE] hover:shadow-[0_2px_6px_rgba(15,108,191,0.14)]"
+      }`}
+    >
+      <span
+        className={`flex h-9 w-9 items-center justify-center rounded-[8px] ${
+          disabled ? "bg-[#E8EEF4] text-surface-400" : "bg-[#E8F2FB] text-[#0F6CBF]"
+        }`}
+        aria-hidden
+      >
+        {pickerTileIcon(type)}
+      </span>
+      <span
+        className={`text-sm font-medium ${
+          disabled ? "text-surface-400" : "text-[#1B3A5C]"
+        }`}
+      >
+        {typeMeta[type].label}
+      </span>
+    </button>
+  );
+}
 
 function defaultProps(type: ComponentType): BlockProps {
   switch (type) {
@@ -248,6 +346,8 @@ interface PageContentProps {
   mode: CourseViewMode;
   /** Lesson files folder URL for implement-mode header button (lesson pages only). */
   lessonFilesFolderUrl?: string | null;
+  /** Lesson videos folder URL for implement-mode header button (lesson pages only). */
+  lessonVideosFolderUrl?: string | null;
   /** When set on the course home page, renders Moodle-style lesson cards below content. */
   homeCourseStructure?: HomeCourseStructure | null;
   rollup?: StatusRollup;
@@ -270,6 +370,7 @@ export function PageContent({
   numbering,
   mode,
   lessonFilesFolderUrl,
+  lessonVideosFolderUrl,
   homeCourseStructure,
   rollup,
   prevPage,
@@ -294,12 +395,15 @@ export function PageContent({
   const [error, setError] = useState<string | null>(null);
   /** At most one field popover in a block header is open. */
   const [openHeaderField, setOpenHeaderField] = useState<string | null>(null);
+  /** Implement header copy feedback — which component just copied. */
+  const [copiedComponentId, setCopiedComponentId] = useState<string | null>(null);
 
   // Debounced persistence for block props and page fields.
   const timers = useRef(new Map<string, number>());
   const pendingProps = useRef(new Map<string, BlockProps>());
   /** In-flight optimistic inserts — later mutations wait so the row exists first. */
   const pendingInserts = useRef(new Map<string, Promise<void>>());
+  const copiedTimer = useRef<number | null>(null);
 
   // The shell re-creates these callbacks on every render (including the ones
   // caused by the save indicator), so they must stay out of the load effect's
@@ -318,6 +422,11 @@ export function PageContent({
     setOpenCommentId(null);
     setError(null);
     setOpenHeaderField(null);
+    setCopiedComponentId(null);
+    if (copiedTimer.current) {
+      window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = null;
+    }
     api
       .listComponents(page.id)
       .then(setComponents)
@@ -752,21 +861,23 @@ export function PageContent({
       .catch((e: Error) => setError(e.message));
   }
 
-  async function handleCopyAndMark(id: string, payload: string | ClipboardPayload) {
+  /** Clipboard only — status is changed manually via the status badge. */
+  async function handleCopy(
+    payload: string | ClipboardPayload,
+    componentId?: string
+  ) {
     setError(null);
     try {
       const clip = typeof payload === "string" ? { plain: payload } : payload;
       await writeClipboard(clip);
-
-      const current = components?.find((c) => c.id === id);
-      // Already הוטמע — clipboard only; skip DB write / save spinner.
-      if (current && componentStatus(current) === "implemented") return;
-
-      const updated = await trackSave(api.markImplemented(id));
-      setComponents((prev) =>
-        prev ? prev.map((c) => (c.id === id ? updated : c)) : prev
-      );
-      onStatusChange();
+      if (componentId) {
+        setCopiedComponentId(componentId);
+        if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+        copiedTimer.current = window.setTimeout(() => {
+          setCopiedComponentId(null);
+          copiedTimer.current = null;
+        }, COPIED_FEEDBACK_MS);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -826,7 +937,7 @@ export function PageContent({
         videoNumber={videoNumberById.get(component.id)}
         onCopyOption={
           isImplement && (component.type === "question" || component.type === "interactive_video")
-            ? (text) => handleCopyAndMark(component.id, text)
+            ? (text) => handleCopy(text)
             : undefined
         }
       />
@@ -1063,14 +1174,32 @@ export function PageContent({
             {isImplement && (
               <button
                 type="button"
-                className="p-1.5 text-current opacity-60 hover:opacity-100 transition-opacity duration-fast"
+                className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"
                 title="העתק"
-                aria-label="העתק"
+                aria-label={
+                  copiedComponentId === component.id ? "הועתק" : "העתק"
+                }
                 onClick={() =>
-                  handleCopyAndMark(component.id, headerCopyPayload(component))
+                  handleCopy(headerCopyPayload(component), component.id)
                 }
               >
-                <CopyIcon className="w-4 h-4" />
+                <CopyIcon
+                  className={`w-4 h-4 transition-opacity duration-fast ${
+                    copiedComponentId === component.id
+                      ? "opacity-0"
+                      : "opacity-100"
+                  }`}
+                />
+                <span
+                  className={`absolute inset-0 flex items-center justify-center text-[11px] font-medium leading-none transition-opacity duration-fast pointer-events-none ${
+                    copiedComponentId === component.id
+                      ? "opacity-100"
+                      : "opacity-0"
+                  }`}
+                  aria-hidden={copiedComponentId !== component.id}
+                >
+                  הועתק
+                </span>
               </button>
             )}
             {editable && (
@@ -1120,7 +1249,7 @@ export function PageContent({
   }
 
   const pageHeader = (
-    <div className={`flex flex-col gap-1 ${editable ? "" : "mb-4"}`}>
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-surface-900">
         {isImplement && components !== null && (
           <img
@@ -1156,6 +1285,9 @@ export function PageContent({
         {isImplement && lessonFilesFolderUrl?.trim() && (
           <LessonFilesButton url={lessonFilesFolderUrl} compact />
         )}
+        {isImplement && lessonVideosFolderUrl?.trim() && (
+          <LessonVideosButton url={lessonVideosFolderUrl} compact />
+        )}
         {isImplement && components !== null && components.length > 0 && (
           <StatusBadge
             status={pageAggregateStatus(components)}
@@ -1174,23 +1306,31 @@ export function PageContent({
 
   return (
     <div className="flex flex-col max-w-3xl w-full mx-auto ps-12 pe-6 py-6">
-      {/* Page header — edit: notes icon in the same gutter as block comments */}
-      {editable ? (
-        <PageNotes
-          notes={page.notes ?? ""}
-          open={openCommentId === PAGE_NOTES_OPEN_ID}
-          onToggle={() =>
-            setOpenCommentId((prev) =>
-              prev === PAGE_NOTES_OPEN_ID ? null : PAGE_NOTES_OPEN_ID
-            )
-          }
-          onChange={handleNotesChange}
-        >
-          {pageHeader}
-        </PageNotes>
-      ) : (
-        pageHeader
-      )}
+      {/* Sticky title + status in edit/implement only (not תצוגה) */}
+      <div
+        className={
+          isReview
+            ? "mb-3"
+            : "sticky top-0 z-10 -mt-6 mb-3 bg-white pt-6 pb-3"
+        }
+      >
+        {editable ? (
+          <PageNotes
+            notes={page.notes ?? ""}
+            open={openCommentId === PAGE_NOTES_OPEN_ID}
+            onToggle={() =>
+              setOpenCommentId((prev) =>
+                prev === PAGE_NOTES_OPEN_ID ? null : PAGE_NOTES_OPEN_ID
+              )
+            }
+            onChange={handleNotesChange}
+          >
+            {pageHeader}
+          </PageNotes>
+        ) : (
+          pageHeader
+        )}
+      </div>
 
       {/* Notes for implementers — implement only (edit uses PageNotes panel) */}
       {isImplement && page.notes?.trim() && (
@@ -1251,44 +1391,45 @@ export function PageContent({
           )}
 
           {editable && (
-            <div className="border border-dashed border-surface-300 p-4 mt-1">
-              <span className="text-sm font-semibold text-surface-500 flex items-center gap-1.5 mb-3">
-                <PlusIcon className="w-3.5 h-3.5" />
-                הוסף רכיב
-              </span>
-              <div className="flex flex-col gap-3">
+            <div className="relative mt-3 rounded-[16px] border border-dashed border-[#B7D0E8] bg-[#F0F5FA] px-4 pb-5 pt-7">
+              <div
+                className="pointer-events-none absolute left-1/2 top-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D4E5F5] text-[#0F6CBF]"
+                aria-hidden
+              >
+                <PlusIcon className="w-4 h-4" />
+              </div>
+
+              <div className="flex flex-col gap-5">
                 <div>
-                  <span className="text-xs font-semibold text-surface-400 mb-1.5 block">רכיבים מרכזיים</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(["banner", "video", "text", "image"] as ComponentType[]).map((type) => (
-                      <Button
-                        key={type}
-                        size="sm"
-                        variant="secondary"
-                        leftIcon={typeMeta[type].icon}
-                        onClick={() => handleAdd(type)}
-                      >
-                        {typeMeta[type].label}
-                      </Button>
+                  <span className="mb-3 block text-center text-sm font-semibold text-[#1B3A5C]">
+                    רכיבים מרכזיים
+                  </span>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                    {MAIN_COMPONENT_TYPES.map((type) => (
+                      <AddComponentTile key={type} type={type} onAdd={handleAdd} />
                     ))}
                   </div>
                 </div>
+
                 {!isHome && (
                   <div>
-                    <span className="text-xs font-semibold text-surface-400 mb-1.5 block">
-                      פעילויות (סוג אחד בעמוד; רק שאלה — יותר מאחת)
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      {(["question", "notes_board", "word_cloud", "forum"] as ComponentType[]).map((type) => (
-                        <Button
+                    <div className="mb-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                      <span className="text-sm font-semibold text-[#1B3A5C]">פעילויות</span>
+                      {components.some((c) => ACTIVITY_TYPES.has(c.type)) && (
+                        <span className="inline-flex items-center gap-1 text-xs text-surface-500">
+                          <LockIcon className="w-3.5 h-3.5 shrink-0" />
+                          כבר יש פעילות בעמוד. ניתן להוסיף רק פעילות אחת
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                      {ACTIVITY_COMPONENT_TYPES.map((type) => (
+                        <AddComponentTile
                           key={type}
-                          size="sm"
-                          variant="secondary"
-                          leftIcon={typeMeta[type].icon}
-                          onClick={() => handleAdd(type)}
-                        >
-                          {typeMeta[type].label}
-                        </Button>
+                          type={type}
+                          disabled={!canAddActivityType(type, components, isHome)}
+                          onAdd={handleAdd}
+                        />
                       ))}
                     </div>
                   </div>

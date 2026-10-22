@@ -195,7 +195,10 @@ export async function addSection(
 export async function updateSection(
   id: string,
   fields: Partial<
-    Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+    Pick<
+      Section,
+      "title" | "opens_at" | "assignments_due_at" | "files_folder_url" | "videos_folder_url"
+    >
   >
 ): Promise<void> {
   const courseId = await courseIdFromSection(id);
@@ -221,9 +224,10 @@ export async function reorderSections(orderedIds: string[]): Promise<void> {
 /**
  * Clone a lesson immediately after the source.
  * Title becomes `העתק של {source.title}`. Overview fields (`opens_at`,
- * `assignments_due_at`, `files_folder_url`) are copied. Each page is copied
- * with the same title/order; component types/order are copied with empty props
- * except banners (full props kept). Page notes are not copied.
+ * `assignments_due_at`, `files_folder_url`, `videos_folder_url`) are copied.
+ * Each page is copied with the same title/order; component types/order are
+ * copied with empty props except banners (full props kept). Page notes are
+ * not copied.
  */
 export async function duplicateSection(
   sourceId: string
@@ -259,6 +263,7 @@ export async function duplicateSection(
       opens_at: source.opens_at ?? null,
       assignments_due_at: source.assignments_due_at ?? null,
       files_folder_url: source.files_folder_url ?? null,
+      videos_folder_url: source.videos_folder_url ?? null,
     })
     .select()
     .single();

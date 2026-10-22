@@ -8,7 +8,7 @@ import type {
 } from "../lib/types";
 import * as api from "../lib/api";
 import { useSaveStatus } from "../lib/saveStatus";
-import { LessonFilesButton } from "./LessonFilesButton";
+import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 import { LessonWorkflowStatusToggle } from "./StatusBadge";
 
@@ -16,7 +16,11 @@ const SAVE_DEBOUNCE_MS = 700;
 
 type SectionFields = Pick<
   Section,
-  "title" | "opens_at" | "assignments_due_at" | "files_folder_url"
+  | "title"
+  | "opens_at"
+  | "assignments_due_at"
+  | "files_folder_url"
+  | "videos_folder_url"
 >;
 
 function formatDateHe(isoDate: string | null): string | null {
@@ -102,6 +106,7 @@ export function SectionOverview({
   const opensLabel = formatDateHe(section.opens_at);
   const dueLabel = formatDateHe(section.assignments_due_at);
   const folderUrl = section.files_folder_url?.trim() || null;
+  const videosUrl = section.videos_folder_url?.trim() || null;
   const lessonWorkflowStatus: PageWorkflowStatus =
     pages.length > 0 &&
     pages.every(
@@ -179,6 +184,18 @@ export function SectionOverview({
                 className="w-full px-3 py-2 text-base leading-6 bg-surface-50 border border-surface-200 text-surface-900 placeholder:text-surface-400 outline-none"
               />
             </Field>
+            <Field label="לינק לתיקיית סרטונים של השיעור">
+              <input
+                type="url"
+                dir="ltr"
+                value={section.videos_folder_url ?? ""}
+                placeholder="https://..."
+                onChange={(e) =>
+                  patchField("videos_folder_url", emptyToNull(e.target.value))
+                }
+                className="w-full px-3 py-2 text-base leading-6 bg-surface-50 border border-surface-200 text-surface-900 placeholder:text-surface-400 outline-none"
+              />
+            </Field>
             <Field label="תאריך פתיחה">
               <input
                 type="date"
@@ -202,24 +219,47 @@ export function SectionOverview({
           </>
         ) : (
           <>
-            {folderUrl && isImplement ? (
-              <LessonFilesButton url={folderUrl} />
-            ) : folderUrl ? (
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-surface-700">
-                  לינק לתיקיית קבצים של השיעור
-                </span>
-                <a
-                  href={folderUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  dir="ltr"
-                  className="text-base text-[#0F6CBF] hover:underline break-all"
-                >
-                  {folderUrl}
-                </a>
+            {isImplement && (folderUrl || videosUrl) ? (
+              <div className="flex flex-wrap gap-2">
+                {folderUrl && <LessonFilesButton url={folderUrl} />}
+                {videosUrl && <LessonVideosButton url={videosUrl} />}
               </div>
-            ) : null}
+            ) : (
+              <>
+                {folderUrl && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-surface-700">
+                      לינק לתיקיית קבצים של השיעור
+                    </span>
+                    <a
+                      href={folderUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      dir="ltr"
+                      className="text-base text-[#0F6CBF] hover:underline break-all"
+                    >
+                      {folderUrl}
+                    </a>
+                  </div>
+                )}
+                {videosUrl && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-surface-700">
+                      לינק לתיקיית סרטונים של השיעור
+                    </span>
+                    <a
+                      href={videosUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      dir="ltr"
+                      className="text-base text-[#0F6CBF] hover:underline break-all"
+                    >
+                      {videosUrl}
+                    </a>
+                  </div>
+                )}
+              </>
+            )}
             {opensLabel && (
               <ReadRow label="תאריך פתיחה" value={opensLabel} />
             )}
@@ -229,7 +269,7 @@ export function SectionOverview({
                 value={dueLabel}
               />
             )}
-            {!opensLabel && !dueLabel && !folderUrl && (
+            {!opensLabel && !dueLabel && !folderUrl && !videosUrl && (
               <p className="text-base text-surface-400">
                 אין עדיין מידע על השיעור.
               </p>

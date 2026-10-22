@@ -17,6 +17,8 @@ export interface Section {
   assignments_due_at: string | null;
   /** לינק לתיקיית קבצים של השיעור */
   files_folder_url: string | null;
+  /** לינק לתיקיית סרטונים של השיעור */
+  videos_folder_url: string | null;
 }
 
 export interface Page {

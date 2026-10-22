@@ -194,6 +194,16 @@ export const VideoIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Clapperboard + play — used for lesson videos-folder links (distinct from VideoIcon). */
+export const FilmIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="3" y="3" width="18" height="18" rx="3" strokeLinejoin="round" />
+    <path strokeLinecap="round" d="M3 8.5h18" />
+    <path strokeLinecap="round" d="M7 3.5l2.2 5M11.5 3.5l2.2 5M16 3.5l2.2 5" />
+    <path fill="currentColor" stroke="none" d="M10 11.25v6.5l5.75-3.25L10 11.25z" />
+  </svg>
+);
+
 export const TextIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" d="M4 6h16M4 10h16M4 14h10M4 18h7" />

@@ -7,7 +7,7 @@ interface Props {
   props: QuestionProps;
   mode: CourseViewMode;
   onChange: (props: QuestionProps) => void;
-  /** Implement mode: copy option text (and mark the component implemented upstream). */
+  /** Implement mode: copy option / prompt text to the clipboard. */
   onCopyOption?: (text: string) => void;
 }
 

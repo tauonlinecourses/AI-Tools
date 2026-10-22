@@ -22,6 +22,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   DuplicateIcon,
+  FilmIcon,
   FolderIcon,
   GripIcon,
   MoreVerticalIcon,
@@ -294,10 +295,15 @@ export function CourseShell({ mode }: CourseShellProps) {
     mode,
   ]);
 
-  const selectedPageLessonFilesUrl = useMemo(() => {
-    if (!selectedPage?.section_id || !tree) return null;
+  const selectedPageLessonFolderUrls = useMemo(() => {
+    if (!selectedPage?.section_id || !tree) {
+      return { files: null as string | null, videos: null as string | null };
+    }
     const section = tree.sections.find((s) => s.id === selectedPage.section_id);
-    return section?.files_folder_url ?? null;
+    return {
+      files: section?.files_folder_url ?? null,
+      videos: section?.videos_folder_url ?? null,
+    };
   }, [selectedPage, tree]);
 
   const blockedRequestedSection = useMemo(() => {
@@ -586,7 +592,14 @@ export function CourseShell({ mode }: CourseShellProps) {
 
   function handleSectionFieldChange(
     fields: Partial<
-      Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+      Pick<
+        Section,
+        | "title"
+        | "opens_at"
+        | "assignments_due_at"
+        | "files_folder_url"
+        | "videos_folder_url"
+      >
     >
   ) {
     if (!selectedSection) return;
@@ -717,7 +730,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {editable && (
           <span
-            className={`shrink-0 w-2.5 h-2.5 rounded-sm ${workflowSwatchClass}`}
+            className={`shrink-0 w-2.5 h-2.5 rounded-full ${workflowSwatchClass}`}
             title={workflowLabel}
             aria-label={workflowLabel}
           />
@@ -808,6 +821,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isEffectivelyCollapsed = isCollapsed || isUnavailableInImplement;
     const hasOpenDate = !!section.opens_at?.trim();
     const hasFolderLink = !!section.files_folder_url?.trim();
+    const hasVideosFolderLink = !!section.videos_folder_url?.trim();
     const lessonWorkflow = sectionWorkflowStatus(pages);
     const lessonWorkflowSwatchClass =
       lessonWorkflow === "ready_for_implementation"
@@ -850,7 +864,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           )}
           {editable && (
             <span
-              className={`shrink-0 w-2.5 h-2.5 rounded-sm ${lessonWorkflowSwatchClass}`}
+              className={`shrink-0 w-2.5 h-2.5 rounded-full ${lessonWorkflowSwatchClass}`}
               title={lessonWorkflowLabel}
               aria-label={lessonWorkflowLabel}
             />
@@ -897,24 +911,47 @@ export function CourseShell({ mode }: CourseShellProps) {
               {section.title}
             </button>
           )}
-          {(hasOpenDate || hasFolderLink) && (
-            <span
-              className={`flex items-center gap-1 shrink-0 ${
-                isSelected ? "text-white/85" : "text-surface-500"
-              }`}
-            >
-              {hasOpenDate && (
-                <span title="יש תאריך פתיחה" aria-label="יש תאריך פתיחה">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                </span>
-              )}
-              {hasFolderLink && (
-                <span title="יש תיקיית קבצים" aria-label="יש תיקיית קבצים">
-                  <FolderIcon className="w-3.5 h-3.5" />
-                </span>
-              )}
-            </span>
-          )}
+          <span className="flex items-center gap-1 shrink-0">
+            {(
+              [
+                {
+                  set: hasOpenDate,
+                  labelSet: "יש תאריך פתיחה",
+                  labelMissing: "חסר תאריך פתיחה",
+                  icon: <CalendarIcon className="w-3.5 h-3.5" />,
+                },
+                {
+                  set: hasFolderLink,
+                  labelSet: "יש תיקיית קבצים",
+                  labelMissing: "חסרה תיקיית קבצים",
+                  icon: <FolderIcon className="w-3.5 h-3.5" />,
+                },
+                {
+                  set: hasVideosFolderLink,
+                  labelSet: "יש תיקיית סרטונים",
+                  labelMissing: "חסרה תיקיית סרטונים",
+                  icon: <FilmIcon className="w-3.5 h-3.5" />,
+                },
+              ] as const
+            ).map((meta) => (
+              <span
+                key={meta.labelSet}
+                className={
+                  meta.set
+                    ? isSelected
+                      ? "text-white/85"
+                      : "text-surface-500"
+                    : isSelected
+                      ? "text-[#FFB4B4]"
+                      : "text-danger opacity-50"
+                }
+                title={meta.set ? meta.labelSet : meta.labelMissing}
+                aria-label={meta.set ? meta.labelSet : meta.labelMissing}
+              >
+                {meta.icon}
+              </span>
+            ))}
+          </span>
           {showRollups && rollupLabel(rollups?.perSection.get(section.id), isSelected)}
           {editable && !isRenaming && (
             <SidebarRowMenu
@@ -1179,7 +1216,8 @@ export function CourseShell({ mode }: CourseShellProps) {
               courseId={courseId!}
               numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
-              lessonFilesFolderUrl={selectedPageLessonFilesUrl}
+              lessonFilesFolderUrl={selectedPageLessonFolderUrls.files}
+              lessonVideosFolderUrl={selectedPageLessonFolderUrls.videos}
               homeCourseStructure={
                 isHomePage(selectedPage) && tree
                   ? {
