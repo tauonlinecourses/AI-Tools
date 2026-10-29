@@ -52,7 +52,7 @@ create table pages (
 create table components (
   id uuid primary key default gen_random_uuid(),
   page_id uuid references pages(id) on delete cascade,
-  type text not null,                    -- 'banner' | 'video' | 'text' | 'question'
+  type text not null,                    -- 'banner' | 'video' | 'text' | 'question' | 'image' | 'button' | …
   position int not null,
   props jsonb not null default '{}',
   implemented_at timestamptz,             -- null until implementer marks it done
@@ -71,6 +71,16 @@ create table component_comments (
   created_at timestamptz default now()
 );
 
+-- Per-page Word-style comments (header thread). Same roles/resolve as blocks.
+create table page_comments (
+  id uuid primary key default gen_random_uuid(),
+  page_id uuid not null references pages(id) on delete cascade,
+  author_role text not null check (author_role in ('edit', 'implement', 'review')),
+  body text not null,
+  resolved_at timestamptz,                -- null = open
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- INDEXES (foreign keys aren't auto-indexed in Postgres)
 -- ============================================================
@@ -81,6 +91,7 @@ create index idx_pages_course_id on pages(course_id);
 create unique index pages_one_home_per_course on pages(course_id) where section_id is null;
 create index idx_components_page_id on components(page_id);
 create index idx_component_comments_component_id on component_comments(component_id);
+create index idx_page_comments_page_id on page_comments(page_id);
 
 -- ============================================================
 -- AUTO-UPDATE updated_at
@@ -218,6 +229,7 @@ alter table sections enable row level security;
 alter table pages enable row level security;
 alter table components enable row level security;
 alter table component_comments enable row level security;
+alter table page_comments enable row level security;
 
 create policy "authenticated_all" on courses
   for all to authenticated
@@ -236,5 +248,9 @@ create policy "authenticated_all" on components
   using (true) with check (true);
 
 create policy "authenticated_all" on component_comments
+  for all to authenticated
+  using (true) with check (true);
+
+create policy "authenticated_all" on page_comments
   for all to authenticated
   using (true) with check (true);

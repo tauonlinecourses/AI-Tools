@@ -176,6 +176,9 @@ export function CourseShell({ mode }: CourseShellProps) {
     perSection: Map<string, StatusRollup>;
   } | null>(null);
   const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
+  const [commentCounts, setCommentCounts] = useState<
+    Map<string, { open: number; resolved: number }>
+  >(new Map());
   const [exportingBackup, setExportingBackup] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
 
@@ -206,6 +209,14 @@ export function CourseShell({ mode }: CourseShellProps) {
       .catch(() => undefined);
   }, [tree]);
 
+  const refreshCommentCounts = useCallback(() => {
+    if (!tree) return;
+    api
+      .getCommentCountsByPage(tree.pages.map((p) => p.id))
+      .then(setCommentCounts)
+      .catch(() => undefined);
+  }, [tree]);
+
   useEffect(() => {
     refreshRollups();
   }, [refreshRollups]);
@@ -213,6 +224,10 @@ export function CourseShell({ mode }: CourseShellProps) {
   useEffect(() => {
     refreshPageTypes();
   }, [refreshPageTypes]);
+
+  useEffect(() => {
+    refreshCommentCounts();
+  }, [refreshCommentCounts]);
 
   // ─── Derived structure ────────────────────────────────────────────────────
 
@@ -326,19 +341,6 @@ export function CourseShell({ mode }: CourseShellProps) {
     return page?.workflow_status === "in_progress" ? page : null;
   }, [tree, mode, selectedSection, blockedRequestedSection, searchParams]);
 
-  const numbering = useMemo(() => {
-    const map = new Map<string, string>();
-    if (!tree) return map;
-    // Home page has no lesson numbering — shown by title only.
-    tree.sections.forEach((section, sIdx) => {
-      map.set(section.id, `${sIdx + 1}`);
-      (pagesBySection.get(section.id) ?? []).forEach((page, pIdx) => {
-        map.set(page.id, `${sIdx + 1}.${pIdx + 1}`);
-      });
-    });
-    return map;
-  }, [tree, pagesBySection]);
-
   /** Sidebar order: home, then each section's pages. */
   const orderedPages = useMemo(() => {
     if (!tree) return [] as Page[];
@@ -433,8 +435,18 @@ export function CourseShell({ mode }: CourseShellProps) {
     setTree((prev) => {
       if (!prev) return prev;
       return kind === "section"
-        ? { ...prev, sections: prev.sections.map((s) => (s.id === id ? { ...s, title: trimmed } : s)) }
-        : { ...prev, pages: prev.pages.map((p) => (p.id === id ? { ...p, title: trimmed } : p)) };
+        ? {
+            ...prev,
+            sections: prev.sections.map((s) =>
+              s.id === id ? { ...s, title: trimmed } : s
+            ),
+          }
+        : {
+            ...prev,
+            pages: prev.pages.map((p) =>
+              p.id === id ? { ...p, title: trimmed } : p
+            ),
+          };
     });
     try {
       if (kind === "section") await trackSave(api.updateSection(id, { title: trimmed }));
@@ -676,7 +688,6 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isHome = isHomePage(page);
     const isUnavailableInImplement =
       mode === "implement" && page.workflow_status === "in_progress";
-    const pageNumber = numbering.get(page.id);
     const pageRollup = showRollups ? rollups?.perPage.get(page.id) : undefined;
     const isComplete =
       !!pageRollup &&
@@ -684,6 +695,11 @@ export function CourseShell({ mode }: CourseShellProps) {
       pageRollup.implemented_count === pageRollup.total_count;
     const pageType =
       showRollups && !isHome ? (pageTypes.get(page.id) ?? "page") : null;
+    const pageComments = commentCounts.get(page.id);
+    const openComments = pageComments?.open ?? 0;
+    const resolvedComments = pageComments?.resolved ?? 0;
+    const commentCount = openComments > 0 ? openComments : resolvedComments;
+    const commentTone = openComments > 0 ? "open" : "resolved";
     const workflowSwatchClass =
       page.workflow_status === "ready_for_implementation"
         ? "bg-emerald-400/40"
@@ -745,28 +761,41 @@ export function CourseShell({ mode }: CourseShellProps) {
             }`}
           />
         )}
-        {pageNumber && (
-          <>
-            <span className="shrink-0">{pageNumber}</span>
-            <span
-              className={`shrink-0 ${
-                isSelected
-                  ? "text-white/70"
-                  : isComplete
-                    ? "text-emerald-700/50"
-                    : "text-surface-400"
-              }`}
-              aria-hidden
-            >
-              |
-            </span>
-          </>
-        )}
         {isRenaming ? (
           renderRenameInput("page", page.id, page.title)
         ) : (
           <span className={`truncate flex-1 ${isHome ? "font-semibold" : ""}`}>
             {page.title}
+          </span>
+        )}
+        {commentCount > 0 && (
+          <span
+            className={`inline-grid place-items-center shrink-0 size-3.5 rounded-full text-[9px] font-bold leading-none tabular-nums ${
+              commentCount > 9 ? "w-auto min-w-3.5 px-1" : ""
+            } ${
+              isSelected
+                ? commentTone === "open"
+                  ? "bg-white text-[#0F6CBF]"
+                  : "bg-white/85 text-surface-600"
+                : commentTone === "open"
+                  ? "bg-[#0F6CBF] text-white"
+                  : "bg-surface-300 text-white"
+            }`}
+            dir="ltr"
+            title={
+              commentTone === "open"
+                ? `${commentCount} הערות פתוחות על העמוד`
+                : `${commentCount} הערות שנפתרו על העמוד`
+            }
+            aria-label={
+              commentTone === "open"
+                ? `${commentCount} הערות פתוחות`
+                : `${commentCount} הערות שנפתרו`
+            }
+          >
+            <span className="block translate-y-[0.5px]">
+              {commentCount > 99 ? "99+" : commentCount}
+            </span>
           </span>
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}
@@ -1197,7 +1226,6 @@ export function CourseShell({ mode }: CourseShellProps) {
               mode={mode}
               pages={pagesBySection.get(selectedSection.id) ?? []}
               pageTypes={pageTypes}
-              numbering={numbering}
               onSelectPage={selectPage}
               onSectionChange={handleSectionFieldChange}
               onPagesWorkflowStatusChange={(status) =>
@@ -1214,7 +1242,6 @@ export function CourseShell({ mode }: CourseShellProps) {
               key={selectedPage.id}
               page={selectedPage}
               courseId={courseId!}
-              numbering={numbering.get(selectedPage.id) ?? ""}
               mode={mode}
               lessonFilesFolderUrl={selectedPageLessonFolderUrls.files}
               lessonVideosFolderUrl={selectedPageLessonFolderUrls.videos}
@@ -1224,7 +1251,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                       sections: tree.sections,
                       pagesBySection,
                       pageTypes,
-                      numbering,
                       onSelectPage: selectPage,
                       onSelectSection: selectSection,
                     }
@@ -1236,7 +1262,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                   ? {
                       id: adjacentPages.prev.id,
                       title: adjacentPages.prev.title,
-                      numbering: numbering.get(adjacentPages.prev.id) ?? "",
                     }
                   : null
               }
@@ -1245,7 +1270,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                   ? {
                       id: adjacentPages.next.id,
                       title: adjacentPages.next.title,
-                      numbering: numbering.get(adjacentPages.next.id) ?? "",
                     }
                   : null
               }
@@ -1258,7 +1282,9 @@ export function CourseShell({ mode }: CourseShellProps) {
               onContentChange={() => {
                 markCourseTouched();
                 refreshPageTypes();
+                refreshCommentCounts();
               }}
+              onCommentsChange={refreshCommentCounts}
             />
           )}
         </div>

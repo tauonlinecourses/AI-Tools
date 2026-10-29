@@ -1,11 +1,14 @@
 import type { VideoProps } from "./types";
+import { isSharePointUrl, sharePointEmbedUrl } from "./sharePoint";
 
-/** Infer platform from the URL (YouTube / Panopto / other). */
+/** Infer platform from the URL (YouTube / Panopto / SharePoint / other). */
 export function detectVideoProvider(url: string | undefined): NonNullable<VideoProps["provider"]> {
   const raw = url?.trim();
   if (!raw) return "other";
 
   if (extractYouTubeId(raw)) return "youtube";
+
+  if (isSharePointUrl(raw)) return "sharepoint";
 
   try {
     const host = new URL(raw).hostname.replace(/^www\./, "").toLowerCase();
@@ -27,6 +30,11 @@ export function resolveVideoEmbedSrc(url: string | undefined): string | null {
   if (kind === "youtube") {
     const id = extractYouTubeId(raw);
     return id ? `https://www.youtube.com/embed/${id}` : null;
+  }
+
+  if (kind === "sharepoint") {
+    // Never pass a raw SharePoint share link to the iframe — it refuses framing.
+    return sharePointEmbedUrl(raw);
   }
 
   // Panopto Viewer.aspx / Embed.aspx links and unknown hosts: use URL as iframe src.

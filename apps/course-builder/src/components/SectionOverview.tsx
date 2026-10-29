@@ -45,7 +45,6 @@ interface SectionOverviewProps {
   mode: CourseViewMode;
   pages: Page[];
   pageTypes: Map<string, PageType>;
-  numbering: Map<string, string>;
   onSelectPage: (pageId: string) => void;
   onSectionChange: (fields: Partial<SectionFields>) => void;
   onPagesWorkflowStatusChange: (status: PageWorkflowStatus) => void;
@@ -57,7 +56,6 @@ export function SectionOverview({
   mode,
   pages,
   pageTypes,
-  numbering,
   onSelectPage,
   onSectionChange,
   onPagesWorkflowStatusChange,
@@ -115,12 +113,18 @@ export function SectionOverview({
       ? "ready_for_implementation"
       : "in_progress";
 
-  async function toggleLessonWorkflowStatus() {
+  async function setLessonWorkflowStatus(nextStatus: PageWorkflowStatus) {
     if (pages.length === 0 || workflowSaving) return;
-    const nextStatus: PageWorkflowStatus =
-      lessonWorkflowStatus === "ready_for_implementation"
-        ? "in_progress"
-        : "ready_for_implementation";
+    if (nextStatus === lessonWorkflowStatus) return;
+    const nextLabel =
+      nextStatus === "ready_for_implementation" ? "מוכן להטמעה" : "בעבודה";
+    if (
+      !window.confirm(
+        `האם לשנות את הסטטוס של כל עמודי השיעור ל"${nextLabel}"?`
+      )
+    ) {
+      return;
+    }
     setWorkflowSaving(true);
     setError(null);
     try {
@@ -155,7 +159,7 @@ export function SectionOverview({
           {editable && (
             <LessonWorkflowStatusToggle
               status={lessonWorkflowStatus}
-              onClick={toggleLessonWorkflowStatus}
+              onSelect={setLessonWorkflowStatus}
               disabled={pages.length === 0 || workflowSaving}
             />
           )}
@@ -283,7 +287,6 @@ export function SectionOverview({
           title={section.title}
           pages={pages}
           pageTypes={pageTypes}
-          numbering={numbering}
           mode={mode}
           onSelectPage={onSelectPage}
           resetKey={section.id}

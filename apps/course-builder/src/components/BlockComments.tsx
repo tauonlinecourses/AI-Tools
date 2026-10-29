@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@workspace/ui";
 import type {
   CommentAuthorRole,
-  ComponentComment,
   CourseViewMode,
+  ThreadComment,
 } from "../lib/types";
 import {
   COMMENT_AUTHOR_COLOR,
@@ -20,23 +20,39 @@ function formatCommentTime(iso: string): string {
   });
 }
 
-export function unresolvedCount(comments: ComponentComment[]): number {
+export function unresolvedCount(comments: ThreadComment[]): number {
   return comments.filter((c) => !c.resolved_at).length;
 }
 
+export function resolvedCount(comments: ThreadComment[]): number {
+  return comments.filter((c) => !!c.resolved_at).length;
+}
+
 /** Small corner badge on the top-right of the comment icon. */
-function CommentCountBadge({ count }: { count: number }) {
+function CommentCountBadge({
+  count,
+  tone = "open",
+}: {
+  count: number;
+  /** Open comments = blue; resolved-only = grey. */
+  tone?: "open" | "resolved";
+}) {
   if (count <= 0) return null;
   return (
-    <span className="absolute -top-0.5 -right-1 min-w-[0.875rem] h-3.5 px-0.5 flex items-center justify-center rounded-full bg-[#0F6CBF] text-white text-[9px] font-bold leading-none tabular-nums pointer-events-none">
+    <span
+      className={`absolute -top-0.5 -right-1 min-w-[0.875rem] h-3.5 px-0.5 flex items-center justify-center rounded-full text-[9px] font-bold leading-none tabular-nums pointer-events-none ${
+        tone === "resolved"
+          ? "bg-surface-400 text-white"
+          : "bg-[#0F6CBF] text-white"
+      }`}
+    >
       {count > 99 ? "99+" : count}
     </span>
   );
 }
 
 interface BlockCommentsProps {
-  componentId: string;
-  comments: ComponentComment[];
+  comments: ThreadComment[];
   mode: CourseViewMode;
   open: boolean;
   onToggle: () => void;
@@ -44,15 +60,21 @@ interface BlockCommentsProps {
   onSetResolved: (commentId: string, resolved: boolean) => Promise<void>;
   /** Only allowed when current mode matches the comment's author_role. */
   onDelete: (commentId: string) => Promise<void>;
-  /** Children = the block card / preview content. */
+  /** Children = the block card / page header / preview content. */
   children: React.ReactNode;
+  /** Optional dialog label override (default: block comments). */
+  ariaLabel?: string;
+  /** Override default bottom margin on the outer wrapper (e.g. `mb-0` in sticky headers). */
+  className?: string;
+  /** Raise stacking above later siblings (e.g. open header field popovers over the add box). */
+  elevate?: boolean;
 }
 
 /**
  * Comment icon outside the block (visual right) + Word-style closable thread panel.
- * The block stays full-width of the page column. When closed, the icon sits in the
- * start gutter; when open, the panel aligns to the block top and the icon moves
- * into the panel header. Clicking outside the open panel closes it.
+ * Used for component cards and the page header. The content stays full-width of the
+ * page column. When closed, the icon sits in the start gutter; when open, the panel
+ * aligns to the top and the icon moves into the panel header. Clicking outside closes it.
  */
 export function BlockComments({
   comments,
@@ -63,13 +85,19 @@ export function BlockComments({
   onSetResolved,
   onDelete,
   children,
+  ariaLabel = "הערות לרכיב",
+  className,
+  elevate = false,
 }: BlockCommentsProps) {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const unresolved = unresolvedCount(comments);
+  const resolved = resolvedCount(comments);
   const hasAny = comments.length > 0;
+  const badgeCount = unresolved > 0 ? unresolved : resolved;
+  const badgeTone = unresolved > 0 ? "open" : "resolved";
 
   const iconOpacity = !hasAny
     ? "opacity-25 hover:opacity-60"
@@ -82,9 +110,12 @@ export function BlockComments({
   const iconTitle =
     unresolved > 0
       ? `${unresolved} הערות פתוחות`
-      : hasAny
-        ? "הערות (כולן נפתרו)"
+      : resolved > 0
+        ? `${resolved} הערות שנפתרו`
         : "הוסף הערה";
+
+  const marginClass =
+    className ?? (mode === "review" ? "mb-6" : "mb-3");
 
   // Default to bottom so the latest comments (and composer) are in view.
   useEffect(() => {
@@ -137,8 +168,8 @@ export function BlockComments({
 
   return (
     <div
-      className={`relative ${mode === "review" ? "mb-6" : "mb-3"} ${
-        open ? "z-40" : "z-0"
+      className={`relative ${marginClass} ${
+        open || elevate ? "z-40" : "z-0"
       }`}
     >
       {/* Full-width block — aligns with page header on both sides */}
@@ -158,7 +189,7 @@ export function BlockComments({
           }}
         >
           <CommentIcon className="w-4 h-4" />
-          <CommentCountBadge count={unresolved} />
+          <CommentCountBadge count={badgeCount} tone={badgeTone} />
         </button>
       )}
 
@@ -169,12 +200,12 @@ export function BlockComments({
           className="absolute top-0 left-full ml-1.5 z-30 w-64 bg-white border border-surface-200 shadow-md rounded-lg flex flex-col max-h-[min(28rem,70vh)] pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
-          aria-label="הערות לרכיב"
+          aria-label={ariaLabel}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-200 shrink-0">
             <span className="relative shrink-0 text-surface-700 p-0.5" aria-hidden>
               <CommentIcon className="w-4 h-4" />
-              <CommentCountBadge count={unresolved} />
+              <CommentCountBadge count={badgeCount} tone={badgeTone} />
             </span>
             <span className="text-sm font-semibold text-surface-800 flex-1">הערות</span>
             <button
@@ -243,7 +274,7 @@ function CommentItem({
   onSetResolved,
   onDelete,
 }: {
-  comment: ComponentComment;
+  comment: ThreadComment;
   mode: CourseViewMode;
   disabled: boolean;
   onSetResolved: (commentId: string, resolved: boolean) => Promise<void>;

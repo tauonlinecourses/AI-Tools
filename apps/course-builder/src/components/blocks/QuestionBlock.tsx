@@ -182,7 +182,7 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
             <input
               type={isMultiple ? "checkbox" : "radio"}
               name={radioGroup}
-              className="accent-black shrink-0"
+              className="accent-black shrink-0 size-[1.125rem] cursor-pointer"
               checked={correctIds.has(opt.id)}
               onChange={() => toggleCorrect(opt.id)}
               title="תשובה נכונה"

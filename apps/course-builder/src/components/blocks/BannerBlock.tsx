@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
 import type { BannerProps, CourseViewMode } from "../../lib/types";
+import { MediaImage } from "./MediaImage";
 
 interface Props {
   props: BannerProps;
   mode: CourseViewMode;
   onChange: (props: BannerProps) => void;
-  /** Page title used for the default banner name (`באנר - {numbering} | {page}`). */
+  /** Page title used for the default banner name (`באנר - {page}`). */
   pageTitle: string;
-  /** Page numbering string (e.g. `1.1`) for the default banner name. */
-  pageNumbering: string;
 }
 
-function defaultBannerLabel(pageTitle: string, pageNumbering: string): string {
-  const num = pageNumbering.trim() || "?";
+function defaultBannerLabel(pageTitle: string): string {
   const title = pageTitle.trim() || "ללא כותרת";
-  return `באנר - ${num} | ${title}`;
+  return `באנר - ${title}`;
 }
 
 function BannerPlaceholder({
@@ -57,21 +55,15 @@ function BannerPlaceholder({
   return (
     <div className="relative aspect-[4/1] w-full overflow-hidden select-none bg-[#E8EAED]">
       {src && (
-        <img
-          key={src}
-          src={src}
-          alt=""
+        <MediaImage
+          url={src}
           className={`absolute inset-0 w-full h-full object-contain ${
             imageShowing ? "" : "invisible"
           }`}
-          onLoad={() => setImageStatus("loaded")}
-          onError={() => setImageStatus("error")}
-          ref={(img) => {
-            // Cached images may complete before onLoad is attached.
-            if (img?.complete) {
-              if (img.naturalWidth > 0) setImageStatus("loaded");
-              else setImageStatus("error");
-            }
+          onStatus={(status) => {
+            if (status === "loaded") setImageStatus("loaded");
+            else if (status === "error") setImageStatus("error");
+            else setImageStatus("loading");
           }}
         />
       )}
@@ -97,10 +89,9 @@ export function BannerBlock({
   props,
   mode,
   pageTitle,
-  pageNumbering,
 }: Props) {
   // Always use the derived default name — no custom title field in the UI.
-  const label = defaultBannerLabel(pageTitle, pageNumbering);
+  const label = defaultBannerLabel(pageTitle);
   const editable = mode === "edit";
 
   if (!editable) {

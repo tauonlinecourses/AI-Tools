@@ -9,6 +9,7 @@ import type {
   CourseTree,
   ImplementationStatus,
   Page,
+  PageComment,
   PageComponent,
   PageWorkflowStatus,
   PageType,
@@ -426,7 +427,7 @@ export async function deletePage(id: string): Promise<void> {
 /**
  * Clone a lesson page immediately after the source in its section.
  * Title becomes `העתק של {source.title}`. Component types/order are copied;
- * props are cleared except banners (full props kept). Page notes are not copied.
+ * props are cleared except banners (full props kept). Notes and comments are not copied.
  * Home page ("עמוד ראשי") cannot be duplicated.
  */
 export async function duplicatePage(sourceId: string): Promise<Page> {
@@ -530,33 +531,41 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
       return { ...c.props };
     case "video":
       return { url: "" };
-    case "interactive_video":
+    case "interactive_video": {
+      const options = Array.from({ length: 4 }, () => ({
+        id: crypto.randomUUID(),
+        text: "",
+      }));
       return {
         url: "",
         questions: [
           {
             questionType: "single_choice",
             prompt: "",
-            options: [
-              { id: crypto.randomUUID(), text: "" },
-              { id: crypto.randomUUID(), text: "" },
-            ],
+            options,
+            correctOptionId: options[0]?.id,
           },
         ],
       };
+    }
     case "text":
       return { html: "" };
-    case "question":
+    case "question": {
+      const options = Array.from({ length: 4 }, () => ({
+        id: crypto.randomUUID(),
+        text: "",
+      }));
       return {
         questionType: "single_choice",
         prompt: "",
-        options: [
-          { id: crypto.randomUUID(), text: "" },
-          { id: crypto.randomUUID(), text: "" },
-        ],
+        options,
+        correctOptionId: options[0]?.id,
       };
+    }
     case "image":
-      return { imageUrl: "", fileUrl: "" };
+      return { imageUrl: "" };
+    case "button":
+      return { text: "", align: "center", url: "" };
     case "notes_board":
       return {
         description: "",
@@ -936,6 +945,53 @@ export async function getCourseOverviewData(
 
 // ─── Component comments ─────────────────────────────────────────────────────
 
+export interface PageCommentCounts {
+  /** Unresolved comments on the page. */
+  open: number;
+  /** Resolved comments on the page. */
+  resolved: number;
+}
+
+/**
+ * Open + resolved comment counts per page (block comments + page-header comments).
+ * Pages with zero comments of either kind are omitted from the map.
+ */
+export async function getCommentCountsByPage(
+  pageIds: string[]
+): Promise<Map<string, PageCommentCounts>> {
+  const counts = new Map<string, PageCommentCounts>();
+  if (pageIds.length === 0) return counts;
+
+  function bump(pageId: string, resolvedAt: string | null) {
+    const entry = counts.get(pageId) ?? { open: 0, resolved: 0 };
+    if (resolvedAt) entry.resolved += 1;
+    else entry.open += 1;
+    counts.set(pageId, entry);
+  }
+
+  const [blockResult, pageResult] = await Promise.all([
+    supabase
+      .from("component_comments")
+      .select("id, resolved_at, components!inner(page_id)")
+      .in("components.page_id", pageIds),
+    supabase
+      .from("page_comments")
+      .select("id, resolved_at, page_id")
+      .in("page_id", pageIds),
+  ]);
+  if (blockResult.error) fail("Loading comment counts", blockResult.error);
+  if (pageResult.error) fail("Loading page comment counts", pageResult.error);
+
+  for (const row of blockResult.data ?? []) {
+    const pageId = (row.components as unknown as { page_id: string }).page_id;
+    bump(pageId, row.resolved_at);
+  }
+  for (const row of pageResult.data ?? []) {
+    bump(row.page_id, row.resolved_at);
+  }
+  return counts;
+}
+
 /**
  * All comments for components on a page (one query via inner join on components).
  * Ordered oldest-first for Word-style thread display.
@@ -1003,6 +1059,65 @@ export async function deleteComment(commentId: string): Promise<void> {
     .delete()
     .eq("id", commentId);
   if (error) fail("Deleting comment", error);
+}
+
+// ─── Page-header comments ───────────────────────────────────────────────────
+
+/**
+ * Word-style comments for a page header. Oldest-first.
+ * Does not bump pages.updated_at or course.updated_at.
+ */
+export async function listPageComments(pageId: string): Promise<PageComment[]> {
+  const { data, error } = await supabase
+    .from("page_comments")
+    .select("id, page_id, author_role, body, resolved_at, created_at")
+    .eq("page_id", pageId)
+    .order("created_at", { ascending: true });
+  if (error) fail("Loading page comments", error);
+  return (data ?? []) as PageComment[];
+}
+
+export async function addPageComment(
+  pageId: string,
+  authorRole: CommentAuthorRole,
+  body: string
+): Promise<PageComment> {
+  const trimmed = body.trim();
+  if (!trimmed) fail("Adding page comment", { message: "body is empty" });
+
+  const { data, error } = await supabase
+    .from("page_comments")
+    .insert({
+      page_id: pageId,
+      author_role: authorRole,
+      body: trimmed,
+    })
+    .select()
+    .single();
+  if (error) fail("Adding page comment", error);
+  return data as PageComment;
+}
+
+export async function setPageCommentResolved(
+  commentId: string,
+  resolved: boolean
+): Promise<PageComment> {
+  const { data, error } = await supabase
+    .from("page_comments")
+    .update({ resolved_at: resolved ? new Date().toISOString() : null })
+    .eq("id", commentId)
+    .select()
+    .single();
+  if (error) fail("Updating page comment resolve", error);
+  return data as PageComment;
+}
+
+export async function deletePageComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from("page_comments")
+    .delete()
+    .eq("id", commentId);
+  if (error) fail("Deleting page comment", error);
 }
 
 // ─── Shared ─────────────────────────────────────────────────────────────────

@@ -14,12 +14,13 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] Course home page ("עמוד ראשי") — ensure on create/load, rename only
 - [x] Course overview (`?view=overview`) — sidebar סקירת קורס; structure counts/averages + page-type / workflow / implement charts (home stays default landing)
 - [x] Component types — banner, video, text, question
-- [x] Implementation status — derived timestamps, rollups, mark / cycle status
+- [x] Implementation status — derived timestamps, rollups, mark / cycle status (manual cycle: לא הוטמע ↔ הוטמע only; עבר שינוי is automatic)
 - [x] Preview embeds — YouTube / Panopto / other via `videoEmbed.ts`
 - [x] Save status indicator (שומר / נשמרו)
 - [x] Page notes for implementers (hidden in preview)
 - [x] Per-component notes (הערות) — legacy `props.notes` still display under banner/video/question in implement; edit-mode inputs removed (use page notes / block comments)
 - [x] Block comments (Word-style) — per-component thread in all three views; role authors; resolve/reopen; delete only by same author role
+- [x] Sidebar page comment counts — blue circle badge with unresolved messages per page (all modes)
 - [x] New lesson pages start with an empty banner component
 
 ---
@@ -46,6 +47,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [ ] Add teachers and course developer fields to course data (schema + edit UI)
 - [x] Lesson overview page per section — open/due dates, files-folder link (schema + edit UI)
 - [ ] Apply pending migrations on live DB if missing (`001_course_home_page`, `002_fix_empty_page_rollup`, `003_component_comments`, `004_section_lesson_info`, `mark_component_implemented`)
+- [x] No auto page numbers — titles are free-form (include a number in the title if needed)
 - [x] Bump course `updated_at` when nested content changes (today only title/description)
 - [x] Local course backup — שמור גיבוי (`.coursebuilder.json` download) + ייבא גיבוי (new course); URLs only, no media binaries (`src/lib/courseBackup.ts`)
 - [ ] Soft-delete / undo for destructive actions (today: `window.confirm` only)

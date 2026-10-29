@@ -4,6 +4,7 @@ import { VideoBlock } from "./VideoBlock";
 import { TextBlock } from "./TextBlock";
 import { QuestionBlock } from "./QuestionBlock";
 import { ImageBlock } from "./ThumbnailBlock";
+import { ButtonBlock } from "./ButtonBlock";
 import { NotesBoardBlock } from "./NotesBoardBlock";
 import { WordCloudBlock } from "./WordCloudBlock";
 import { ForumBlock } from "./ForumBlock";
@@ -16,8 +17,6 @@ interface Props {
   onChange: (props: BlockProps) => void;
   /** Video / banner: page title for default placeholder labels. */
   pageTitle?: string;
-  /** Banner: page numbering (e.g. `1.1`) for the default name. */
-  pageNumbering?: string;
   /** Video block: 1-based index among videos on this page. */
   videoNumber?: number;
   /** Implement mode: copy an answer option and mark the component implemented. */
@@ -31,7 +30,6 @@ export function BlockRenderer({
   mode,
   onChange,
   pageTitle,
-  pageNumbering,
   videoNumber,
   onCopyOption,
 }: Props) {
@@ -43,7 +41,6 @@ export function BlockRenderer({
           mode={mode}
           onChange={onChange}
           pageTitle={pageTitle ?? ""}
-          pageNumbering={pageNumbering ?? ""}
         />
       );
     case "video":
@@ -80,6 +77,8 @@ export function BlockRenderer({
       );
     case "image":
       return <ImageBlock props={props} mode={mode} onChange={onChange} />;
+    case "button":
+      return <ButtonBlock props={props} mode={mode} onChange={onChange} />;
     case "notes_board":
       return <NotesBoardBlock props={props} mode={mode} onChange={onChange} />;
     case "word_cloud":

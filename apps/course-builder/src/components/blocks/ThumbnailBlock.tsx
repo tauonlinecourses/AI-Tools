@@ -1,5 +1,6 @@
 import type { CourseViewMode, ImageProps } from "../../lib/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { MediaImage } from "./MediaImage";
 
 interface Props {
   props: ImageProps;
@@ -7,10 +8,15 @@ interface Props {
   onChange: (props: ImageProps) => void;
 }
 
-export function ImageBlock({ props }: Props) {
+export function ImageBlock({ props, mode }: Props) {
   const [imgError, setImgError] = useState(false);
-  const hasImage = !!props.imageUrl?.trim() && !imgError;
-  const fileHref = props.fileUrl?.trim() || undefined;
+  const imageHref = props.imageUrl?.trim() || undefined;
+
+  useEffect(() => {
+    setImgError(false);
+  }, [imageHref]);
+
+  const hasImage = !!imageHref && !imgError;
 
   const placeholder = (
     <div className="w-full aspect-video bg-surface-100 border border-surface-200 flex items-center justify-center select-none">
@@ -19,22 +25,25 @@ export function ImageBlock({ props }: Props) {
   );
 
   const image = hasImage ? (
-    <img
-      src={props.imageUrl!}
-      alt=""
+    <MediaImage
+      url={imageHref}
       className="w-full aspect-video object-cover"
-      onError={() => setImgError(true)}
+      onStatus={(status) => {
+        if (status === "error") setImgError(true);
+        else if (status === "loaded") setImgError(false);
+      }}
     />
   ) : null;
 
-  if (fileHref) {
+  // Edit/implement: open the image URL on click. Preview: display only.
+  if (hasImage && mode !== "review") {
     return (
       <a
-        href={fileHref}
+        href={imageHref}
         target="_blank"
         rel="noreferrer"
         className="block w-full cursor-pointer hover:opacity-90 transition-opacity"
-        title="פתח קובץ"
+        title="פתח תמונה"
       >
         {image || placeholder}
       </a>

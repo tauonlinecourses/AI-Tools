@@ -46,16 +46,21 @@ export function statusBorderClass(status: ImplementationStatus): string {
   return config[status].borderClass;
 }
 
-/** Cycle used when clicking the review-mode status badge. */
+/**
+ * Manual cycle for the implement-mode status control.
+ * `needs_update` (עבר שינוי) is set automatically when content changes after
+ * implementation — it is not a manual target. Clicking from that state marks
+ * the block implemented again.
+ */
 export const STATUS_CYCLE: ImplementationStatus[] = [
   "not_implemented",
   "implemented",
-  "needs_update",
 ];
 
 export function nextStatus(current: ImplementationStatus): ImplementationStatus {
+  if (current === "needs_update") return "implemented";
   const i = STATUS_CYCLE.indexOf(current);
-  return STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length];
+  return STATUS_CYCLE[(Math.max(0, i) + 1) % STATUS_CYCLE.length];
 }
 
 export function StatusBadge({
@@ -93,75 +98,130 @@ export function StatusBadge({
   );
 }
 
-const workflowConfig: Record<
-  PageWorkflowStatus,
-  { label: string; buttonClass: string }
-> = {
-  in_progress: {
+const WORKFLOW_OPTIONS: {
+  value: PageWorkflowStatus;
+  label: string;
+  activeTextClass: string;
+  pillClass: string;
+}[] = [
+  {
+    value: "in_progress",
     label: "בעבודה",
-    buttonClass:
-      "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100",
+    activeTextClass: "text-amber-950",
+    pillClass: "bg-amber-200",
   },
-  ready_for_implementation: {
+  {
+    value: "ready_for_implementation",
     label: "מוכן להטמעה",
-    buttonClass:
-      "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100",
+    activeTextClass: "text-emerald-950",
+    pillClass: "bg-emerald-200",
   },
-};
+];
+
+function WorkflowStatusSegmentedToggle({
+  status,
+  onSelect,
+  disabled = false,
+  title,
+  ariaLabel,
+}: {
+  status: PageWorkflowStatus;
+  onSelect: (next: PageWorkflowStatus) => void;
+  disabled?: boolean;
+  title: string;
+  ariaLabel: string;
+}) {
+  const selectedIndex = WORKFLOW_OPTIONS.findIndex((o) => o.value === status);
+  const selected = WORKFLOW_OPTIONS[Math.max(0, selectedIndex)];
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      title={title}
+      className={`relative inline-grid shrink-0 grid-cols-2 overflow-hidden rounded-control border border-surface-200 bg-white text-sm font-medium ${
+        disabled ? "cursor-not-allowed opacity-50" : ""
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 w-1/2 transition-[inset-inline-start,background-color] duration-slow ease-smooth ${
+          selected.pillClass
+        } ${selectedIndex <= 0 ? "start-0" : "start-1/2"}`}
+      />
+      {WORKFLOW_OPTIONS.map((option) => {
+        const selectedOption = option.value === status;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selectedOption}
+            disabled={disabled}
+            onClick={() => {
+              if (!selectedOption) onSelect(option.value);
+            }}
+            className={`relative z-10 whitespace-nowrap px-3 py-1.5 transition-colors duration-slow ease-smooth ${
+              disabled ? "cursor-not-allowed" : "cursor-pointer"
+            } ${
+              selectedOption
+                ? option.activeTextClass
+                : "text-surface-500 hover:text-surface-700"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Edit-mode control for the page's authoring readiness. */
 export function PageWorkflowStatusToggle({
   status,
-  onClick,
+  onSelect,
 }: {
   status: PageWorkflowStatus;
-  onClick: () => void;
+  onSelect: (next: PageWorkflowStatus) => void;
 }) {
-  const { label, buttonClass } = workflowConfig[status];
+  const label =
+    WORKFLOW_OPTIONS.find((o) => o.value === status)?.label ?? status;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-control cursor-pointer transition-colors duration-fast ${buttonClass}`}
-      title="לחצו לשינוי סטטוס העמוד"
-      aria-label={`סטטוס עמוד: ${label} — לחצו לשינוי`}
-    >
-      {label}
-      <SwapIcon className="w-4 h-4" />
-    </button>
+    <WorkflowStatusSegmentedToggle
+      status={status}
+      onSelect={onSelect}
+      title="בחרו סטטוס עמוד"
+      ariaLabel={`סטטוס עמוד: ${label}`}
+    />
   );
 }
 
 /** Edit-mode control that applies authoring readiness to every page in a lesson. */
 export function LessonWorkflowStatusToggle({
   status,
-  onClick,
+  onSelect,
   disabled = false,
 }: {
   status: PageWorkflowStatus;
-  onClick: () => void;
+  onSelect: (next: PageWorkflowStatus) => void;
   disabled?: boolean;
 }) {
-  const { label, buttonClass } = workflowConfig[status];
+  const label =
+    WORKFLOW_OPTIONS.find((o) => o.value === status)?.label ?? status;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <WorkflowStatusSegmentedToggle
+      status={status}
+      onSelect={onSelect}
       disabled={disabled}
-      className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-control transition-colors duration-fast ${buttonClass} ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      }`}
       title={
         disabled
           ? "אין עמודים בשיעור"
-          : "לחצו לשינוי סטטוס כל עמודי השיעור"
+          : "בחרו סטטוס לכל עמודי השיעור"
       }
-      aria-label={`סטטוס שיעור: ${label} — לחצו לשינוי כל עמודי השיעור`}
-    >
-      {label}
-      <SwapIcon className="w-4 h-4" />
-    </button>
+      ariaLabel={`סטטוס שיעור: ${label}`}
+    />
   );
 }

@@ -8,6 +8,7 @@ import {
   getCourseTree,
   listCommentsForPage,
   listComponents,
+  listPageComments,
 } from "./api";
 import type {
   BlockProps,
@@ -27,6 +28,7 @@ const COMPONENT_TYPES = new Set<ComponentType>([
   "text",
   "question",
   "image",
+  "button",
   "notes_board",
   "word_cloud",
   "forum",
@@ -78,6 +80,14 @@ export interface BackupComment {
   created_at: string;
 }
 
+export interface BackupPageComment {
+  pageTempKey: string;
+  author_role: CommentAuthorRole;
+  body: string;
+  resolved_at: string | null;
+  created_at: string;
+}
+
 export interface CourseBackup {
   format: typeof BACKUP_FORMAT;
   version: typeof BACKUP_VERSION;
@@ -90,6 +100,8 @@ export interface CourseBackup {
   pages: BackupPage[];
   components: BackupComponent[];
   comments: BackupComment[];
+  /** Page-header comment threads (optional on older backups). */
+  pageComments: BackupPageComment[];
 }
 
 function fail(message: string): never {
@@ -154,6 +166,7 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
 
   const components: BackupComponent[] = [];
   const comments: BackupComment[] = [];
+  const pageComments: BackupPageComment[] = [];
 
   for (const page of tree.pages) {
     const pageComponents = await listComponents(page.id);
@@ -168,10 +181,20 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
         updated_at: c.updated_at,
       });
     }
-    const pageComments = await listCommentsForPage(page.id);
-    for (const comment of pageComments) {
+    const blockComments = await listCommentsForPage(page.id);
+    for (const comment of blockComments) {
       comments.push({
         componentTempKey: comment.component_id,
+        author_role: comment.author_role,
+        body: comment.body,
+        resolved_at: comment.resolved_at,
+        created_at: comment.created_at,
+      });
+    }
+    const headerComments = await listPageComments(page.id);
+    for (const comment of headerComments) {
+      pageComments.push({
+        pageTempKey: comment.page_id,
         author_role: comment.author_role,
         body: comment.body,
         resolved_at: comment.resolved_at,
@@ -192,6 +215,7 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
     pages,
     components,
     comments,
+    pageComments,
   };
 }
 
@@ -340,6 +364,35 @@ export function parseCourseBackup(raw: unknown): CourseBackup {
     };
   });
 
+  const rawPageComments = Array.isArray(raw.pageComments) ? raw.pageComments : [];
+  const pageComments: BackupPageComment[] = rawPageComments.map((item, index) => {
+    if (!isRecord(item)) fail(`קובץ גיבוי לא תקין: הערת עמוד ${index + 1}`);
+    const pageTempKey = asString(
+      item.pageTempKey,
+      `pageComments[${index}].pageTempKey`
+    );
+    if (!pageKeys.has(pageTempKey)) {
+      fail(`קובץ גיבוי לא תקין: הערת עמוד ${index + 1} משויכת לעמוד לא קיים`);
+    }
+    const author_role = asString(
+      item.author_role,
+      `pageComments[${index}].author_role`
+    ) as CommentAuthorRole;
+    if (!AUTHOR_ROLES.has(author_role)) {
+      fail(`קובץ גיבוי לא תקין: תפקיד מחבר הערת עמוד לא מוכר (${author_role})`);
+    }
+    return {
+      pageTempKey,
+      author_role,
+      body: asString(item.body, `pageComments[${index}].body`),
+      resolved_at: asNullableString(item.resolved_at),
+      created_at:
+        typeof item.created_at === "string" && item.created_at
+          ? item.created_at
+          : new Date().toISOString(),
+    };
+  });
+
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -352,6 +405,7 @@ export function parseCourseBackup(raw: unknown): CourseBackup {
     pages,
     components,
     comments,
+    pageComments,
   };
 }
 
@@ -459,6 +513,18 @@ export async function importCourseBackup(backup: CourseBackup): Promise<string> 
       }));
       const { error } = await supabase.from("component_comments").insert(commentRows);
       if (error) fail(`ייבוא הערות נכשל: ${error.message}`);
+    }
+
+    if (backup.pageComments.length > 0) {
+      const pageCommentRows = backup.pageComments.map((c) => ({
+        page_id: pageIdMap.get(c.pageTempKey)!,
+        author_role: c.author_role,
+        body: c.body,
+        resolved_at: c.resolved_at,
+        created_at: c.created_at,
+      }));
+      const { error } = await supabase.from("page_comments").insert(pageCommentRows);
+      if (error) fail(`ייבוא הערות עמוד נכשל: ${error.message}`);
     }
 
     return courseId;

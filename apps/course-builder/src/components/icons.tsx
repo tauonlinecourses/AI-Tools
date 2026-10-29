@@ -230,6 +230,21 @@ export const ThumbnailIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =>
   </svg>
 );
 
+/** Rounded rectangle — content button block. */
+export const ButtonIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="3" y="7" width="18" height="10" rx="2.5" strokeLinejoin="round" />
+    <path strokeLinecap="round" d="M8 12h8" />
+  </svg>
+);
+
+/** Three horizontal lines of different lengths — text/button alignment. */
+export const AlignIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" d="M4 7h16M7 12h10M5 17h14" />
+  </svg>
+);
+
 export const LinkIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path

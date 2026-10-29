@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
+  ButtonAlign,
   ComponentComment,
   ComponentType,
   CourseViewMode,
   ImplementationStatus,
   Page,
+  PageComment,
   PageComponent,
   PageType,
+  PageWorkflowStatus,
+  QuestionProps,
   Section,
   StatusRollup,
 } from "../lib/types";
@@ -30,7 +34,6 @@ import { useSaveStatus } from "../lib/saveStatus";
 import { htmlToPlainText, resolveTextHtml, sanitizeTextHtml } from "../lib/textHtml";
 import { SortableList } from "./SortableList";
 import { BlockComments } from "./BlockComments";
-import { PageNotes } from "./PageNotes";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
@@ -42,7 +45,9 @@ import {
   statusHeaderClass,
 } from "./StatusBadge";
 import {
+  AlignIcon,
   BannerIcon,
+  ButtonIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -61,13 +66,26 @@ import {
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 
-/** Sentinel for the open page-notes panel (mutually exclusive with block threads). */
-const PAGE_NOTES_OPEN_ID = "__page_notes__";
+/** Sentinel for the open page-header comment thread (mutually exclusive with block threads). */
+const PAGE_COMMENTS_OPEN_ID = "__page_comments__";
 
 const COPIED_FEEDBACK_MS = 2000;
 
 type ClipboardPayload = { html?: string; plain: string };
-type HeaderField = "banner-url" | "video-title" | "video-url" | "image-image-url" | "image-file-url";
+type HeaderField =
+  | "banner-url"
+  | "video-title"
+  | "video-url"
+  | "image-image-url"
+  | "button-text"
+  | "button-align"
+  | "button-url";
+
+const BUTTON_ALIGN_OPTIONS: { value: ButtonAlign; label: string }[] = [
+  { value: "right", label: "ימין" },
+  { value: "center", label: "מרכז" },
+  { value: "left", label: "שמאל" },
+];
 
 function HeaderFieldPopover({
   open,
@@ -125,7 +143,7 @@ function HeaderFieldPopover({
       </button>
       {open && (
         <div
-          className="absolute top-full start-0 z-50 mt-2 w-72 border border-surface-200 bg-white p-3 shadow-lg"
+          className="absolute top-full start-0 z-[60] mt-2 w-72 border border-surface-200 bg-white p-3 shadow-lg"
           role="dialog"
           aria-label={label}
           onClick={(event) => event.stopPropagation()}
@@ -155,7 +173,14 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
     case "question":
       return { plain: component.props.prompt ?? "" };
     case "image":
-      return { plain: component.props.fileUrl ?? "" };
+      return { plain: component.props.imageUrl ?? "" };
+    case "button":
+      return {
+        plain:
+          component.props.url?.trim() ||
+          component.props.text?.trim() ||
+          "כפתור",
+      };
     case "notes_board":
       return { plain: component.props.description ?? "" };
     case "word_cloud":
@@ -188,6 +213,7 @@ const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> 
   text: { label: "טקסט", icon: <TextIcon /> },
   question: { label: "שאלה", icon: <QuestionIcon /> },
   image: { label: "תמונה", icon: <ThumbnailIcon /> },
+  button: { label: "כפתור", icon: <ButtonIcon /> },
   notes_board: { label: "לוח פתקים", icon: activityTypeLogo("notes_board") },
   word_cloud: { label: "ענן מילים", icon: activityTypeLogo("word_cloud") },
   forum: { label: "פורום", icon: activityTypeLogo("forum") },
@@ -200,7 +226,13 @@ function activityPickerPageType(
   return type === "question" ? "h5p" : type;
 }
 
-const MAIN_COMPONENT_TYPES: ComponentType[] = ["banner", "video", "text", "image"];
+const MAIN_COMPONENT_TYPES: ComponentType[] = [
+  "banner",
+  "video",
+  "text",
+  "image",
+  "button",
+];
 const ACTIVITY_COMPONENT_TYPES: ComponentType[] = [
   "question",
   "notes_board",
@@ -221,6 +253,8 @@ function pickerTileIcon(type: ComponentType): React.ReactNode {
       return <TextIcon className={cls} />;
     case "image":
       return <ThumbnailIcon className={cls} />;
+    case "button":
+      return <ButtonIcon className={cls} />;
     case "question":
     case "notes_board":
     case "word_cloud":
@@ -285,6 +319,24 @@ function AddComponentTile({
   );
 }
 
+function emptyChoiceOptions(count: number) {
+  return Array.from({ length: count }, () => ({
+    id: crypto.randomUUID(),
+    text: "",
+  }));
+}
+
+/** New choice question: 4 empty options, first marked correct. */
+function defaultChoiceQuestionProps(): QuestionProps {
+  const options = emptyChoiceOptions(4);
+  return {
+    questionType: "single_choice",
+    prompt: "",
+    options,
+    correctOptionId: options[0]?.id,
+  };
+}
+
 function defaultProps(type: ComponentType): BlockProps {
   switch (type) {
     case "banner":
@@ -292,20 +344,18 @@ function defaultProps(type: ComponentType): BlockProps {
     case "video":
       return { url: "" };
     case "interactive_video":
-      return { url: "", questions: [{ questionType: "single_choice", prompt: "", options: [{ id: crypto.randomUUID(), text: "" }, { id: crypto.randomUUID(), text: "" }] }] };
+      return {
+        url: "",
+        questions: [defaultChoiceQuestionProps()],
+      };
     case "text":
       return { html: "" };
     case "question":
-      return {
-        questionType: "single_choice",
-        prompt: "",
-        options: [
-          { id: crypto.randomUUID(), text: "" },
-          { id: crypto.randomUUID(), text: "" },
-        ],
-      };
+      return defaultChoiceQuestionProps();
     case "image":
-      return { imageUrl: "", fileUrl: "" };
+      return { imageUrl: "" };
+    case "button":
+      return { text: "", align: "center", url: "" };
     case "word_cloud":
       return { centerWord: "" };
     case "notes_board":
@@ -325,7 +375,6 @@ function defaultProps(type: ComponentType): BlockProps {
 interface AdjacentPageLink {
   id: string;
   title: string;
-  numbering: string;
 }
 
 /** Course structure shown under home-page components (all lessons + pages). */
@@ -333,7 +382,6 @@ export interface HomeCourseStructure {
   sections: Section[];
   pagesBySection: Map<string, Page[]>;
   pageTypes: Map<string, PageType>;
-  numbering: Map<string, string>;
   onSelectPage: (pageId: string) => void;
   onSelectSection: (sectionId: string) => void;
 }
@@ -342,11 +390,10 @@ interface PageContentProps {
   page: Page;
   /** Course id for nested mutations (avoids an extra page→course lookup on add). */
   courseId: string;
-  numbering: string;
   mode: CourseViewMode;
-  /** Lesson files folder URL for implement-mode header button (lesson pages only). */
+  /** Lesson files folder URL for page-header button (lesson pages only). */
   lessonFilesFolderUrl?: string | null;
-  /** Lesson videos folder URL for implement-mode header button (lesson pages only). */
+  /** Lesson videos folder URL for page-header button (lesson pages only). */
   lessonVideosFolderUrl?: string | null;
   /** When set on the course home page, renders Moodle-style lesson cards below content. */
   homeCourseStructure?: HomeCourseStructure | null;
@@ -362,12 +409,13 @@ interface PageContentProps {
   onStatusChange: () => void;
   /** Notify the shell that nested content was saved (refresh course last-updated). */
   onContentChange: () => void;
+  /** Notify the shell that block comments were added/removed (sidebar counts). */
+  onCommentsChange?: () => void;
 }
 
 export function PageContent({
   page,
   courseId,
-  numbering,
   mode,
   lessonFilesFolderUrl,
   lessonVideosFolderUrl,
@@ -379,6 +427,7 @@ export function PageContent({
   onPageChange,
   onStatusChange,
   onContentChange,
+  onCommentsChange,
 }: PageContentProps) {
   const { trackSave, beginSave, endSave } = useSaveStatus();
   const editable = mode === "edit";
@@ -390,6 +439,7 @@ export function PageContent({
   const [commentsByComponent, setCommentsByComponent] = useState<
     Map<string, ComponentComment[]>
   >(new Map());
+  const [pageComments, setPageComments] = useState<PageComment[]>([]);
   /** At most one open comment thread at a time. */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -419,6 +469,7 @@ export function PageContent({
   useEffect(() => {
     setComponents(null);
     setCommentsByComponent(new Map());
+    setPageComments([]);
     setOpenCommentId(null);
     setError(null);
     setOpenHeaderField(null);
@@ -442,6 +493,10 @@ export function PageContent({
         }
         setCommentsByComponent(map);
       })
+      .catch((e: Error) => setError(e.message));
+    api
+      .listPageComments(page.id)
+      .then(setPageComments)
       .catch((e: Error) => setError(e.message));
 
     const timersMap = timers.current;
@@ -509,7 +564,7 @@ export function PageContent({
     if (component.type === newType) return;
     const newProps: BlockProps = { ...component.props };
     if (newType === "interactive_video" && !newProps.questions) {
-      newProps.questions = [{ questionType: "single_choice", prompt: "", options: [{ id: crypto.randomUUID(), text: "" }, { id: crypto.randomUUID(), text: "" }] }];
+      newProps.questions = [defaultChoiceQuestionProps()];
     }
     setComponents((prev) =>
       prev ? prev.map((c) => (c.id === component.id ? { ...c, type: newType, props: newProps } : c)) : prev
@@ -533,18 +588,9 @@ export function PageContent({
     });
   }
 
-  function handleNotesChange(notes: string) {
-    onPageChange({ notes });
-    scheduleSave(`page-notes:${page.id}`, async () => {
-      await api.updatePage(page.id, { notes });
-      onContentChange();
-    });
-  }
-
-  async function handleToggleWorkflowStatus() {
+  async function handleSetWorkflowStatus(workflow_status: PageWorkflowStatus) {
+    if (workflow_status === page.workflow_status) return;
     const previous = page.workflow_status;
-    const workflow_status =
-      previous === "in_progress" ? "ready_for_implementation" : "in_progress";
     onPageChange({ workflow_status });
     setError(null);
     try {
@@ -577,7 +623,7 @@ export function PageContent({
     const list = components ?? [];
 
     if (isHome && ACTIVITY_TYPES.has(type)) {
-      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבים מרכזיים.");
+      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבי תוכן.");
       return;
     }
 
@@ -781,6 +827,7 @@ export function PageContent({
         next.set(componentId, list);
         return next;
       });
+      onCommentsChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       throw e;
@@ -801,6 +848,7 @@ export function PageContent({
         );
         return next;
       });
+      onCommentsChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       throw e;
@@ -821,6 +869,50 @@ export function PageContent({
         );
         return next;
       });
+      onCommentsChange?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleAddPageComment(body: string) {
+    setError(null);
+    try {
+      const created = await trackSave(api.addPageComment(page.id, mode, body));
+      setPageComments((prev) => [...prev, created]);
+      onCommentsChange?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleSetPageCommentResolved(
+    commentId: string,
+    resolved: boolean
+  ) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.setPageCommentResolved(commentId, resolved)
+      );
+      setPageComments((prev) =>
+        prev.map((c) => (c.id === updated.id ? updated : c))
+      );
+      onCommentsChange?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleDeletePageComment(commentId: string) {
+    setError(null);
+    try {
+      await trackSave(api.deletePageComment(commentId));
+      setPageComments((prev) => prev.filter((c) => c.id !== commentId));
+      onCommentsChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       throw e;
@@ -830,10 +922,10 @@ export function PageContent({
   function wrapWithComments(componentId: string, block: React.ReactNode) {
     return (
       <BlockComments
-        componentId={componentId}
         comments={commentsByComponent.get(componentId) ?? []}
         mode={mode}
         open={openCommentId === componentId}
+        elevate={!!openHeaderField?.startsWith(`${componentId}:`)}
         onToggle={() =>
           setOpenCommentId((prev) => (prev === componentId ? null : componentId))
         }
@@ -911,6 +1003,14 @@ export function PageContent({
   async function handleCyclePageStatus() {
     if (!components || components.length === 0) return;
     const target = nextStatus(pageAggregateStatus(components));
+    const targetLabel = target === "implemented" ? "הוטמע" : "לא הוטמע";
+    if (
+      !window.confirm(
+        `האם לשנות את הסטטוס של כל הרכיבים בעמוד ל"${targetLabel}"?`
+      )
+    ) {
+      return;
+    }
     setError(null);
     try {
       const updated = await trackSave(
@@ -933,7 +1033,6 @@ export function PageContent({
         mode={mode}
         onChange={(props) => handlePropsChange(component.id, props)}
         pageTitle={page.title}
-        pageNumbering={numbering}
         videoNumber={videoNumberById.get(component.id)}
         onCopyOption={
           isImplement && (component.type === "question" || component.type === "interactive_video")
@@ -959,6 +1058,7 @@ export function PageContent({
     const isVideo = component.type === "video" || component.type === "interactive_video";
     const isBanner = component.type === "banner";
     const isImage = component.type === "image";
+    const isButton = component.type === "button";
     const flushBody = isVideo || isBanner || isImage;
     const fieldIsOpen = (field: HeaderField) =>
       openHeaderField === `${component.id}:${field}`;
@@ -1043,7 +1143,7 @@ export function PageContent({
               רכיב זה מוצמד לתחתית העמוד
             </span>
           )}
-          {editable && (isBanner || isVideo || isImage) && (
+          {editable && (isBanner || isVideo || isImage || isButton) && (
             <span className="text-surface-300 select-none" aria-hidden>
               |
             </span>
@@ -1119,45 +1219,106 @@ export function PageContent({
             </div>
           )}
           {editable && isImage && (
+            <HeaderFieldPopover
+              open={fieldIsOpen("image-image-url")}
+              label="קישור לתמונה"
+              title="עריכת קישור לתמונה"
+              icon={<ThumbnailIcon className="w-4 h-4" />}
+              onToggle={() => toggleHeaderField(component.id, "image-image-url")}
+              onClose={closeHeaderField}
+            >
+              <TextField
+                dir="ltr"
+                autoFocus
+                value={component.props.imageUrl ?? ""}
+                placeholder="https://... (כתובת תמונה)"
+                onChange={(event) =>
+                  handlePropsChange(component.id, {
+                    ...component.props,
+                    imageUrl: event.target.value,
+                  })
+                }
+              />
+            </HeaderFieldPopover>
+          )}
+          {editable && isButton && (
             <div className="flex items-center gap-1">
               <HeaderFieldPopover
-                open={fieldIsOpen("image-image-url")}
-                label="קישור לתמונה"
-                title="עריכת קישור לתמונה"
-                icon={<ThumbnailIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "image-image-url")}
+                open={fieldIsOpen("button-text")}
+                label="טקסט הכפתור"
+                title="עריכת טקסט הכפתור"
+                icon={<PencilIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "button-text")}
                 onClose={closeHeaderField}
               >
                 <TextField
-                  dir="ltr"
                   autoFocus
-                  value={component.props.imageUrl ?? ""}
-                  placeholder="https://... (כתובת תמונה)"
+                  value={component.props.text ?? ""}
+                  placeholder="כפתור"
                   onChange={(event) =>
                     handlePropsChange(component.id, {
                       ...component.props,
-                      imageUrl: event.target.value,
+                      text: event.target.value,
                     })
                   }
                 />
               </HeaderFieldPopover>
               <HeaderFieldPopover
-                open={fieldIsOpen("image-file-url")}
-                label="קישור לקובץ"
-                title="עריכת קישור לקובץ"
+                open={fieldIsOpen("button-align")}
+                label="יישור"
+                title="עריכת יישור הכפתור"
+                icon={<AlignIcon className="w-4 h-4" />}
+                onToggle={() => toggleHeaderField(component.id, "button-align")}
+                onClose={closeHeaderField}
+              >
+                <div
+                  className="inline-flex w-full rounded border border-surface-200 overflow-hidden"
+                  role="group"
+                  aria-label="יישור כפתור"
+                >
+                  {BUTTON_ALIGN_OPTIONS.map((opt) => {
+                    const selected =
+                      (component.props.align ?? "center") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`flex-1 px-3 h-9 text-sm font-semibold transition-colors duration-fast ${
+                          selected
+                            ? "bg-surface-900 text-white"
+                            : "bg-white text-surface-700 hover:bg-surface-50"
+                        }`}
+                        aria-pressed={selected}
+                        onClick={() =>
+                          handlePropsChange(component.id, {
+                            ...component.props,
+                            align: opt.value,
+                          })
+                        }
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("button-url")}
+                label="קישור"
+                title="עריכת קישור הכפתור"
                 icon={<LinkIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "image-file-url")}
+                onToggle={() => toggleHeaderField(component.id, "button-url")}
                 onClose={closeHeaderField}
               >
                 <TextField
                   dir="ltr"
                   autoFocus
-                  value={component.props.fileUrl ?? ""}
-                  placeholder="https://... (קובץ שייפתח בלחיצה)"
+                  value={component.props.url ?? ""}
+                  placeholder="https://..."
                   onChange={(event) =>
                     handlePropsChange(component.id, {
                       ...component.props,
-                      fileUrl: event.target.value,
+                      url: event.target.value,
                     })
                   }
                 />
@@ -1258,35 +1419,37 @@ export function PageContent({
             className="w-7 h-7 shrink-0"
           />
         )}
-        {numbering ? (
-          <>
-            <span className="shrink-0">{numbering}</span>
-            <span className="shrink-0" aria-hidden>
-              |
-            </span>
-          </>
-        ) : null}
-        {editable ? (
-          <input
-            value={page.title}
-            placeholder="כותרת העמוד"
-            onChange={(e) => handleTitleChange(e.target.value)}
-            className="flex-1 min-w-0 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
-          />
-        ) : (
-          <h1 className="flex-1 min-w-0 truncate">{page.title}</h1>
-        )}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          {editable ? (
+            <input
+              value={page.title}
+              placeholder="כותרת העמוד"
+              onChange={(e) => handleTitleChange(e.target.value)}
+              className="min-w-0 flex-1 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
+            />
+          ) : (
+            <h1 className="min-w-0 flex-1 truncate">{page.title}</h1>
+          )}
+          {!isHome && (
+            <>
+              <LessonFilesButton
+                url={lessonFilesFolderUrl}
+                compact
+                showDisabled
+              />
+              <LessonVideosButton
+                url={lessonVideosFolderUrl}
+                compact
+                showDisabled
+              />
+            </>
+          )}
+        </div>
         {editable && (
           <PageWorkflowStatusToggle
             status={page.workflow_status}
-            onClick={handleToggleWorkflowStatus}
+            onSelect={handleSetWorkflowStatus}
           />
-        )}
-        {isImplement && lessonFilesFolderUrl?.trim() && (
-          <LessonFilesButton url={lessonFilesFolderUrl} compact />
-        )}
-        {isImplement && lessonVideosFolderUrl?.trim() && (
-          <LessonVideosButton url={lessonVideosFolderUrl} compact />
         )}
         {isImplement && components !== null && components.length > 0 && (
           <StatusBadge
@@ -1311,34 +1474,28 @@ export function PageContent({
         className={
           isReview
             ? "mb-3"
-            : "sticky top-0 z-10 -mt-6 mb-3 bg-white pt-6 pb-3"
+            : // Bleed into the start gutter (ps-12) so comment icons scroll under the header.
+              "sticky top-0 z-30 -mt-6 -ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
         }
       >
-        {editable ? (
-          <PageNotes
-            notes={page.notes ?? ""}
-            open={openCommentId === PAGE_NOTES_OPEN_ID}
-            onToggle={() =>
-              setOpenCommentId((prev) =>
-                prev === PAGE_NOTES_OPEN_ID ? null : PAGE_NOTES_OPEN_ID
-              )
-            }
-            onChange={handleNotesChange}
-          >
-            {pageHeader}
-          </PageNotes>
-        ) : (
-          pageHeader
-        )}
+        <BlockComments
+          comments={pageComments}
+          mode={mode}
+          open={openCommentId === PAGE_COMMENTS_OPEN_ID}
+          onToggle={() =>
+            setOpenCommentId((prev) =>
+              prev === PAGE_COMMENTS_OPEN_ID ? null : PAGE_COMMENTS_OPEN_ID
+            )
+          }
+          onAdd={handleAddPageComment}
+          onSetResolved={handleSetPageCommentResolved}
+          onDelete={handleDeletePageComment}
+          ariaLabel="הערות לעמוד"
+          className="mb-0"
+        >
+          {pageHeader}
+        </BlockComments>
       </div>
-
-      {/* Notes for implementers — implement only (edit uses PageNotes panel) */}
-      {isImplement && page.notes?.trim() && (
-        <div className="flex flex-col gap-1.5 mb-6">
-          <span className="text-sm font-semibold text-surface-700">הערות להטמעה</span>
-          <p className="text-base text-danger whitespace-pre-wrap">{page.notes}</p>
-        </div>
-      )}
 
       {error && (
         <Card className="border-danger bg-red-50 mb-4">
@@ -1391,9 +1548,9 @@ export function PageContent({
           )}
 
           {editable && (
-            <div className="relative mt-3 rounded-[16px] border border-dashed border-[#B7D0E8] bg-[#F0F5FA] px-4 pb-5 pt-7">
+            <div className="relative z-0 mt-3 rounded-[16px] border border-dashed border-[#B7D0E8] bg-[#F0F5FA] px-4 pb-5 pt-7">
               <div
-                className="pointer-events-none absolute left-1/2 top-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D4E5F5] text-[#0F6CBF]"
+                className="pointer-events-none absolute left-1/2 top-0 z-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D4E5F5] text-[#0F6CBF]"
                 aria-hidden
               >
                 <PlusIcon className="w-4 h-4" />
@@ -1402,7 +1559,7 @@ export function PageContent({
               <div className="flex flex-col gap-5">
                 <div>
                   <span className="mb-3 block text-center text-sm font-semibold text-[#1B3A5C]">
-                    רכיבים מרכזיים
+                    רכיבי תוכן
                   </span>
                   <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                     {MAIN_COMPONENT_TYPES.map((type) => (
@@ -1418,7 +1575,7 @@ export function PageContent({
                       {components.some((c) => ACTIVITY_TYPES.has(c.type)) && (
                         <span className="inline-flex items-center gap-1 text-xs text-surface-500">
                           <LockIcon className="w-3.5 h-3.5 shrink-0" />
-                          כבר יש פעילות בעמוד. ניתן להוסיף רק פעילות אחת
+                          כבר יש פעילות בעמוד. ניתן להוסיף רק סוג פעילות אחד בעמוד
                         </span>
                       )}
                     </div>
@@ -1451,7 +1608,6 @@ export function PageContent({
                 title={section.title}
                 pages={homeCourseStructure.pagesBySection.get(section.id) ?? []}
                 pageTypes={homeCourseStructure.pageTypes}
-                numbering={homeCourseStructure.numbering}
                 mode={mode}
                 onSelectPage={homeCourseStructure.onSelectPage}
                 onSelectLesson={() =>
@@ -1478,11 +1634,7 @@ export function PageContent({
               className="flex items-center gap-1.5 min-w-0 max-w-[45%] text-start text-base text-[#0F6CBF] hover:underline"
             >
               <ChevronRightIcon className="w-4 h-4 shrink-0" />
-              <span className="min-w-0 truncate">
-                {prevPage.numbering
-                  ? `${prevPage.numbering} | ${prevPage.title}`
-                  : prevPage.title}
-              </span>
+              <span className="min-w-0 truncate">{prevPage.title}</span>
             </button>
           ) : (
             <span />
@@ -1495,11 +1647,7 @@ export function PageContent({
               onClick={() => onNavigatePage(nextPage.id)}
               className="flex items-center gap-1.5 min-w-0 max-w-[45%] text-end text-base text-[#0F6CBF] hover:underline ms-auto"
             >
-              <span className="min-w-0 truncate">
-                {nextPage.numbering
-                  ? `${nextPage.numbering} | ${nextPage.title}`
-                  : nextPage.title}
-              </span>
+              <span className="min-w-0 truncate">{nextPage.title}</span>
               <ChevronLeftIcon className="w-4 h-4 shrink-0" />
             </button>
           ) : (
