@@ -48,3 +48,54 @@
 .text-block-prose strong {
   font-weight: 700;
 }
+.text-block-prose em {
+  font-style: italic;
+}
+.text-block-prose u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text-block-prose ul,
+.text-block-prose ol {
+  margin: 0.5rem 0;
+  padding-inline-start: 1.5rem;
+}
+.text-block-prose ul {
+  list-style-type: disc;
+}
+.text-block-prose ol {
+  list-style-type: decimal;
+}
+.text-block-prose li {
+  margin: 0.25rem 0;
+}
+.text-block-prose li p {
+  margin: 0;
+}
+
+.text-block-prose [dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+.text-block-prose [dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Color popover panel */
+.text-color-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  inset-inline-end: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+  min-width: 7.5rem;
+}

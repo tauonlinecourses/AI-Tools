@@ -147,7 +147,7 @@ export interface InteractiveVideoProps extends VideoProps {
 }
 
 export interface TextProps {
-  /** Sanitized rich-text HTML from the TipTap editor. */
+  /** Sanitized rich-text HTML from the TipTap editor (marks, lists, align, color; size via H1/H2 only). */
   html?: string;
   /** Legacy plain-text body; migrated to `html` on next edit/save. */
   markdown?: string;

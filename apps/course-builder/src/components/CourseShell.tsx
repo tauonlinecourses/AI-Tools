@@ -1065,7 +1065,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     >
       <div dir="rtl" lang="he" className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden">
         {/* Sidebar — fixed pane; own scrollbar when nav overflows */}
-        <aside className="w-80 shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
+        <aside className="w-[22rem] shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
           <div className="p-4 border-b border-surface-200 flex flex-col gap-2">
             {/* Title (right) + mode toggle (top-left in RTL) */}
             <div className="flex items-start justify-between gap-2">

@@ -267,6 +267,71 @@ export const AlignIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Align left — long/short/long/short bars flush start. */
+export const AlignLeftIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="3" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="3" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Align center — long/short/long/short bars centered. */
+export const AlignCenterIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="6.5" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="6.5" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Align right — long/short/long/short bars flush end. */
+export const AlignRightIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="10" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="10" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Numbered list — bars on the left, small stroke-drawn 1/2/3 on the right (RTL). */
+export const OrderedListIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="2" y="4.5" width="12.5" height="2.5" rx="0.75" />
+    <rect x="2" y="10.75" width="12.5" height="2.5" rx="0.75" />
+    <rect x="2" y="17" width="12.5" height="2.5" rx="0.75" />
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* 1 — centered on top bar */}
+      <path d="M18.9 4.85L19.6 4.25V7.15" />
+      {/* 2 — centered on middle bar */}
+      <path d="M18.15 10.7c0-.6.5-1.05 1.15-1.05s1.15.45 1.15 1c0 .85-2.25 1.25-2.25 2.35h2.35" />
+      {/* 3 — centered on bottom bar */}
+      <path d="M18.15 16.85c.15-.55.55-.9 1.15-.9.6 0 1.05.35 1.05.85s-.35.8-.85.9c.55.1.9.45.9 1 0 .6-.55 1-1.2 1-.6 0-1.1-.35-1.2-.9" />
+    </g>
+  </svg>
+);
+
+/** Bulleted list — bars on the left, diamond markers on the right (RTL). */
+export const BulletListIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="2" y="4.75" width="12" height="2.25" rx="0.75" />
+    <rect x="2" y="11" width="12" height="2.25" rx="0.75" />
+    <rect x="2" y="17.25" width="12" height="2.25" rx="0.75" />
+    <path d="M17.5 5.25 L19.25 3.5 L21 5.25 L19.25 7 Z" />
+    <path d="M17.5 11.5 L19.25 9.75 L21 11.5 L19.25 13.25 Z" />
+    <path d="M17.5 17.75 L19.25 16 L21 17.75 L19.25 19.5 Z" />
+  </svg>
+);
+
 export const LinkIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path

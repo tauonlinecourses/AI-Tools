@@ -35,7 +35,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 
 ## Content & blocks
 
-- [x] Rich text for text blocks (TipTap: bold / H1 / H2 / link icons; sanitized HTML in implement/preview; rich clipboard copy)
+- [x] Rich text for text blocks (TipTap Moodle-like formatting: undo/redo, bold/italic/underline, color, H1/H2, link, align, RTL/LTR, lists; body size normal or heading only; sanitized HTML in implement/preview; rich clipboard copy — no media-in-text)
 - [ ] Image / file upload for banners (today: URL only)
 - [ ] Richer question types beyond `single_choice`
 - [ ] Additional component types (as needed)
