@@ -28,6 +28,8 @@ const COMPONENT_TYPES = new Set<ComponentType>([
   "text",
   "question",
   "image",
+  "text_unit",
+  "interactive_unit",
   "button",
   "notes_board",
   "word_cloud",

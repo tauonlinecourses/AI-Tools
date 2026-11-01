@@ -52,7 +52,7 @@ create table pages (
 create table components (
   id uuid primary key default gen_random_uuid(),
   page_id uuid references pages(id) on delete cascade,
-  type text not null,                    -- 'banner' | 'video' | 'text' | 'question' | 'image' | 'button' | …
+  type text not null,                    -- 'banner' | 'video' | 'text' | 'question' | 'image' | 'text_unit' | 'interactive_unit' | 'button' | …
   position int not null,
   props jsonb not null default '{}',
   implemented_at timestamptz,             -- null until implementer marks it done

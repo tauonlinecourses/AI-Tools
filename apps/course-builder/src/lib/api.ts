@@ -564,6 +564,9 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
     }
     case "image":
       return { imageUrl: "" };
+    case "text_unit":
+    case "interactive_unit":
+      return { imageUrl: "", fileUrl: "" };
     case "button":
       return { text: "", align: "center", url: "" };
     case "notes_board":

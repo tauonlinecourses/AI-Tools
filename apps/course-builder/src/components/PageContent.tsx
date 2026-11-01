@@ -37,6 +37,7 @@ import { BlockComments } from "./BlockComments";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
+import { validatePageQuestions } from "../lib/questionValidation";
 import {
   PageWorkflowStatusToggle,
   StatusBadge,
@@ -59,6 +60,8 @@ import {
   PlusIcon,
   QuestionIcon,
   TextIcon,
+  InteractiveUnitIcon,
+  TextUnitIcon,
   ThumbnailIcon,
   TrashIcon,
   VideoIcon,
@@ -77,6 +80,8 @@ type HeaderField =
   | "video-title"
   | "video-url"
   | "image-image-url"
+  | "text-unit-image-url"
+  | "text-unit-file-url"
   | "button-text"
   | "button-align"
   | "button-url";
@@ -158,6 +163,47 @@ function HeaderFieldPopover({
   );
 }
 
+/** Implement-mode header control: open a stored URL in a new tab (disabled when empty). */
+function HeaderOpenUrlButton({
+  url,
+  label,
+  missingLabel,
+  icon,
+}: {
+  url?: string;
+  label: string;
+  missingLabel: string;
+  icon: React.ReactNode;
+}) {
+  const href = url?.trim() || undefined;
+  if (!href) {
+    return (
+      <span
+        role="link"
+        aria-disabled="true"
+        aria-label={missingLabel}
+        title={missingLabel}
+        className="p-1.5 text-surface-300 cursor-not-allowed"
+      >
+        {icon}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      aria-label={label}
+      className="p-1.5 text-surface-500 hover:bg-surface-200 hover:text-surface-900 transition-colors duration-fast"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {icon}
+    </a>
+  );
+}
+
 /** Clipboard payload for the implement-mode header copy button (by block type). */
 function headerCopyPayload(component: PageComponent): ClipboardPayload {
   switch (component.type) {
@@ -174,6 +220,14 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
       return { plain: component.props.prompt ?? "" };
     case "image":
       return { plain: component.props.imageUrl ?? "" };
+    case "text_unit":
+    case "interactive_unit":
+      return {
+        plain:
+          component.props.fileUrl?.trim() ||
+          component.props.imageUrl?.trim() ||
+          "",
+      };
     case "button":
       return {
         plain:
@@ -213,6 +267,11 @@ const typeMeta: Record<ComponentType, { label: string; icon: React.ReactNode }> 
   text: { label: "טקסט", icon: <TextIcon /> },
   question: { label: "שאלה", icon: <QuestionIcon /> },
   image: { label: "תמונה", icon: <ThumbnailIcon /> },
+  text_unit: { label: "יחידת טקסט", icon: <TextUnitIcon /> },
+  interactive_unit: {
+    label: "יחידה אינטראקטיבית",
+    icon: <InteractiveUnitIcon />,
+  },
   button: { label: "כפתור", icon: <ButtonIcon /> },
   notes_board: { label: "לוח פתקים", icon: activityTypeLogo("notes_board") },
   word_cloud: { label: "ענן מילים", icon: activityTypeLogo("word_cloud") },
@@ -231,6 +290,8 @@ const MAIN_COMPONENT_TYPES: ComponentType[] = [
   "video",
   "text",
   "image",
+  "text_unit",
+  "interactive_unit",
   "button",
 ];
 const ACTIVITY_COMPONENT_TYPES: ComponentType[] = [
@@ -253,6 +314,10 @@ function pickerTileIcon(type: ComponentType): React.ReactNode {
       return <TextIcon className={cls} />;
     case "image":
       return <ThumbnailIcon className={cls} />;
+    case "text_unit":
+      return <TextUnitIcon className={cls} />;
+    case "interactive_unit":
+      return <InteractiveUnitIcon className={cls} />;
     case "button":
       return <ButtonIcon className={cls} />;
     case "question":
@@ -354,6 +419,9 @@ function defaultProps(type: ComponentType): BlockProps {
       return defaultChoiceQuestionProps();
     case "image":
       return { imageUrl: "" };
+    case "text_unit":
+    case "interactive_unit":
+      return { imageUrl: "", fileUrl: "" };
     case "button":
       return { text: "", align: "center", url: "" };
     case "word_cloud":
@@ -590,6 +658,15 @@ export function PageContent({
 
   async function handleSetWorkflowStatus(workflow_status: PageWorkflowStatus) {
     if (workflow_status === page.workflow_status) return;
+
+    if (workflow_status === "ready_for_implementation") {
+      const message = validatePageQuestions(components);
+      if (message) {
+        window.alert(message);
+        return;
+      }
+    }
+
     const previous = page.workflow_status;
     onPageChange({ workflow_status });
     setError(null);
@@ -614,6 +691,30 @@ export function PageContent({
     let n = 0;
     for (const c of components) {
       if (c.type === "video" || c.type === "interactive_video") map.set(c.id, ++n);
+    }
+    return map;
+  })();
+
+  /** 1-based ordinal of each image among image components on this page (current order). */
+  const imageNumberById = (() => {
+    const map = new Map<string, number>();
+    if (!components) return map;
+    let n = 0;
+    for (const c of components) {
+      if (c.type === "image") map.set(c.id, ++n);
+    }
+    return map;
+  })();
+
+  /** 1-based ordinals for text_unit / interactive_unit among their own type. */
+  const unitNumberById = (() => {
+    const map = new Map<string, number>();
+    if (!components) return map;
+    let textN = 0;
+    let interactiveN = 0;
+    for (const c of components) {
+      if (c.type === "text_unit") map.set(c.id, ++textN);
+      else if (c.type === "interactive_unit") map.set(c.id, ++interactiveN);
     }
     return map;
   })();
@@ -1034,6 +1135,8 @@ export function PageContent({
         onChange={(props) => handlePropsChange(component.id, props)}
         pageTitle={page.title}
         videoNumber={videoNumberById.get(component.id)}
+        imageNumber={imageNumberById.get(component.id)}
+        unitNumber={unitNumberById.get(component.id)}
         onCopyOption={
           isImplement && (component.type === "question" || component.type === "interactive_video")
             ? (text) => handleCopy(text)
@@ -1058,8 +1161,17 @@ export function PageContent({
     const isVideo = component.type === "video" || component.type === "interactive_video";
     const isBanner = component.type === "banner";
     const isImage = component.type === "image";
+    const isLinkUnit =
+      component.type === "text_unit" || component.type === "interactive_unit";
     const isButton = component.type === "button";
-    const flushBody = isVideo || isBanner || isImage;
+    const flushBody = isVideo || isBanner || isImage || isLinkUnit;
+    /** Edit-mode URL/title field icons next to the type label. */
+    const showHeaderMediaControls =
+      editable &&
+      (isBanner || isVideo || isImage || isLinkUnit || isButton);
+    /** Implement-mode open-URL icons on the visual-left actions (no copy for these). */
+    const hasImplementOpenUrls =
+      isBanner || isVideo || isImage || isLinkUnit || isButton;
     const fieldIsOpen = (field: HeaderField) =>
       openHeaderField === `${component.id}:${field}`;
     const closeHeaderField = () => setOpenHeaderField(null);
@@ -1143,7 +1255,7 @@ export function PageContent({
               רכיב זה מוצמד לתחתית העמוד
             </span>
           )}
-          {editable && (isBanner || isVideo || isImage || isButton) && (
+          {showHeaderMediaControls && (
             <span className="text-surface-300 select-none" aria-hidden>
               |
             </span>
@@ -1241,6 +1353,56 @@ export function PageContent({
               />
             </HeaderFieldPopover>
           )}
+          {editable && isLinkUnit && (
+            <div className="flex items-center gap-1">
+              <HeaderFieldPopover
+                open={fieldIsOpen("text-unit-image-url")}
+                label="קישור לתמונה"
+                title="עריכת קישור לתמונה"
+                icon={<ThumbnailIcon className="w-4 h-4" />}
+                onToggle={() =>
+                  toggleHeaderField(component.id, "text-unit-image-url")
+                }
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.imageUrl ?? ""}
+                  placeholder="https://... (כתובת תמונה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      imageUrl: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("text-unit-file-url")}
+                label="קישור לקובץ"
+                title="עריכת קישור לקובץ"
+                icon={<LinkIcon className="w-4 h-4" />}
+                onToggle={() =>
+                  toggleHeaderField(component.id, "text-unit-file-url")
+                }
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.fileUrl ?? ""}
+                  placeholder="https://... (קובץ לפתיחה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      fileUrl: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+            </div>
+          )}
           {editable && isButton && (
             <div className="flex items-center gap-1">
               <HeaderFieldPopover
@@ -1332,7 +1494,60 @@ export function PageContent({
                 onClick={() => handleCycleStatus(component)}
               />
             )}
-            {isImplement && (
+            {/* After status in DOM → visual far-left in RTL */}
+            {isImplement && hasImplementOpenUrls && (
+              <div className="flex items-center gap-1">
+                {isBanner && (
+                  <HeaderOpenUrlButton
+                    url={component.props.imageUrl}
+                    label="פתח תמונה"
+                    missingLabel="אין קישור לתמונה"
+                    icon={<ThumbnailIcon className="w-4 h-4" />}
+                  />
+                )}
+                {isVideo && (
+                  <HeaderOpenUrlButton
+                    url={component.props.url}
+                    label="פתח וידאו"
+                    missingLabel="אין קישור לוידאו"
+                    icon={<LinkIcon className="w-4 h-4" />}
+                  />
+                )}
+                {isImage && (
+                  <HeaderOpenUrlButton
+                    url={component.props.imageUrl}
+                    label="פתח תמונה"
+                    missingLabel="אין קישור לתמונה"
+                    icon={<ThumbnailIcon className="w-4 h-4" />}
+                  />
+                )}
+                {isLinkUnit && (
+                  <>
+                    <HeaderOpenUrlButton
+                      url={component.props.imageUrl}
+                      label="פתח תמונה"
+                      missingLabel="אין קישור לתמונה"
+                      icon={<ThumbnailIcon className="w-4 h-4" />}
+                    />
+                    <HeaderOpenUrlButton
+                      url={component.props.fileUrl}
+                      label="פתח קובץ"
+                      missingLabel="אין קישור לקובץ"
+                      icon={<LinkIcon className="w-4 h-4" />}
+                    />
+                  </>
+                )}
+                {isButton && (
+                  <HeaderOpenUrlButton
+                    url={component.props.url}
+                    label="פתח קישור"
+                    missingLabel="אין קישור לכפתור"
+                    icon={<LinkIcon className="w-4 h-4" />}
+                  />
+                )}
+              </div>
+            )}
+            {isImplement && !hasImplementOpenUrls && (
               <button
                 type="button"
                 className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"

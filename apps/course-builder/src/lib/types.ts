@@ -48,6 +48,8 @@ export type ComponentType =
   | "text"
   | "question"
   | "image"
+  | "text_unit"
+  | "interactive_unit"
   | "button"
   | "notes_board"
   | "word_cloud"
@@ -198,6 +200,17 @@ export interface ImageProps extends NotesProps {
   imageUrl?: string;
 }
 
+/**
+ * Thumbnail-style link unit (`text_unit` / `interactive_unit`):
+ * shows `imageUrl`, click opens `fileUrl`.
+ */
+export interface TextUnitProps extends NotesProps {
+  /** Preview image shown in the block. */
+  imageUrl?: string;
+  /** File / document opened when the image is clicked. */
+  fileUrl?: string;
+}
+
 export interface ButtonBlockProps {
   /** Visible button label. */
   text?: string;
@@ -213,6 +226,7 @@ export type BlockProps = BannerProps &
   TextProps &
   QuestionProps &
   ImageProps &
+  TextUnitProps &
   ButtonBlockProps &
   NotesBoardProps &
   WordCloudProps &

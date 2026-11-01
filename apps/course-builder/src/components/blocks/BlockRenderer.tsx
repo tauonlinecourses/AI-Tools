@@ -4,6 +4,7 @@ import { VideoBlock } from "./VideoBlock";
 import { TextBlock } from "./TextBlock";
 import { QuestionBlock } from "./QuestionBlock";
 import { ImageBlock } from "./ThumbnailBlock";
+import { TextUnitBlock } from "./TextUnitBlock";
 import { ButtonBlock } from "./ButtonBlock";
 import { NotesBoardBlock } from "./NotesBoardBlock";
 import { WordCloudBlock } from "./WordCloudBlock";
@@ -15,10 +16,14 @@ interface Props {
   props: BlockProps;
   mode: CourseViewMode;
   onChange: (props: BlockProps) => void;
-  /** Video / banner: page title for default placeholder labels. */
+  /** Video / banner / image: page title for default placeholder labels. */
   pageTitle?: string;
   /** Video block: 1-based index among videos on this page. */
   videoNumber?: number;
+  /** Image block: 1-based index among images on this page. */
+  imageNumber?: number;
+  /** text_unit / interactive_unit: 1-based index among that type on this page. */
+  unitNumber?: number;
   /** Implement mode: copy an answer option and mark the component implemented. */
   onCopyOption?: (text: string) => void;
 }
@@ -31,6 +36,8 @@ export function BlockRenderer({
   onChange,
   pageTitle,
   videoNumber,
+  imageNumber,
+  unitNumber,
   onCopyOption,
 }: Props) {
   switch (type) {
@@ -76,7 +83,27 @@ export function BlockRenderer({
         />
       );
     case "image":
-      return <ImageBlock props={props} mode={mode} onChange={onChange} />;
+      return (
+        <ImageBlock
+          props={props}
+          mode={mode}
+          onChange={onChange}
+          pageTitle={pageTitle ?? ""}
+          imageNumber={imageNumber ?? 1}
+        />
+      );
+    case "text_unit":
+    case "interactive_unit":
+      return (
+        <TextUnitBlock
+          props={props}
+          mode={mode}
+          onChange={onChange}
+          pageTitle={pageTitle ?? ""}
+          unitNumber={unitNumber ?? 1}
+          unitType={type}
+        />
+      );
     case "button":
       return <ButtonBlock props={props} mode={mode} onChange={onChange} />;
     case "notes_board":
@@ -87,6 +114,14 @@ export function BlockRenderer({
       return <ForumBlock props={props} mode={mode} onChange={onChange} />;
     default:
       // Legacy "thumbnail" rows or unknown types — treat as image
-      return <ImageBlock props={props} mode={mode} onChange={onChange} />;
+      return (
+        <ImageBlock
+          props={props}
+          mode={mode}
+          onChange={onChange}
+          pageTitle={pageTitle ?? ""}
+          imageNumber={imageNumber ?? 1}
+        />
+      );
   }
 }
