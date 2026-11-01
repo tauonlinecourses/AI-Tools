@@ -50,7 +50,9 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] No auto page numbers — titles are free-form (include a number in the title if needed)
 - [x] Bump course `updated_at` when nested content changes (today only title/description)
 - [x] Local course backup — שמור גיבוי (`.coursebuilder.json` download) + ייבא גיבוי (new course); URLs only, no media binaries (`src/lib/courseBackup.ts`)
+- [x] MBZ preserve-and-patch roundtrip — ייבא `.mbz` as new course + הורד MBZ; editable `page`/`label`/`resource`/`url`/`hvp`/`board` + section structure; page HTML split into banner/video/image/text_unit/button/text (`mbzHtmlSplit.ts`, works without binaries); `@workspace/mbz-parser` + `016`–`018` (see `mbz-roundtrip.md`)
 - [ ] Soft-delete / undo for destructive actions (today: `window.confirm` only)
+- [ ] Apply `016`–`018` MBZ migrations on live Supabase (`course_mbz_*` tables; `storage_backend` includes `reupload` — archive not stored)
 
 ---
 

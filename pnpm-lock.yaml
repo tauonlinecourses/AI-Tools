@@ -68,6 +68,9 @@ importers:
       '@workspace/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@workspace/mbz-parser':
+        specifier: workspace:*
+        version: link:../../packages/mbz-parser
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -251,21 +254,15 @@ importers:
       '@workspace/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@workspace/mbz-parser':
+        specifier: workspace:*
+        version: link:../../packages/mbz-parser
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      fast-xml-parser:
-        specifier: ^5.10.1
-        version: 5.10.1
-      fflate:
-        specifier: ^0.8.3
-        version: 0.8.3
       idb:
         specifier: ^8.0.3
         version: 8.0.3
-      jszip:
-        specifier: ^3.10.1
-        version: 3.10.1
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -279,9 +276,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@types/jszip':
-        specifier: ^3.4.1
-        version: 3.4.1
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.31
@@ -599,6 +593,31 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  packages/mbz-parser:
+    dependencies:
+      fast-xml-parser:
+        specifier: ^5.10.1
+        version: 5.10.1
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
+    devDependencies:
+      '@types/jszip':
+        specifier: ^3.4.1
+        version: 3.4.1
+      '@workspace/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@edge-runtime/vm@3.2.0)(@types/node@24.13.3)(lightningcss@1.32.0)
 
   packages/ui:
     dependencies:

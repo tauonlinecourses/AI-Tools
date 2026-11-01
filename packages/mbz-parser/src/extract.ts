@@ -5,12 +5,23 @@ import type { MbzVfs } from "./types";
 const GZIP_MAGIC = [0x1f, 0x8b];
 const ZIP_MAGIC = [0x50, 0x4b]; // PK
 
+/** Container format of an .mbz / backup archive. */
+export type ArchiveKind = "tgz" | "zip" | "tar";
+
 function isGzip(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === GZIP_MAGIC[0] && bytes[1] === GZIP_MAGIC[1];
 }
 
 function isZip(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === ZIP_MAGIC[0] && bytes[1] === ZIP_MAGIC[1];
+}
+
+/** Detect archive kind from magic bytes (does not unpack). */
+export function detectArchiveKind(buffer: ArrayBuffer | Uint8Array): ArchiveKind {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (isGzip(bytes)) return "tgz";
+  if (isZip(bytes)) return "zip";
+  return "tar";
 }
 
 function normalizePath(path: string): string {
@@ -120,15 +131,16 @@ export async function sha1Hex(buffer: ArrayBuffer): Promise<string> {
 
 export async function extract(
   buffer: ArrayBuffer
-): Promise<{ vfs: MbzVfs; sha1: string }> {
+): Promise<{ vfs: MbzVfs; sha1: string; archiveKind: ArchiveKind }> {
   const bytes = new Uint8Array(buffer);
   const sha1 = await sha1Hex(buffer);
+  const archiveKind = detectArchiveKind(bytes);
 
   let vfs: MbzVfs;
-  if (isGzip(bytes)) {
+  if (archiveKind === "tgz") {
     const tar = gunzipSync(bytes);
     vfs = parseTar(tar);
-  } else if (isZip(bytes)) {
+  } else if (archiveKind === "zip") {
     vfs = await extractZip(bytes);
   } else {
     // Some .mbz are plain tar
@@ -136,7 +148,7 @@ export async function extract(
   }
 
   // If archive had a single top-level folder, keep paths as-is (Moodle usually flat root)
-  return { vfs, sha1 };
+  return { vfs, sha1, archiveKind };
 }
 
 export function vfsText(vfs: MbzVfs, path: string): string | null {

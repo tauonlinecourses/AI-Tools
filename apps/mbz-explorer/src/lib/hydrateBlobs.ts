@@ -1,6 +1,5 @@
-import type { BlobStore, MbzFileRef, MbzManifest, MbzVfs } from "./mbz-parser/types";
-import { vfsGet } from "./mbz-parser/extract";
-import type { BlobUrlCache } from "./mbz-parser/decodeSection";
+import type { BlobStore, BlobUrlCache, MbzFileRef, MbzManifest, MbzVfs } from "./mbz-parser";
+import { vfsGet } from "./mbz-parser";
 
 /** Ensure blob exists and return object URL for a content hash. */
 export function ensureBlobUrl(

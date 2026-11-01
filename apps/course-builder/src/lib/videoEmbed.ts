@@ -12,7 +12,15 @@ export function detectVideoProvider(url: string | undefined): NonNullable<VideoP
 
   try {
     const host = new URL(raw).hostname.replace(/^www\./, "").toLowerCase();
-    if (host === "panopto.com" || host.endsWith(".panopto.com")) return "panopto";
+    if (
+      host === "panopto.com" ||
+      host.endsWith(".panopto.com") ||
+      host === "panopto.eu" ||
+      host.endsWith(".panopto.eu") ||
+      host.includes("panopto")
+    ) {
+      return "panopto";
+    }
   } catch {
     // fall through
   }

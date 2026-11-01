@@ -137,6 +137,14 @@ export async function updateCourse(
 }
 
 export async function deleteCourse(id: string): Promise<void> {
+  // Best-effort: remove original MBZ archive before cascading DB rows.
+  try {
+    const { getCourseMbzSource, deleteMbzArchiveForCourse } = await import("./mbzStorage");
+    const source = await getCourseMbzSource(id);
+    if (source) await deleteMbzArchiveForCourse(source);
+  } catch {
+    /* storage cleanup is best-effort */
+  }
   const { error } = await supabase.from("courses").delete().eq("id", id);
   if (error) fail("Deleting course", error);
 }

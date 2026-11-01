@@ -32,6 +32,9 @@ import {
 } from "./icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
 import { exportCourseBackup } from "../lib/courseBackup";
+import { exportCourseMbz, pickOriginalMbzFile } from "../lib/mbzExport";
+import { getCourseMbzSource } from "../lib/mbzStorage";
+import type { CourseMbzSource } from "../lib/mbzTypes";
 
 interface CourseShellProps {
   mode: CourseViewMode;
@@ -180,7 +183,9 @@ export function CourseShell({ mode }: CourseShellProps) {
     Map<string, { open: number; resolved: number }>
   >(new Map());
   const [exportingBackup, setExportingBackup] = useState(false);
+  const [exportingMbz, setExportingMbz] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [mbzSource, setMbzSource] = useState<CourseMbzSource | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
@@ -188,6 +193,9 @@ export function CourseShell({ mode }: CourseShellProps) {
       .getCourseTree(courseId)
       .then(setTree)
       .catch((e: Error) => setError(e.message));
+    getCourseMbzSource(courseId)
+      .then(setMbzSource)
+      .catch(() => setMbzSource(null));
   }, [courseId]);
 
   const refreshRollups = useCallback(() => {
@@ -400,7 +408,7 @@ export function CourseShell({ mode }: CourseShellProps) {
   }, []);
 
   async function handleExportBackup() {
-    if (!courseId || exportingBackup) return;
+    if (!courseId || exportingBackup || exportingMbz) return;
     setBackupError(null);
     setExportingBackup(true);
     try {
@@ -409,6 +417,36 @@ export function CourseShell({ mode }: CourseShellProps) {
       setBackupError(e instanceof Error ? e.message : String(e));
     } finally {
       setExportingBackup(false);
+    }
+  }
+
+  async function handleExportMbz() {
+    if (!courseId || exportingBackup || exportingMbz || !mbzSource) return;
+    setBackupError(null);
+    setExportingMbz(true);
+    try {
+      const needsFile =
+        !mbzSource.storage_backend ||
+        mbzSource.storage_backend === "reupload" ||
+        mbzSource.storage_path === "reupload";
+      let original: File | null = null;
+      if (needsFile) {
+        original = await pickOriginalMbzFile(mbzSource.source_filename);
+        if (!original) {
+          setBackupError(
+            `הייצוא בוטל — יש לבחור את קובץ ה-MBZ המקורי (${mbzSource.source_filename})`
+          );
+          return;
+        }
+      }
+      const result = await exportCourseMbz(courseId, original);
+      if (result.warnings.length > 0) {
+        setBackupError(result.warnings.join(" · "));
+      }
+    } catch (e) {
+      setBackupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportingMbz(false);
     }
   }
 
@@ -1110,16 +1148,30 @@ export function CourseShell({ mode }: CourseShellProps) {
               </span>
             )}
             {tree && (
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                disabled={exportingBackup}
-                className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
-                title="שמירת כל תוכן הקורס לקובץ במחשב"
-              >
-                <DownloadIcon className="w-4 h-4" />
-                {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 self-start">
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  disabled={exportingBackup || exportingMbz}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                  title="שמירת כל תוכן הקורס לקובץ JSON במחשב"
+                >
+                  <DownloadIcon className="w-4 h-4" />
+                  {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
+                </button>
+                {mbzSource && (
+                  <button
+                    type="button"
+                    onClick={handleExportMbz}
+                    disabled={exportingBackup || exportingMbz}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                    title={`הורדת MBZ מעודכן — יתבקש לבחור את הקובץ המקורי (${mbzSource.source_filename})`}
+                  >
+                    <DownloadIcon className="w-4 h-4" />
+                    {exportingMbz ? "מייצא MBZ..." : "הורד MBZ"}
+                  </button>
+                )}
+              </div>
             )}
             {backupError && (
               <p className="text-xs text-danger leading-snug">{backupError}</p>

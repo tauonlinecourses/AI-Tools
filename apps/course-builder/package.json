@@ -27,6 +27,7 @@
     "@tiptap/starter-kit": "^3.29.2",
     "@workspace/ai-client": "workspace:*",
     "@workspace/auth": "workspace:*",
+    "@workspace/mbz-parser": "workspace:*",
     "@workspace/ui": "workspace:*",
     "dompurify": "^3.4.13",
     "react": "^18.2.0",

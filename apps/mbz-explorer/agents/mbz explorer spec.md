@@ -10,7 +10,9 @@ MBZ Explorer inspects Moodle course backup files (`.mbz`). A user drops in a `.m
 
 **Primary use case (v1):** Understand structure — sections, activities, what each contains — and compare structure across multiple `.mbz` files.
 
-**Out of scope for v1:** Editing content, repacking `.mbz`, forum/assign/board decoders, AI chat UI, automatic TTL retention.
+**Out of scope for v1 (explorer UI):** Editing content in the explorer, forum/assign/board decoders, AI chat UI, automatic TTL retention.
+
+**Shared parser:** Extract / manifest / decode / course-tree helpers live in workspace package `@workspace/mbz-parser` (`packages/mbz-parser`). MBZ Explorer re-exports via `src/lib/mbz-parser` and `src/lib/courseTree`. The same package includes a **writer** (`vfsToMbz`, XML field/sequence patch helpers) used by **Course Builder** for preserve-and-patch MBZ export — not by the explorer UI.
 
 ---
 

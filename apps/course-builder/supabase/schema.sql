@@ -254,3 +254,44 @@ create policy "authenticated_all" on component_comments
 create policy "authenticated_all" on page_comments
   for all to authenticated
   using (true) with check (true);
+
+-- ============================================================
+-- MBZ roundtrip (see migrations/016_course_mbz_roundtrip.sql)
+-- ============================================================
+
+create table course_mbz_sources (
+  course_id uuid primary key references courses(id) on delete cascade,
+  storage_path text not null,
+  source_filename text not null,
+  source_sha1 text not null,
+  archive_kind text not null check (archive_kind in ('tgz', 'zip', 'tar')),
+  moodle_version text,
+  imported_at timestamptz not null default now(),
+  storage_backend text not null default 'reupload'
+    check (storage_backend in ('supabase', 'idb', 'reupload'))
+);
+
+create table course_mbz_bindings (
+  id uuid primary key default gen_random_uuid(),
+  course_id uuid not null references courses(id) on delete cascade,
+  entity_kind text not null check (entity_kind in ('section', 'activity')),
+  cb_id uuid not null,
+  moodle_id text not null,
+  modtype text,
+  activity_dir text,
+  payload_field text,
+  editable boolean not null default false,
+  meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table course_mbz_sources enable row level security;
+alter table course_mbz_bindings enable row level security;
+
+create policy "anon_authenticated_all" on course_mbz_sources
+  for all to anon, authenticated
+  using (true) with check (true);
+
+create policy "anon_authenticated_all" on course_mbz_bindings
+  for all to anon, authenticated
+  using (true) with check (true);

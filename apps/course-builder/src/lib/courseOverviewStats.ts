@@ -79,6 +79,8 @@ function emptyComponentTypeCounts(): Record<ComponentType, number> {
     text: 0,
     question: 0,
     image: 0,
+    text_unit: 0,
+    interactive_unit: 0,
     button: 0,
     notes_board: 0,
     word_cloud: 0,

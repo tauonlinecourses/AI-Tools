@@ -9,6 +9,7 @@ import {
   importCourseBackup,
   parseCourseBackupFile,
 } from "../lib/courseBackup";
+import { importCourseFromMbz, isMbzUploadFile } from "../lib/mbzImport";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", {
@@ -16,6 +17,11 @@ function formatDate(iso: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function looksLikeJsonBackup(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return name.endsWith(".json") || name.endsWith(".coursebuilder.json");
 }
 
 export function CoursesPage() {
@@ -28,6 +34,7 @@ export function CoursesPage() {
   const [newTitle, setNewTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
 
   useEffect(() => {
     listCourses()
@@ -62,14 +69,37 @@ export function CoursesPage() {
   async function handleImportFile(file: File | undefined) {
     if (!file || importing) return;
     setImporting(true);
+    setImportProgress(null);
     setError(null);
     try {
-      const backup = await parseCourseBackupFile(file);
-      const courseId = await trackSave(importCourseBackup(backup));
-      navigate(`/courses/${courseId}/edit`);
+      if (isMbzUploadFile(file) && !looksLikeJsonBackup(file)) {
+        const { courseId } = await trackSave(
+          importCourseFromMbz(file, (msg) => setImportProgress(msg))
+        );
+        navigate(`/courses/${courseId}/edit`);
+        return;
+      }
+      if (looksLikeJsonBackup(file) || file.type.includes("json")) {
+        const backup = await parseCourseBackupFile(file);
+        const courseId = await trackSave(importCourseBackup(backup));
+        navigate(`/courses/${courseId}/edit`);
+        return;
+      }
+      // Extension ambiguous — try MBZ magic via extract path first, then JSON
+      try {
+        const { courseId } = await trackSave(
+          importCourseFromMbz(file, (msg) => setImportProgress(msg))
+        );
+        navigate(`/courses/${courseId}/edit`);
+      } catch {
+        const backup = await parseCourseBackupFile(file);
+        const courseId = await trackSave(importCourseBackup(backup));
+        navigate(`/courses/${courseId}/edit`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setImporting(false);
+      setImportProgress(null);
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -94,7 +124,7 @@ export function CoursesPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,.coursebuilder.json,application/json"
+                accept=".json,.coursebuilder.json,.mbz,.zip,.tgz,application/json,application/zip,application/x-gzip"
                 className="hidden"
                 onChange={(e) => handleImportFile(e.target.files?.[0])}
               />
@@ -105,8 +135,9 @@ export function CoursesPage() {
                 loading={importing}
                 disabled={importing || saving}
                 onClick={() => fileInputRef.current?.click()}
+                title="ייבוא גיבוי JSON או קובץ MBZ של Moodle"
               >
-                ייבא גיבוי
+                {importing ? importProgress || "מייבא..." : "ייבא גיבוי"}
               </Button>
               <Button
                 size="md"
@@ -159,7 +190,7 @@ export function CoursesPage() {
         {courses !== null && courses.length === 0 && !creating && (
           <Card>
             <p className="text-sm text-surface-600">
-              אין עדיין קורסים. לחצו על "קורס חדש" או "ייבא גיבוי" כדי להתחיל.
+              אין עדיין קורסים. לחצו על "קורס חדש" או "ייבא גיבוי" (JSON / MBZ) כדי להתחיל.
             </p>
           </Card>
         )}

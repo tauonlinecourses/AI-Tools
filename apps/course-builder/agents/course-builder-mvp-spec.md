@@ -124,7 +124,8 @@ apps/course-builder/
       clipboard.ts               â†’ writeClipboard (rich HTML + plain, with fallback)
       api.ts                     â†’ CRUD, reorder/renumber, duplicatePage / duplicateSection / duplicateComponent, rollups, getPageTypes, getCourseOverviewData, comments (+ getCommentCountsByPage for sidebar unresolved counts), setComponentStatus / markImplemented, touchCourse
       courseOverviewStats.ts     â†’ pure aggregation for course overview (counts, averages, page/component types, workflow, implement rollup)
-      courseBackup.ts            â†’ local `.coursebuilder.json` backup: build / parse / import (new course) / download
+      courseBackup.ts            → local `.coursebuilder.json` backup: build / parse / import (new course) / download
+      mbzImport.ts / mbzExport.ts / mbzMap.ts / mbzStorage.ts → Moodle `.mbz` preserve-and-patch roundtrip (@workspace/mbz-parser)
       saveStatus.tsx             â†’ SaveStatusProvider + Hebrew nav indicator (×©×•×ž×¨ / × ×©×ž×¨×•)
     pages/
       CoursesPage.tsx            â†’ course list (counts, last updated) + create/delete + ייבא גיבוי; eye â†’ /review
@@ -235,6 +236,15 @@ Portable course dump as UTF-8 JSON (not ZIP — media is URL-only, no local bina
 - **Excluded**: auth/groups/profiles; binary media (image/video/Drive URLs are stored as strings and must remain reachable).
 - **Export**: `CourseShell` sidebar → **שמור גיבוי** → `exportCourseBackup` in `src/lib/courseBackup.ts` (assemble via `getCourseTree` + per-page components/comments → download Blob).
 - **Import**: `CoursesPage` → **ייבא גיבוי** → parse/validate → `importCourseBackup` inserts a **new** course (never overwrites). New UUIDs for all rows; on partial failure the new course is deleted (cascade). Navigates to `/courses/{id}/edit`. Does **not** call `createCourse` / `ensureHomePage` (home page comes from the backup).
+
+## MBZ import / export (preserve & patch)
+
+Same **ייבא גיבוי** control also accepts Moodle `.mbz` (and zip/tgz). Details: [`mbz-roundtrip.md`](./mbz-roundtrip.md).
+
+- **Parser/writer**: shared package `@workspace/mbz-parser` (also used by MBZ Explorer).
+- **Import**: `importCourseFromMbz` → new course; maps `page` / `label` / `resource` / `url` / `hvp` / `board` (+ section titles); stores **metadata only** in `course_mbz_sources` (`storage_backend: reupload`, SHA-1, filename) + `course_mbz_bindings`. H5P → normal pages with `text`/`question` blocks (`mbzHvpMap.ts`); Moodle `board` → `text` + `notes_board`. The original `.mbz` bytes are **not** saved to Supabase Storage or IndexedDB. HTML keeps `@@PLUGINFILE@@` tokens.
+- **Export**: **הורד MBZ** → user re-selects the original `.mbz` (SHA-1 checked) → `exportCourseMbz` patches bound XML + sequences → download. Unsupported activities stay in the archive. CB-only pages skipped (warning). Deleted mapped pages soft-omitted from `<sequence>`.
+- **Migrations**: `016`–`018` (`course_mbz_*`, `storage_backend` including `reupload`).
 
 ## Notes / caveats
 
