@@ -156,6 +156,15 @@ export function patchSectionName(xml: string, name: string): string {
   return patched;
 }
 
+/** Patch <summary> HTML in section.xml (course home / general section). */
+export function patchSectionSummary(xml: string, html: string): string {
+  const patched = patchXmlTagBody(xml, "summary", html, { escape: true });
+  if (patched == null) {
+    throw new Error("Could not find <summary> in section.xml to patch");
+  }
+  return patched;
+}
+
 /** Patch <sequence> in section.xml (comma-separated cmids). */
 export function patchSectionSequence(xml: string, cmids: string[]): string {
   const patched = patchXmlTagBody(xml, "sequence", cmids.join(","), { escape: false });

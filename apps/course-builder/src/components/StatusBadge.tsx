@@ -225,3 +225,89 @@ export function LessonWorkflowStatusToggle({
     />
   );
 }
+
+const IMPLEMENT_OPTIONS: {
+  value: Exclude<ImplementationStatus, "needs_update">;
+  label: string;
+  activeTextClass: string;
+  pillClass: string;
+}[] = [
+  {
+    value: "not_implemented",
+    label: "לא הוטמע",
+    activeTextClass: "text-surface-800",
+    pillClass: "bg-surface-200",
+  },
+  {
+    value: "implemented",
+    label: "הוטמע",
+    activeTextClass: "text-emerald-950",
+    pillClass: "bg-emerald-200",
+  },
+];
+
+/**
+ * Implement-mode page header control: same segmented toggle pattern as edit
+ * workflow status. Manual targets are לא הוטמע / הוטמע only; עבר שינוי is
+ * display/auto only (amber full-track tint, neither option selected).
+ */
+export function PageImplementationStatusToggle({
+  status,
+  onSelect,
+}: {
+  status: ImplementationStatus;
+  onSelect: (next: Exclude<ImplementationStatus, "needs_update">) => void;
+}) {
+  const needsUpdate = status === "needs_update";
+  const selectedIndex = IMPLEMENT_OPTIONS.findIndex((o) => o.value === status);
+  const selected =
+    selectedIndex >= 0
+      ? IMPLEMENT_OPTIONS[selectedIndex]
+      : null;
+  const label = needsUpdate
+    ? "עבר שינוי"
+    : (selected?.label ?? status);
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={`סטטוס הטמעת עמוד: ${label}`}
+      title="בחרו סטטוס לכל רכיבי העמוד"
+      className="relative inline-grid shrink-0 grid-cols-2 overflow-hidden rounded-control border border-surface-200 bg-white text-sm font-medium"
+    >
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 transition-[inset-inline-start,width,background-color] duration-slow ease-smooth ${
+          needsUpdate
+            ? "inset-x-0 w-full bg-amber-200"
+            : `w-1/2 ${selected?.pillClass ?? "bg-surface-200"} ${
+                selectedIndex <= 0 ? "start-0" : "start-1/2"
+              }`
+        }`}
+      />
+      {IMPLEMENT_OPTIONS.map((option) => {
+        const selectedOption = option.value === status;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selectedOption}
+            onClick={() => {
+              if (!selectedOption) onSelect(option.value);
+            }}
+            className={`relative z-10 whitespace-nowrap px-3 py-1.5 transition-colors duration-slow ease-smooth cursor-pointer ${
+              selectedOption
+                ? option.activeTextClass
+                : needsUpdate
+                  ? "text-amber-950"
+                  : "text-surface-500 hover:text-surface-700"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

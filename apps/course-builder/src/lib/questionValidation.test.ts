@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PageComponent, QuestionProps } from "./types";
 import {
+  validateLessonQuestions,
   validatePageQuestions,
   validateQuestionProps,
 } from "./questionValidation";
@@ -139,6 +140,92 @@ describe("validatePageQuestions", () => {
     const msg = validatePageQuestions(components);
     expect(msg).toContain("לפני סימון העמוד כמוכן להטמעה");
     expect(msg).toContain("שאלה 1: אפשרות 1 ריקה");
+    expect(msg).toContain("וידאו אינטרקטיבי — שאלה 1: לא נבחרה תשובה נכונה");
+  });
+});
+
+describe("validateLessonQuestions", () => {
+  it("returns null when every page's questions are valid", () => {
+    expect(
+      validateLessonQuestions([
+        {
+          title: "עמוד א",
+          components: [
+            {
+              id: "1",
+              page_id: "p1",
+              type: "question",
+              position: 0,
+              props: {
+                questionType: "single_choice",
+                options: [
+                  { id: "a", text: "א" },
+                  { id: "b", text: "ב" },
+                ],
+                correctOptionId: "a",
+              },
+              implemented_at: null,
+              updated_at: "",
+            },
+          ],
+        },
+        {
+          title: "עמוד ב",
+          components: [],
+        },
+      ])
+    ).toBeNull();
+  });
+
+  it("groups issues by page title across the lesson", () => {
+    const msg = validateLessonQuestions([
+      {
+        title: "מבוא",
+        components: [
+          {
+            id: "1",
+            page_id: "p1",
+            type: "question",
+            position: 0,
+            props: {
+              questionType: "single_choice",
+              options: [
+                { id: "a", text: "" },
+                { id: "b", text: "ב" },
+              ],
+              correctOptionId: "b",
+            },
+            implemented_at: null,
+            updated_at: "",
+          },
+        ],
+      },
+      {
+        title: "תרגול",
+        components: [
+          {
+            id: "2",
+            page_id: "p2",
+            type: "interactive_video",
+            position: 0,
+            props: {
+              questions: [
+                {
+                  questionType: "yes_no",
+                  correctOptionId: undefined,
+                },
+              ],
+            },
+            implemented_at: null,
+            updated_at: "",
+          },
+        ],
+      },
+    ]);
+    expect(msg).toContain("לפני סימון השיעור כמוכן להטמעה");
+    expect(msg).toContain('עמוד "מבוא"');
+    expect(msg).toContain("שאלה 1: אפשרות 1 ריקה");
+    expect(msg).toContain('עמוד "תרגול"');
     expect(msg).toContain("וידאו אינטרקטיבי — שאלה 1: לא נבחרה תשובה נכונה");
   });
 });

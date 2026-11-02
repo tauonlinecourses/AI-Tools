@@ -131,9 +131,15 @@ export async function createCourse(title: string): Promise<Course> {
 export async function updateCourse(
   id: string,
   fields: Partial<Pick<Course, "title" | "description">>
-): Promise<void> {
-  const { error } = await supabase.from("courses").update(fields).eq("id", id);
+): Promise<Course> {
+  const { data, error } = await supabase
+    .from("courses")
+    .update(fields)
+    .eq("id", id)
+    .select()
+    .single();
   if (error) fail("Updating course", error);
+  return data;
 }
 
 export async function deleteCourse(id: string): Promise<void> {
@@ -609,6 +615,21 @@ export async function listComponents(pageId: string): Promise<PageComponent[]> {
     .eq("page_id", pageId)
     .order("position");
   if (error) fail("Loading components", error);
+  return data ?? [];
+}
+
+/** All components for the given pages (one query), ordered by page then position. */
+export async function listComponentsForPages(
+  pageIds: string[]
+): Promise<PageComponent[]> {
+  if (pageIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("components")
+    .select("*")
+    .in("page_id", pageIds)
+    .order("page_id")
+    .order("position");
+  if (error) fail("Loading lesson components", error);
   return data ?? [];
 }
 

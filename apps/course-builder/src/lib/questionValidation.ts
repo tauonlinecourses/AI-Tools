@@ -50,14 +50,11 @@ export function validateQuestionProps(props: QuestionProps): string[] {
   return issues;
 }
 
-/**
- * Validate all `question` and interactive-video embedded questions on a page.
- * Returns a Hebrew alert message, or null when everything is OK.
- */
-export function validatePageQuestions(
+/** Issue lines for every question / interactive-video question on a page. */
+export function collectQuestionIssues(
   components: PageComponent[] | null | undefined
-): string | null {
-  if (!components?.length) return null;
+): string[] {
+  if (!components?.length) return [];
 
   const lines: string[] = [];
   let standaloneQuestionIndex = 0;
@@ -85,6 +82,40 @@ export function validatePageQuestions(
     }
   }
 
+  return lines;
+}
+
+/**
+ * Validate all `question` and interactive-video embedded questions on a page.
+ * Returns a Hebrew alert message, or null when everything is OK.
+ */
+export function validatePageQuestions(
+  components: PageComponent[] | null | undefined
+): string | null {
+  const lines = collectQuestionIssues(components);
   if (lines.length === 0) return null;
   return `יש לתקן את השאלות לפני סימון העמוד כמוכן להטמעה:\n\n${lines.join("\n")}`;
+}
+
+/**
+ * Validate questions across every page in a lesson.
+ * Returns a Hebrew alert message grouped by page title, or null when OK.
+ */
+export function validateLessonQuestions(
+  pages: Array<{ title: string; components: PageComponent[] }>
+): string | null {
+  if (pages.length === 0) return null;
+
+  const blocks: string[] = [];
+  for (const page of pages) {
+    const lines = collectQuestionIssues(page.components);
+    if (lines.length === 0) continue;
+    const title = page.title.trim() || "ללא כותרת";
+    blocks.push(
+      `עמוד "${title}":\n${lines.map((line) => `  ${line}`).join("\n")}`
+    );
+  }
+
+  if (blocks.length === 0) return null;
+  return `יש לתקן את השאלות לפני סימון השיעור כמוכן להטמעה:\n\n${blocks.join("\n\n")}`;
 }

@@ -56,6 +56,15 @@ export interface SectionBindingMeta {
   preservedCmids: string[];
   /** Moodle section number from backup. */
   sectionNumber?: number;
+  /**
+   * Moodle general / "עמוד ראשי" section — no CB lesson row;
+   * activities land on the course home page. `cb_id` is the home page id.
+   */
+  mapsToHome?: boolean;
+  /** Inclusive start of section-summary components on the CB home page. */
+  summaryComponentStart?: number;
+  /** Exclusive end of section-summary components on the CB home page. */
+  summaryComponentEnd?: number;
 }
 
 export interface ActivityBindingMeta {
@@ -65,4 +74,10 @@ export interface ActivityBindingMeta {
   introHtml?: string | null;
   /** For resource: primary attached filename if known. */
   resourceFilename?: string | null;
+  /** Activity content lives on the CB course home page. */
+  mapsToHome?: boolean;
+  /** Inclusive start index into the home page's components at import time. */
+  componentStart?: number;
+  /** Exclusive end index into the home page's components at import time. */
+  componentEnd?: number;
 }

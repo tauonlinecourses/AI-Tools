@@ -16,7 +16,7 @@ export {
   vfsListPrefix,
   type ArchiveKind,
 } from "./extract";
-export { buildManifest } from "./parseStructure";
+export { buildManifest, buildMoodlePluginfileUrl } from "./parseStructure";
 export {
   decodeSection,
   decodeFirstSections,
@@ -47,6 +47,7 @@ export {
   patchXmlTagBody,
   patchActivityXmlField,
   patchSectionName,
+  patchSectionSummary,
   patchSectionSequence,
   rebuildSequence,
   encodeVfsText,

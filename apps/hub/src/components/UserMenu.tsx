@@ -4,11 +4,15 @@ import type { Locale } from "../i18n";
 
 export function UserMenu({
   locale,
+  displayName,
   email,
   groupNames,
   onSignOut,
 }: {
   locale: Locale;
+  /** Shown next to the avatar (profiles.display_name / email local-part). */
+  displayName?: string | null;
+  /** Full email — kept in the open menu for identification. */
   email?: string | null;
   groupNames: string[];
   onSignOut: () => void;
@@ -65,11 +69,11 @@ export function UserMenu({
           </svg>
         </span>
 
-        {/* Width follows the email; multi-group names truncate to that same width. */}
+        {/* Width follows the display name; multi-group names truncate to that same width. */}
         <span className="w-fit max-w-[14rem] min-w-0 sm:max-w-[18rem]">
-          {email && (
+          {displayName && (
             <span className="block whitespace-nowrap text-sm font-medium text-surface-800">
-              {email}
+              {displayName}
             </span>
           )}
           <span

@@ -1,9 +1,10 @@
 /**
  * Split Moodle page/intro HTML into Course Builder components
- * (banner, video, image, text_unit/button, text) while preserving order.
+ * (banner, video, image, button, text_unit, interactive_unit, text) while preserving order.
  * Missing binaries are fine — pluginfile paths / URLs stay in props for implementers.
  */
 
+import { isInteractiveEmbedSrc } from "./interactiveEmbed";
 import { detectVideoProvider } from "./videoEmbed";
 import type { BlockProps, ComponentType } from "./types";
 
@@ -71,10 +72,20 @@ function looksLikeBanner(src: string, alt: string, width: number | null, height:
   return false;
 }
 
-function looksLikeImageButton(src: string, alt: string, width: number | null, height: number | null): boolean {
+/**
+ * Moodle "הפניה…" image links are interactive units (clickable thumbnail),
+ * not compact transcript/download buttons.
+ */
+function looksLikeInteractiveReferral(src: string, alt: string): boolean {
   const hay = `${src} ${alt}`.toLowerCase();
-  if (/כפתור|button|cta|תמליל|הפניה|frame\s*\d|לציר/.test(hay)) return true;
-  // Compact CTA chips (transcript / download buttons)
+  return /הפניה|ציר\s*זמן|timeline|interactive|אינטראקטיב/.test(hay);
+}
+
+function looksLikeImageButton(src: string, alt: string, width: number | null, height: number | null): boolean {
+  if (looksLikeInteractiveReferral(src, alt)) return false;
+  const hay = `${src} ${alt}`.toLowerCase();
+  // Compact CTA chips only (תמליל / Frame / כפתור) — not הפניה referrals
+  if (/כפתור|button|cta|תמליל|frame\s*\d/.test(hay)) return true;
   if (width != null && height != null && width <= 400 && height <= 120 && width / Math.max(height, 1) >= 1.5) {
     return true;
   }
@@ -284,7 +295,7 @@ type Classified =
   | { kind: "banner"; imageUrl: string; title?: string }
   | { kind: "image"; imageUrl: string }
   | { kind: "video"; url: string; title?: string }
-  | { kind: "interactive"; url: string; title?: string }
+  | { kind: "interactive"; url: string; imageUrl?: string; title?: string }
   | { kind: "text_unit"; imageUrl: string; fileUrl: string; alt?: string }
   | { kind: "button"; text: string; url: string }
   | { kind: "text"; html: string }
@@ -387,7 +398,7 @@ function classifySegment(
     }
   }
 
-  // Linked image CTA / image button: <a ...><img ...></a>
+  // Linked image: button CTA vs text_unit vs interactive_unit
   if (isLinkedImageOnlyBlock(s)) {
     const linkedImg = s.match(/<a\b([^>]*)>[\s\S]*?<img\b([^>]*)>[\s\S]*?<\/a>/i);
     if (linkedImg) {
@@ -395,15 +406,42 @@ function classifySegment(
       const imgTag = `<img ${linkedImg[2]}>`;
       const href = normalizeMediaUrl(attr(aTag, "href") ?? attr(aTag, "title"));
       const { src, alt, width, height } = readImgMeta(imgTag);
-      const label = alt || attr(aTag, "title") || "כפתור";
+      const label = (alt || attr(aTag, "title") || "").trim() || "כפתור";
 
-      // Wide linked banner image (rare) → banner; else image button → text_unit
-      if (!state.sawBanner && looksLikeBanner(src, alt, width, height) && !looksLikeImageButton(src, alt, width, height)) {
+      // Wide linked banner image (rare) → banner
+      if (
+        !state.sawBanner &&
+        looksLikeBanner(src, alt, width, height) &&
+        !looksLikeImageButton(src, alt, width, height)
+      ) {
         state.imageIndex += 1;
         state.sawBanner = true;
         return { kind: "banner", imageUrl: src, title: alt || undefined };
       }
+
       state.imageIndex += 1;
+
+      // הפניה / ציר זמן / … → יחידה אינטראקטיבית (thumbnail + external link)
+      if (looksLikeInteractiveReferral(src, alt)) {
+        return {
+          kind: "interactive",
+          url: href || "",
+          imageUrl: src,
+          title: label,
+        };
+      }
+
+      // Compact image CTAs (תמליל / Frame chips) → CB button (label from alt)
+      if (looksLikeImageButton(src, alt, width, height)) {
+        return { kind: "button", text: label, url: href || "" };
+      }
+
+      // Linked thumbnail that opens Genially / Canva / … → interactive unit
+      if (href && isInteractiveEmbedSrc(href)) {
+        return { kind: "interactive", url: href, imageUrl: src, title: label };
+      }
+
+      // Larger linked image (PDF / resource preview) → יחידת טקסט
       return {
         kind: "text_unit",
         imageUrl: src,
@@ -424,13 +462,9 @@ function classifySegment(
         state.sawBanner = true;
         return { kind: "banner", imageUrl: src, title: alt || undefined };
       }
+      // Orphan button-sized image without a link — still a button (no URL yet)
       if (looksLikeImageButton(src, alt, width, height)) {
-        return {
-          kind: "text_unit",
-          imageUrl: src,
-          fileUrl: "",
-          alt: alt || undefined,
-        };
+        return { kind: "button", text: alt.trim() || "כפתור", url: "" };
       }
       return { kind: "image", imageUrl: src };
     }
@@ -445,6 +479,10 @@ function classifySegment(
     const href = normalizeMediaUrl(attr(aTag, "href"));
     const text = onlyLink[2]!.replace(/<[^>]+>/g, "").trim();
     if (href && text && text.length <= 80) {
+      // "הפניה…" text links are interactive units, not buttons
+      if (looksLikeInteractiveReferral("", text)) {
+        return { kind: "interactive", url: href, title: text };
+      }
       return { kind: "button", text, url: href };
     }
   }
@@ -504,16 +542,17 @@ export function splitMoodleHtmlToComponents(html: string): MappedComponent[] {
         });
         break;
       case "interactive":
+        // Do not copy iframe title / alt into notes — those Moodle a11y strings
+        // (e.g. "הכירו את הצוות - הגדלת גופן") must not show under the block.
         push(out, "interactive_unit", {
           fileUrl: c.url,
-          imageUrl: "",
+          imageUrl: c.imageUrl ?? "",
         });
         break;
       case "text_unit":
         push(out, "text_unit", {
           imageUrl: c.imageUrl,
           fileUrl: c.fileUrl,
-          notes: c.alt,
         });
         break;
       case "button":

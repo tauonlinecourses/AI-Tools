@@ -1,5 +1,6 @@
 import type { ComponentType, CourseViewMode, TextUnitProps } from "../../lib/types";
 import { useEffect, useState } from "react";
+import { resolveInteractiveEmbedSrc } from "../../lib/interactiveEmbed";
 import { MediaImage } from "./MediaImage";
 
 type LinkUnitType = Extract<ComponentType, "text_unit" | "interactive_unit">;
@@ -55,10 +56,48 @@ function UnitPlaceholder({
   );
 }
 
+function InteractiveEmbed({
+  src,
+  title,
+  openHref,
+}: {
+  src: string;
+  title: string;
+  openHref?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2 w-full">
+      <div className="relative aspect-video w-full overflow-hidden bg-[#E8EAED]">
+        <iframe
+          src={src}
+          title={title}
+          className="absolute inset-0 w-full h-full border-0"
+          allow="fullscreen; clipboard-write; autoplay"
+          allowFullScreen
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      </div>
+      {openHref && (
+        <a
+          href={openHref}
+          target="_blank"
+          rel="noreferrer"
+          className="self-start text-sm font-medium text-surface-600 hover:text-surface-900 underline-offset-2 hover:underline"
+          dir="rtl"
+        >
+          פתח בחלון חדש
+        </a>
+      )}
+    </div>
+  );
+}
+
 /**
  * Link thumbnail unit (יחידת טקסט / יחידה אינטראקטיבית):
- * shows `imageUrl` like an image block; clicking opens `fileUrl` when set.
- * Empty / failed image uses a black placeholder like תמונה.
+ * - text_unit: shows `imageUrl`; click opens `fileUrl` when set.
+ * - interactive_unit: prefers clickable thumbnail when `imageUrl` is set
+ *   (הפניה / ציר זמן); otherwise embeds Genially/Canva/… from `fileUrl`.
  */
 export function TextUnitBlock({
   props,
@@ -70,6 +109,8 @@ export function TextUnitBlock({
   const imageHref = props.imageUrl?.trim() || undefined;
   const fileHref = props.fileUrl?.trim() || undefined;
   const label = defaultUnitLabel(pageTitle, unitType, unitNumber);
+  const embedSrc =
+    unitType === "interactive_unit" ? resolveInteractiveEmbedSrc(fileHref) : null;
 
   useEffect(() => {
     setImgError(false);
@@ -77,48 +118,59 @@ export function TextUnitBlock({
 
   const hasImage = !!imageHref && !imgError;
 
-  if (!hasImage) {
+  // הפניה-style interactive: image thumbnail + external link (takes priority over iframe)
+  if (hasImage) {
+    const image = (
+      <MediaImage
+        url={imageHref}
+        className="w-full aspect-video object-cover"
+        onStatus={(status) => {
+          if (status === "error") setImgError(true);
+          else if (status === "loaded") setImgError(false);
+        }}
+      />
+    );
+
+    if (fileHref) {
+      return (
+        <a
+          href={fileHref}
+          target="_blank"
+          rel="noreferrer"
+          className="block w-full cursor-pointer hover:opacity-90 transition-opacity"
+          title="פתח קישור"
+        >
+          {image}
+        </a>
+      );
+    }
+
     return (
-      <UnitPlaceholder
-        label={label}
-        hasImageUrl={false}
-        hasFileUrl={!!fileHref}
+      <div className="relative w-full">
+        {image}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-black/50 px-3 py-2">
+          <p className="text-sm font-medium text-white/90">ללא קובץ</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Iframe-only Genially / Canva / … (no thumbnail image)
+  if (embedSrc) {
+    return (
+      <InteractiveEmbed
+        src={embedSrc}
+        title={label}
+        openHref={fileHref}
       />
     );
   }
 
-  const image = (
-    <MediaImage
-      url={imageHref}
-      className="w-full aspect-video object-cover"
-      onStatus={(status) => {
-        if (status === "error") setImgError(true);
-        else if (status === "loaded") setImgError(false);
-      }}
-    />
-  );
-
-  if (fileHref) {
-    return (
-      <a
-        href={fileHref}
-        target="_blank"
-        rel="noreferrer"
-        className="block w-full cursor-pointer hover:opacity-90 transition-opacity"
-        title="פתח קובץ"
-      >
-        {image}
-      </a>
-    );
-  }
-
-  // Image set but no file — show image with "ללא קובץ" overlay cue.
   return (
-    <div className="relative w-full">
-      {image}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-black/50 px-3 py-2">
-        <p className="text-sm font-medium text-white/90">ללא קובץ</p>
-      </div>
-    </div>
+    <UnitPlaceholder
+      label={label}
+      hasImageUrl={false}
+      hasFileUrl={!!fileHref}
+    />
   );
 }

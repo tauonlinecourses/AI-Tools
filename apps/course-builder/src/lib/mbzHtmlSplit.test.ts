@@ -17,15 +17,20 @@ const HAKDAMA = `<div style="max-width: 800px; margin: 0 auto;">
 </div>`;
 
 describe("splitMoodleHtmlToComponents", () => {
-  it("splits הקדמה-style HTML into banner, text, videos, CTA, interactive", () => {
+  it("splits הקדמה-style HTML into banner, text, videos, button CTA, interactive", () => {
     const comps = splitMoodleHtmlToComponents(HAKDAMA);
     const types = comps.map((c) => c.type);
     expect(types[0]).toBe("banner");
     expect(comps[0]!.props.imageUrl).toContain("@@PLUGINFILE@@/");
     expect(types).toContain("video");
-    expect(types).toContain("text_unit");
+    expect(types).toContain("button");
     expect(types).toContain("interactive_unit");
     expect(types.filter((t) => t === "video").length).toBeGreaterThanOrEqual(2);
+    const cta = comps.find((c) => c.type === "button");
+    expect(cta?.props.text).toBe("תמליל להדפסה");
+    expect(cta?.props.url).toContain("RESOURCEVIEWBYID");
+    const genially = comps.find((c) => c.type === "interactive_unit");
+    expect(genially?.props.fileUrl).toContain("genially.com");
     expect(comps.some((c) => c.type === "text" && (c.props.html ?? "").includes("שימו לב"))).toBe(
       true
     );
@@ -75,17 +80,77 @@ describe("splitMoodleHtmlToComponents", () => {
     const types = comps.map((c) => c.type);
     expect(types[0]).toBe("banner");
     expect(types).toContain("video");
-    expect(types.filter((t) => t === "text_unit").length).toBeGreaterThanOrEqual(2);
+    expect(types.filter((t) => t === "button").length).toBeGreaterThanOrEqual(2);
     expect(comps.some((c) => c.type === "text")).toBe(true);
   });
 
-  it("maps linked image CTAs to text_unit (image buttons)", () => {
-    const html = `<div style="text-align: center;"><a href="$@RESOURCEVIEWBYID*1@$" target="_blank"><img src="@@PLUGINFILE@@/Frame%2012.png" alt="תמליל להדפסה" width="159" height="60"></a></div>`;
+  it("maps compact linked image CTAs to button", () => {
+    const html = `<div style="text-align: center; margin-top: 20px;"><a
+      title="https://moodle.tau.ac.il/2025/mod/resource/view.php?id=386155"
+      href="https://moodle.tau.ac.il/2025/mod/resource/view.php?id=386155"
+      target="_blank" rel="noopener"><img style="cursor: pointer;"
+        src="https://moodle.tau.ac.il/2025/draftfile.php/38677/user/draft/771981965/Frame%2012%20%281%29.png"
+        alt="תמליל להדפסה" width="159" height="60"></a></div>`;
+    const comps = splitMoodleHtmlToComponents(html);
+    expect(comps).toHaveLength(1);
+    expect(comps[0]!.type).toBe("button");
+    expect(comps[0]!.props.text).toBe("תמליל להדפסה");
+    expect(comps[0]!.props.url).toContain("mod/resource/view.php?id=386155");
+    expect(comps[0]!.props.align).toBe("center");
+  });
+
+  it("maps הפניה / ציר זמן linked images to interactive_unit (not button)", () => {
+    const html = `<div style="text-align: center;"><a href="https://view.genially.com/abc123" target="_blank"><img src="@@PLUGINFILE@@/timeline.png" alt="הפניה לציר זמן" width="320" height="100"></a></div>`;
+    const comps = splitMoodleHtmlToComponents(html);
+    expect(comps).toHaveLength(1);
+    expect(comps[0]!.type).toBe("interactive_unit");
+    expect(comps[0]!.props.imageUrl).toContain("@@PLUGINFILE@@/");
+    expect(comps[0]!.props.fileUrl).toContain("genially.com");
+    expect(comps[0]!.props.notes).toBeUndefined();
+
+    const short = splitMoodleHtmlToComponents(
+      `<a href="https://example.com/x"><img src="@@PLUGINFILE@@/ref.png" alt="הפניה" width="200" height="80"></a>`
+    );
+    expect(short[0]!.type).toBe("interactive_unit");
+    expect(short[0]!.props.imageUrl).toContain("ref.png");
+    expect(short[0]!.props.fileUrl).toBe("https://example.com/x");
+  });
+
+  it("maps larger linked preview images to text_unit", () => {
+    const html = `<div style="text-align: center;"><a href="https://example.com/doc.pdf" target="_blank"><img src="@@PLUGINFILE@@/preview.png" alt="מסמך לקריאה" width="640" height="360"></a></div>`;
     const comps = splitMoodleHtmlToComponents(html);
     expect(comps).toHaveLength(1);
     expect(comps[0]!.type).toBe("text_unit");
     expect(comps[0]!.props.imageUrl).toContain("@@PLUGINFILE@@/");
-    expect(comps[0]!.props.fileUrl).toContain("RESOURCEVIEWBYID");
+    expect(comps[0]!.props.fileUrl).toContain("doc.pdf");
+  });
+
+  it("maps Canva / Genially iframes to interactive_unit", () => {
+    const canva = splitMoodleHtmlToComponents(
+      `<div style="width:100%"><iframe src="https://www.canva.com/design/DAGabc/view?embed" title="מצגת"></iframe></div>`
+    );
+    expect(canva).toHaveLength(1);
+    expect(canva[0]!.type).toBe("interactive_unit");
+    expect(canva[0]!.props.fileUrl).toContain("canva.com");
+    expect(canva[0]!.props.notes).toBeUndefined();
+
+    const genially = splitMoodleHtmlToComponents(
+      `<iframe src="https://view.genially.com/69dcaa7936e807d4a5c6d199" title="הכירו את הצוות - הגדלת גופן"></iframe>`
+    );
+    expect(genially[0]!.type).toBe("interactive_unit");
+    expect(genially[0]!.props.fileUrl).toContain("genially.com");
+    expect(genially[0]!.props.notes).toBeUndefined();
+  });
+
+  it("keeps inline hyperlinks and colors inside text segments", () => {
+    const html = `<p style="font-size: 18px;">קראו את <a href="https://example.com/guide" target="_blank">המדריך</a> ושימו לב ל<span style="color: #ce2222;">הדגשה</span>.</p>`;
+    const comps = splitMoodleHtmlToComponents(html);
+    expect(comps).toHaveLength(1);
+    expect(comps[0]!.type).toBe("text");
+    const body = comps[0]!.props.html ?? "";
+    expect(body).toContain("<a ");
+    expect(body).toContain("https://example.com/guide");
+    expect(body).toContain("#ce2222");
   });
 });
 

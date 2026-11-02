@@ -20,8 +20,14 @@ import {
   type MbzEditableModtype,
   type SectionBindingMeta,
 } from "./mbzTypes";
+import { mapHomeExtraActivity, mapHomeSectionSummary } from "./mbzHomeMap";
 import { mapHvpActivityToComponents } from "./mbzHvpMap";
 import { splitMoodleHtmlToComponents, type MappedComponent } from "./mbzHtmlSplit";
+import {
+  buildPluginfileUrlMap,
+  resolveComponentMediaUrls,
+  type PluginfileUrlMap,
+} from "./mbzPluginfileUrls";
 
 export type { MappedComponent };
 
@@ -31,10 +37,24 @@ export interface MappedPage {
   title: string;
   position: number;
   components: MappedComponent[];
+  /**
+   * Content belongs on the built-in CB home page ("עמוד ראשי"),
+   * not under a lesson section.
+   */
+  isCourseHome?: boolean;
+  /**
+   * Display-only home extras (unilabel / learningmap / …) — no MBZ content rewrite.
+   * Still stored as a binding with editable=false.
+   */
+  oneWayHomeExtra?: boolean;
+  /**
+   * Section-summary HTML mapped onto home — no activity binding; ranges live on the section meta.
+   */
+  fromSectionSummary?: boolean;
   binding: {
     moodleId: string;
-    modtype: MbzEditableModtype;
-    activityDir: string;
+    modtype: MbzEditableModtype | string;
+    activityDir: string | null;
     payloadField: string | null;
     meta: ActivityBindingMeta;
   };
@@ -50,6 +70,31 @@ export interface MappedSection {
   bindingOnly?: boolean;
   /** For bindingOnly: CB section tempKey that owns the nested pages. */
   parentCbSectionTempKey?: string;
+  /**
+   * Moodle general / "עמוד ראשי" section — no CB lesson;
+   * activities go on the course home page. Binding `cb_id` = home page.
+   */
+  mapsToHome?: boolean;
+  /** Components from Moodle section &lt;summary&gt; (prepended on the CB home page). */
+  homeSummaryComponents?: MappedComponent[];
+}
+
+/** Sentinel `sectionTempKey` for pages that map onto the CB course home page. */
+export const MBZ_HOME_SECTION_TEMP = "__course_home__";
+
+/** Moodle section 0 / General / "עמוד ראשי" → CB built-in home page. */
+export function isMoodleHomeSection(section: MbzSection): boolean {
+  if (section.number === 0) return true;
+  const name = section.name.trim();
+  if (!name) return false;
+  if (/^עמוד\s*ראשי$/u.test(name)) return true;
+  if (/^(general|כללי)$/iu.test(name)) return true;
+  return false;
+}
+
+/** Moodle activity titled like the course home page. */
+export function isMoodleHomeActivityName(name: string): boolean {
+  return /^עמוד\s*ראשי$/u.test(name.trim());
 }
 
 export interface MbzCourseMapping {
@@ -61,6 +106,8 @@ export interface MbzCourseMapping {
   /** Editable cmids discovered during mapping. */
   editableCmids: string[];
   warnings: string[];
+  /** filename ↔ Moodle pluginfile https map for preview + export remap. */
+  pluginfileMap: PluginfileUrlMap;
 }
 
 function extractTagRaw(xml: string, tag: string): string | null {
@@ -249,7 +296,9 @@ function walkNodes(
   warnings: string[],
   positionStart: { n: number },
   /** mutable bag: moodleSectionId → ordered editable cmids encountered */
-  editableBySection: Map<string, string[]>
+  editableBySection: Map<string, string[]>,
+  /** When true, also map unilabel / learningmap / lti onto the CB home page. */
+  mapHomeExtras: boolean
 ): void {
   const pushPreserved = (sectionId: string, cmid: string) => {
     const list = preservedBySection.get(sectionId) ?? [];
@@ -283,7 +332,8 @@ function walkNodes(
         preservedBySection,
         warnings,
         positionStart,
-        editableBySection
+        editableBySection,
+        mapHomeExtras
       );
       continue;
     }
@@ -310,9 +360,37 @@ function walkNodes(
       );
       editableCmids.push(activity.cmid);
       pushEditable(owningMoodleSection.id, activity.cmid);
-    } else {
-      pushPreserved(owningMoodleSection.id, activity.cmid);
+      continue;
     }
+
+    // Home extras: unilabel buttons, learningmap image, LTI button — still preserved in sequence
+    if (mapHomeExtras) {
+      const extras = mapHomeExtraActivity(vfs, activity);
+      if (extras && extras.length > 0) {
+        pages.push({
+          tempKey: crypto.randomUUID(),
+          sectionTempKey: cbSectionTempKey,
+          title: activity.name || activity.type,
+          position: positionStart.n++,
+          components: extras.map((c, i) => ({ ...c, position: i })),
+          isCourseHome: true,
+          oneWayHomeExtra: true,
+          binding: {
+            moodleId: activity.cmid,
+            modtype: activity.type,
+            activityDir: activity.activityDir,
+            payloadField: null,
+            meta: {
+              originalName: activity.name,
+              parentSectionMoodleId: owningMoodleSection.id,
+              mapsToHome: true,
+            },
+          },
+        });
+      }
+    }
+
+    pushPreserved(owningMoodleSection.id, activity.cmid);
   }
 }
 
@@ -330,12 +408,38 @@ export function mapMbzToCourse(manifest: MbzManifest, vfs: MbzVfs): MbzCourseMap
 
   const top = getTopLevelSections(manifest);
   let sectionPos = 0;
-
   for (const section of top) {
-    const sectionTempKey = crypto.randomUUID();
+    const mapsToHome = isMoodleHomeSection(section);
+    const sectionTempKey = mapsToHome ? MBZ_HOME_SECTION_TEMP : crypto.randomUUID();
     const positionStart = { n: 0 };
+    const pagesBefore = pages.length;
     const nodes = buildActivityNodes(manifest, section);
     moodleSectionsNeeded.add(section.id);
+
+    // Banner + intro often live in the section summary, not in activities
+    const homeSummaryComponents = mapsToHome ? mapHomeSectionSummary(section) : [];
+    if (homeSummaryComponents.length > 0) {
+      pages.push({
+        tempKey: crypto.randomUUID(),
+        sectionTempKey: MBZ_HOME_SECTION_TEMP,
+        title: "עמוד ראשי",
+        position: positionStart.n++,
+        components: homeSummaryComponents,
+        isCourseHome: true,
+        fromSectionSummary: true,
+        binding: {
+          moodleId: section.id,
+          modtype: "section_summary",
+          activityDir: null,
+          payloadField: "summary",
+          meta: {
+            originalName: section.name || "עמוד ראשי",
+            parentSectionMoodleId: section.id,
+            mapsToHome: true,
+          },
+        },
+      });
+    }
 
     walkNodes(
       vfs,
@@ -349,14 +453,43 @@ export function mapMbzToCourse(manifest: MbzManifest, vfs: MbzVfs): MbzCourseMap
       preservedBySection,
       warnings,
       positionStart,
-      editableBySection
+      editableBySection,
+      mapsToHome
     );
+
+    // Promote pages from a home Moodle section (or named עמוד ראשי) onto CB home
+    for (let i = pagesBefore; i < pages.length; i += 1) {
+      const page = pages[i]!;
+      if (mapsToHome || isMoodleHomeActivityName(page.title) || page.oneWayHomeExtra) {
+        page.isCourseHome = true;
+        page.sectionTempKey = MBZ_HOME_SECTION_TEMP;
+        page.binding.meta.mapsToHome = true;
+      }
+    }
 
     // Also bind any delegated sections referenced under this tree
     for (const node of nodes) {
       if (node.kind === "subsection" && node.delegatedSectionId) {
         moodleSectionsNeeded.add(node.delegatedSectionId);
       }
+    }
+
+    if (mapsToHome) {
+      sections.push({
+        tempKey: MBZ_HOME_SECTION_TEMP,
+        title: section.name || "עמוד ראשי",
+        position: -1,
+        moodleId: section.id,
+        mapsToHome: true,
+        homeSummaryComponents,
+        meta: {
+          originalSequence: [...section.activityRefs],
+          preservedCmids: [...new Set(preservedBySection.get(section.id) ?? [])],
+          sectionNumber: section.number,
+          mapsToHome: true,
+        },
+      });
+      continue;
     }
 
     sections.push({
@@ -370,6 +503,15 @@ export function mapMbzToCourse(manifest: MbzManifest, vfs: MbzVfs): MbzCourseMap
         sectionNumber: section.number,
       },
     });
+  }
+
+  // Activity titled עמוד ראשי under a normal lesson → still land on CB home
+  for (const page of pages) {
+    if (page.isCourseHome) continue;
+    if (!isMoodleHomeActivityName(page.title)) continue;
+    page.isCourseHome = true;
+    page.sectionTempKey = MBZ_HOME_SECTION_TEMP;
+    page.binding.meta.mapsToHome = true;
   }
 
   // Extra section bindings for delegated Moodle sections (no CB section row)
@@ -398,6 +540,32 @@ export function mapMbzToCourse(manifest: MbzManifest, vfs: MbzVfs): MbzCourseMap
 
   void editableBySection;
 
+  // Resolve @@PLUGINFILE@@ → live Moodle pluginfile.php URLs for CB preview (no binaries stored)
+  const pluginfileMap = buildPluginfileUrlMap(manifest);
+  for (const page of pages) {
+    page.components = resolveComponentMediaUrls(
+      page.components.map((c) => ({
+        type: c.type,
+        position: c.position,
+        props: c.props as Record<string, unknown>,
+      })),
+      pluginfileMap
+    ).map((c, i) => ({
+      type: c.type as MappedComponent["type"],
+      position: i,
+      props: c.props as MappedComponent["props"],
+    }));
+  }
+  if (!pluginfileMap.wwwroot) {
+    warnings.push(
+      "לא נמצא original_wwwroot בגיבוי — תמונות @@PLUGINFILE@@ לא יוצגו כקישורי Moodle."
+    );
+  } else if (Object.keys(pluginfileMap.byFilename).length === 0) {
+    warnings.push(
+      "לא ניתן לבנות קישורי pluginfile לקבצים (חסרים contextid/component ב-files.xml)."
+    );
+  }
+
   return {
     courseTitle: manifest.course.fullname || "קורס מיובא",
     courseDescription: manifest.course.shortname || null,
@@ -406,5 +574,6 @@ export function mapMbzToCourse(manifest: MbzManifest, vfs: MbzVfs): MbzCourseMap
     pages,
     editableCmids,
     warnings,
+    pluginfileMap,
   };
 }

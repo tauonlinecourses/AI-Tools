@@ -169,6 +169,11 @@ export function HubPage({ locale }: { locale: Locale }) {
               <div className="flex items-center gap-2 shrink-0" dir="ltr">
                 <UserMenu
                   locale={locale}
+                  displayName={
+                    user?.email?.includes("@")
+                      ? user.email.split("@")[0]
+                      : user?.email
+                  }
                   email={user?.email}
                   groupNames={groups.map((g) => g.name)}
                   onSignOut={() => void signOut()}

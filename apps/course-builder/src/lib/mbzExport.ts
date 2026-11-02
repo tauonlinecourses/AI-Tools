@@ -8,6 +8,7 @@ import {
   sha1Hex,
   patchActivityXmlField,
   patchSectionName,
+  patchSectionSummary,
   patchSectionSequence,
   rebuildSequence,
   vfsGet,
@@ -20,6 +21,13 @@ import {
   getCourseMbzSource,
   listCourseMbzBindings,
 } from "./mbzStorage";
+import {
+  MBZ_PLUGINFILE_MAP_MOODLE_ID,
+  pluginfileMapFromMeta,
+  remapHtmlPluginfileUrls,
+  remapUrlToPluginfileToken,
+  type PluginfileUrlMap,
+} from "./mbzPluginfileUrls";
 import type { ActivityBindingMeta, CourseMbzSource, SectionBindingMeta } from "./mbzTypes";
 import { isHomePage, type BlockProps, type Page, type PageComponent } from "./types";
 
@@ -56,10 +64,98 @@ function downloadBytes(bytes: Uint8Array, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-function textHtmlFromComponents(components: PageComponent[]): string {
-  const text = components.find((c) => c.type === "text");
-  const props = (text?.props ?? {}) as BlockProps;
-  return props.html ?? props.markdown ?? "";
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Rebuild Moodle-ish HTML from an ordered CB component slice (home summary / page body). */
+function textHtmlFromComponents(
+  components: PageComponent[],
+  pluginfileMap?: PluginfileUrlMap | null
+): string {
+  const media = (url: string | undefined) =>
+    escapeAttr(remapUrlToPluginfileToken(url, pluginfileMap));
+
+  const parts: string[] = [];
+  for (const c of components) {
+    const props = (c.props ?? {}) as BlockProps;
+    switch (c.type) {
+      case "text": {
+        let html = props.html ?? (props.markdown ? `<p>${escapeAttr(props.markdown)}</p>` : "");
+        html = remapHtmlPluginfileUrls(html, pluginfileMap);
+        if (html.trim()) parts.push(html);
+        break;
+      }
+      case "banner":
+      case "image": {
+        const src = props.imageUrl?.trim();
+        if (src) {
+          const alt = escapeAttr(props.title?.trim() || "");
+          parts.push(`<p><img src="${media(src)}" alt="${alt}" class="img-fluid"></p>`);
+        }
+        break;
+      }
+      case "button": {
+        const href = props.url?.trim() || "";
+        const label = escapeAttr(props.text?.trim() || "כפתור");
+        if (href) {
+          parts.push(
+            `<p style="text-align: center;"><a href="${media(href)}" target="_blank" rel="noopener">${label}</a></p>`
+          );
+        } else {
+          parts.push(`<p style="text-align: center;">${label}</p>`);
+        }
+        break;
+      }
+      case "video": {
+        const src = props.url?.trim();
+        if (src) {
+          parts.push(
+            `<div style="position: relative; width: 100%; height: 0; padding-bottom: 56.25%;"><iframe src="${media(src)}" style="position:absolute;inset:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>`
+          );
+        }
+        break;
+      }
+      case "interactive_unit": {
+        const embed = props.fileUrl?.trim();
+        const img = props.imageUrl?.trim();
+        if (embed && !img) {
+          parts.push(
+            `<div style="width: 100%;"><iframe src="${media(embed)}" style="width:100%;min-height:400px;border:0" allowfullscreen></iframe></div>`
+          );
+        } else if (img) {
+          const hrefAttr = embed ? ` href="${media(embed)}"` : "";
+          const imgTag = `<img src="${media(img)}" alt="" class="img-fluid">`;
+          parts.push(
+            hrefAttr
+              ? `<p style="text-align: center;"><a${hrefAttr} target="_blank" rel="noopener">${imgTag}</a></p>`
+              : `<p>${imgTag}</p>`
+          );
+        }
+        break;
+      }
+      case "text_unit": {
+        const img = props.imageUrl?.trim();
+        const href = props.fileUrl?.trim();
+        if (img) {
+          const imgTag = `<img src="${media(img)}" alt="" class="img-fluid">`;
+          parts.push(
+            href
+              ? `<p style="text-align: center;"><a href="${media(href)}" target="_blank" rel="noopener">${imgTag}</a></p>`
+              : `<p>${imgTag}</p>`
+          );
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return parts.join("\n");
 }
 
 function buttonUrlFromComponents(components: PageComponent[]): string {
@@ -173,8 +269,20 @@ export async function exportCourseMbz(
   const tree = await getCourseTree(courseId);
   const warnings: string[] = [];
 
+  const pluginfileMapBinding = bindings.find(
+    (b) => b.moodle_id === MBZ_PLUGINFILE_MAP_MOODLE_ID
+  );
+  const pluginfileMap = pluginfileMapFromMeta(
+    (pluginfileMapBinding?.meta ?? null) as Record<string, unknown> | null
+  );
+
   const sectionBindings = bindings.filter((b) => b.entity_kind === "section");
-  const activityBindings = bindings.filter((b) => b.entity_kind === "activity" && b.editable);
+  const activityBindings = bindings.filter(
+    (b) =>
+      b.entity_kind === "activity" &&
+      b.editable &&
+      b.moodle_id !== MBZ_PLUGINFILE_MAP_MOODLE_ID
+  );
 
   const pageById = new Map(tree.pages.map((p) => [p.id, p]));
   const boundPageIds = new Set(activityBindings.map((b) => b.cb_id));
@@ -190,32 +298,75 @@ export async function exportCourseMbz(
   const buffer = await loadOriginalArchiveBuffer(source, originalFile);
   const { vfs } = await extract(buffer);
 
-  // Patch section titles for editable (non-bindingOnly) section bindings
+  const componentsByPage = new Map<string, PageComponent[]>();
+
+  // Patch section titles / home section summary
   for (const binding of sectionBindings) {
-    const meta = binding.meta as unknown as SectionBindingMeta & { bindingOnly?: boolean };
+    const meta = binding.meta as unknown as SectionBindingMeta & {
+      bindingOnly?: boolean;
+      mapsToHome?: boolean;
+    };
     if (meta.bindingOnly) continue;
-    const cbSection = tree.sections.find((s) => s.id === binding.cb_id);
-    if (!cbSection) continue;
     const sectionPath = `sections/section_${binding.moodle_id}/section.xml`;
     const xml = vfsText(vfs, sectionPath);
     if (!xml) {
       warnings.push(`חסר section.xml עבור ${binding.moodle_id}`);
       continue;
     }
+
+    if (meta.mapsToHome) {
+      // Rewrite Moodle section summary from the CB home-page component slice
+      if (
+        typeof meta.summaryComponentStart === "number" &&
+        typeof meta.summaryComponentEnd === "number"
+      ) {
+        const homePage = pageById.get(binding.cb_id);
+        if (homePage) {
+          let comps = componentsByPage.get(homePage.id);
+          if (!comps) {
+            comps = await listComponents(homePage.id);
+            componentsByPage.set(homePage.id, comps);
+          }
+          const slice = comps.slice(meta.summaryComponentStart, meta.summaryComponentEnd);
+          const html = textHtmlFromComponents(slice, pluginfileMap);
+          try {
+            vfs.set(sectionPath, encodeVfsText(patchSectionSummary(xml, html)));
+          } catch {
+            warnings.push(`לא ניתן לעדכן summary עבור section ${binding.moodle_id}`);
+          }
+        }
+      }
+      continue;
+    }
+
+    const cbSection = tree.sections.find((s) => s.id === binding.cb_id);
+    if (!cbSection) continue;
     let next = patchSectionName(xml, cbSection.title);
     vfs.set(sectionPath, encodeVfsText(next));
   }
 
   // Patch activities
-  const componentsByPage = new Map<string, PageComponent[]>();
   for (const binding of activityBindings) {
     const page = pageById.get(binding.cb_id);
     if (!page) continue; // deleted — soft-omit later
-    let comps = componentsByPage.get(page.id);
-    if (!comps) {
-      comps = await listComponents(page.id);
-      componentsByPage.set(page.id, comps);
+    let allComps = componentsByPage.get(page.id);
+    if (!allComps) {
+      allComps = await listComponents(page.id);
+      componentsByPage.set(page.id, allComps);
     }
+
+    const meta = binding.meta as unknown as ActivityBindingMeta;
+    // Home-mapped activities each own a slice of the shared עמוד ראשי components
+    const comps =
+      meta.mapsToHome &&
+      typeof meta.componentStart === "number" &&
+      typeof meta.componentEnd === "number"
+        ? allComps.slice(meta.componentStart, meta.componentEnd)
+        : allComps;
+    // Keep original Moodle activity name when content lives on the shared home page
+    const moodleTitle = meta.mapsToHome
+      ? meta.originalName || page.title
+      : page.title;
 
     const dir = binding.activity_dir;
     if (!dir) continue;
@@ -233,34 +384,34 @@ export async function exportCourseMbz(
     // H5P / board: keep original payload (CB mapping is one-way for content); still sync names.
     if (modtype === "hvp") {
       try {
-        nextXml = patchModuleName(nextXml, page.title);
+        nextXml = patchModuleName(nextXml, moodleTitle);
       } catch {
         /* ignore */
       }
       vfs.set(payloadPath, encodeVfsText(nextXml));
       const moduleXml = vfsText(vfs, modulePath);
       if (moduleXml) {
-        vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, page.title)));
+        vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, moodleTitle)));
       }
       continue;
     }
 
     if (modtype === "board") {
-      const html = textHtmlFromComponents(comps);
+      const html = textHtmlFromComponents(comps, pluginfileMap);
       try {
         nextXml = patchActivityXmlField(nextXml, binding.payload_field || "intro", html);
       } catch {
         /* keep original intro */
       }
       try {
-        nextXml = patchModuleName(nextXml, page.title);
+        nextXml = patchModuleName(nextXml, moodleTitle);
       } catch {
         /* ignore */
       }
       vfs.set(payloadPath, encodeVfsText(nextXml));
       const moduleXml = vfsText(vfs, modulePath);
       if (moduleXml) {
-        vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, page.title)));
+        vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, moodleTitle)));
       }
       continue;
     }
@@ -270,8 +421,7 @@ export async function exportCourseMbz(
       if (binding.payload_field === "externalurl" || binding.payload_field == null) {
         nextXml = patchActivityXmlField(nextXml, "externalurl", url);
       }
-      const meta = binding.meta as unknown as ActivityBindingMeta;
-      const introComp = textHtmlFromComponents(comps);
+      const introComp = textHtmlFromComponents(comps, pluginfileMap);
       if (introComp || meta.introHtml != null) {
         try {
           nextXml = patchActivityXmlField(nextXml, "intro", introComp);
@@ -281,17 +431,17 @@ export async function exportCourseMbz(
       }
     } else if (modtype === "resource") {
       const field = binding.payload_field || "intro";
-      const html = textHtmlFromComponents(comps);
+      const html = textHtmlFromComponents(comps, pluginfileMap);
       nextXml = patchActivityXmlField(nextXml, field, html);
     } else {
       const field = binding.payload_field || (modtype === "label" ? "intro" : "content");
-      const html = textHtmlFromComponents(comps);
+      const html = textHtmlFromComponents(comps, pluginfileMap);
       nextXml = patchActivityXmlField(nextXml, field, html);
     }
 
-    // Sync activity name from page title
+    // Sync activity name from page title (or original Moodle name for home slices)
     try {
-      nextXml = patchModuleName(nextXml, page.title);
+      nextXml = patchModuleName(nextXml, moodleTitle);
     } catch {
       /* ignore */
     }
@@ -299,7 +449,7 @@ export async function exportCourseMbz(
 
     const moduleXml = vfsText(vfs, modulePath);
     if (moduleXml) {
-      vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, page.title)));
+      vfs.set(modulePath, encodeVfsText(patchModuleName(moduleXml, moodleTitle)));
     }
   }
 
@@ -312,9 +462,10 @@ export async function exportCourseMbz(
     if (!xml) continue;
 
     // Editable activities whose parentSectionMoodleId matches this moodle section
+    // (exclude one-way home extras — they stay in preserved sequence slots)
     const sectionActivityBindings = activityBindings.filter((b) => {
-      const m = b.meta as unknown as ActivityBindingMeta;
-      return m.parentSectionMoodleId === binding.moodle_id;
+      const m = b.meta as unknown as ActivityBindingMeta & { oneWayHomeExtra?: boolean };
+      return m.parentSectionMoodleId === binding.moodle_id && !m.oneWayHomeExtra;
     });
     const editableCmidSet = new Set(sectionActivityBindings.map((b) => b.moodle_id));
 

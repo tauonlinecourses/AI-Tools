@@ -308,6 +308,9 @@ function TextEditor({
       Link.configure({
         openOnClick: false,
         autolink: true,
+        // Keep Moodle / relative / token hrefs imported from MBZ HTML.
+        isAllowedUri: (url) => Boolean(url?.trim()),
+        shouldAutoLink: (url) => /^https?:\/\//i.test(url.trim()),
         HTMLAttributes: {
           target: "_blank",
           rel: "noopener noreferrer",

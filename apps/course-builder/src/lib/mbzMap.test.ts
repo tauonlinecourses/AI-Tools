@@ -9,7 +9,8 @@ import {
   vfsToMbz,
   type MbzVfs,
 } from "@workspace/mbz-parser";
-import { mapMbzToCourse } from "./mbzMap";
+import { isMoodleHomeSection, mapMbzToCourse } from "./mbzMap";
+import type { MbzSection } from "@workspace/mbz-parser";
 
 function utf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
@@ -33,6 +34,11 @@ function buildFixtureVfs(): MbzVfs {
     </details>
     <contents>
       <activities>
+        <activity>
+          <moduleid>5</moduleid>
+          <modulename>label</modulename>
+          <title>עמוד ראשי</title>
+        </activity>
         <activity>
           <moduleid>10</moduleid>
           <modulename>page</modulename>
@@ -82,6 +88,20 @@ function buildFixtureVfs(): MbzVfs {
   );
   vfs.set("files/aa/aabbccddeeff00112233445566778899aabbccdd", utf8("fakepng"));
 
+  // Section 0: Moodle home / עמוד ראשי (maps onto CB built-in home page)
+  vfs.set(
+    "sections/section_0/section.xml",
+    utf8(`<?xml version="1.0"?>
+<section id="0">
+  <number>0</number>
+  <name>עמוד ראשי</name>
+  <summary></summary>
+  <sequence>5</sequence>
+  <component>$@NULL@$</component>
+  <itemid>$@NULL@$</itemid>
+</section>`)
+  );
+
   // Section 1: page, forum, label, subsection
   vfs.set(
     "sections/section_1/section.xml",
@@ -122,6 +142,15 @@ function buildFixtureVfs(): MbzVfs {
   <component>$@NULL@$</component>
   <itemid>$@NULL@$</itemid>
 </section>`)
+  );
+
+  vfs.set(
+    "activities/label_5/label.xml",
+    utf8(`<?xml version="1.0"?><activity><label id="5"><name>עמוד ראשי</name><intro>&lt;p&gt;Home welcome&lt;/p&gt;</intro></label></activity>`)
+  );
+  vfs.set(
+    "activities/label_5/module.xml",
+    utf8(`<?xml version="1.0"?><module id="5"><name>עמוד ראשי</name></module>`)
   );
 
   const pageHtml =
@@ -183,6 +212,29 @@ function buildFixtureVfs(): MbzVfs {
   return vfs;
 }
 
+describe("isMoodleHomeSection", () => {
+  function sec(number: number, name: string): MbzSection {
+    return {
+      id: String(number),
+      number,
+      name,
+      summaryHtml: null,
+      summaryStatus: "decoded",
+      summaryRaw: null,
+      activityRefs: [],
+      delegatedBy: null,
+    };
+  }
+
+  it("detects section 0, עמוד ראשי, General, כללי", () => {
+    expect(isMoodleHomeSection(sec(0, ""))).toBe(true);
+    expect(isMoodleHomeSection(sec(1, "עמוד ראשי"))).toBe(true);
+    expect(isMoodleHomeSection(sec(1, "General"))).toBe(true);
+    expect(isMoodleHomeSection(sec(1, "כללי"))).toBe(true);
+    expect(isMoodleHomeSection(sec(1, "Lesson One"))).toBe(false);
+  });
+});
+
 describe("mapMbzToCourse", () => {
   it("maps editable activities and preserves pluginfile tokens", () => {
     const vfs = buildFixtureVfs();
@@ -194,10 +246,20 @@ describe("mapMbzToCourse", () => {
     const mapping = mapMbzToCourse(manifest, vfs);
 
     expect(mapping.courseTitle).toBe("Fixture Course");
-    // Two CB sections (top-level) + binding-only delegated
-    const cbSections = mapping.sections.filter((s) => !s.bindingOnly);
+    // Two CB lesson sections + home (mapsToHome) + binding-only delegated
+    const cbSections = mapping.sections.filter((s) => !s.bindingOnly && !s.mapsToHome);
     expect(cbSections).toHaveLength(2);
+    expect(mapping.sections.some((s) => s.mapsToHome)).toBe(true);
     expect(mapping.sections.some((s) => s.bindingOnly)).toBe(true);
+
+    const homePages = mapping.pages.filter((p) => p.isCourseHome);
+    expect(homePages.length).toBeGreaterThanOrEqual(1);
+    expect(
+      homePages.some((p) =>
+        p.components.some((c) => (c.props.html as string | undefined)?.includes("Home welcome"))
+      )
+    ).toBe(true);
+    expect(homePages.every((p) => p.binding.meta.mapsToHome)).toBe(true);
 
     const titles = mapping.pages.map((p) => p.title);
     expect(titles).toContain("Welcome Page");
@@ -208,6 +270,7 @@ describe("mapMbzToCourse", () => {
     expect(titles).not.toContain("Nested Folder");
 
     const page = mapping.pages.find((p) => p.title === "Welcome Page")!;
+    expect(page.isCourseHome).toBeFalsy();
     // HTML is split: lone pluginfile image → banner/image component
     const media = page.components.find(
       (c) => c.type === "banner" || c.type === "image" || c.type === "text"

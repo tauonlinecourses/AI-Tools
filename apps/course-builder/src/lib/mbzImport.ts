@@ -10,7 +10,11 @@ import {
   type BlobUrlCache,
 } from "@workspace/mbz-parser";
 import { supabase } from "./supabase";
-import { mapMbzToCourse } from "./mbzMap";
+import { mapMbzToCourse, MBZ_HOME_SECTION_TEMP } from "./mbzMap";
+import {
+  MBZ_PLUGINFILE_MAP_MOODLE_ID,
+  pluginfileMapToMeta,
+} from "./mbzPluginfileUrls";
 import { insertCourseMbzBindings, insertCourseMbzSource } from "./mbzStorage";
 
 function fail(message: string): never {
@@ -49,16 +53,20 @@ export async function importCourseFromMbz(
 
   const sectionIdMap = new Map<string, string>();
   const pageIdMap = new Map<string, string>();
+  const homePageId = crypto.randomUUID();
 
   for (const s of mapping.sections) {
-    if (s.bindingOnly) continue;
+    if (s.bindingOnly || s.mapsToHome) continue;
     sectionIdMap.set(s.tempKey, crypto.randomUUID());
   }
   for (const p of mapping.pages) {
+    if (p.isCourseHome) {
+      // All home-mapped Moodle activities share the CB home page id
+      pageIdMap.set(p.tempKey, homePageId);
+      continue;
+    }
     pageIdMap.set(p.tempKey, crypto.randomUUID());
   }
-
-  const homePageId = crypto.randomUUID();
 
   onProgress?.("יוצר קורס…");
   const { data: course, error: courseErr } = await supabase
@@ -75,7 +83,7 @@ export async function importCourseFromMbz(
   const courseId = course.id as string;
 
   try {
-    const cbSections = mapping.sections.filter((s) => !s.bindingOnly);
+    const cbSections = mapping.sections.filter((s) => !s.bindingOnly && !s.mapsToHome);
     if (cbSections.length > 0) {
       const sectionRows = cbSections.map((s) => ({
         id: sectionIdMap.get(s.tempKey)!,
@@ -87,6 +95,9 @@ export async function importCourseFromMbz(
       if (error) fail(`ייבוא שיעורים נכשל: ${error.message}`);
     }
 
+    const lessonPages = mapping.pages.filter((p) => !p.isCourseHome);
+    const homePages = mapping.pages.filter((p) => p.isCourseHome);
+
     const pageRows = [
       {
         id: homePageId,
@@ -97,7 +108,7 @@ export async function importCourseFromMbz(
         notes: null as string | null,
         workflow_status: "in_progress",
       },
-      ...mapping.pages.map((p) => ({
+      ...lessonPages.map((p) => ({
         id: pageIdMap.get(p.tempKey)!,
         section_id: sectionIdMap.get(p.sectionTempKey)!,
         course_id: null as string | null,
@@ -119,7 +130,37 @@ export async function importCourseFromMbz(
       position: number;
       props: Record<string, unknown>;
     }[] = [];
-    for (const p of mapping.pages) {
+
+    // Merge Moodle home-section content onto the built-in עמוד ראשי
+    // (section summary first, then unilabel / learningmap / editable activities)
+    let homePosition = 0;
+    for (const p of homePages) {
+      const start = homePosition;
+      for (const c of p.components) {
+        componentRows.push({
+          id: crypto.randomUUID(),
+          page_id: homePageId,
+          type: c.type,
+          position: homePosition++,
+          props: c.props as Record<string, unknown>,
+        });
+      }
+      p.binding.meta.mapsToHome = true;
+      p.binding.meta.componentStart = start;
+      p.binding.meta.componentEnd = homePosition;
+
+      if (p.fromSectionSummary) {
+        const homeSection = mapping.sections.find(
+          (s) => s.mapsToHome && s.moodleId === p.binding.meta.parentSectionMoodleId
+        );
+        if (homeSection) {
+          homeSection.meta.summaryComponentStart = start;
+          homeSection.meta.summaryComponentEnd = homePosition;
+        }
+      }
+    }
+
+    for (const p of lessonPages) {
       const pageId = pageIdMap.get(p.tempKey)!;
       for (const c of p.components) {
         componentRows.push({
@@ -155,9 +196,18 @@ export async function importCourseFromMbz(
     const bindings: Parameters<typeof insertCourseMbzBindings>[0] = [];
 
     for (const s of mapping.sections) {
-      const cbId = s.bindingOnly
-        ? sectionIdMap.get(s.parentCbSectionTempKey!)!
-        : sectionIdMap.get(s.tempKey)!;
+      let cbId: string;
+      if (s.mapsToHome) {
+        cbId = homePageId;
+      } else if (s.bindingOnly) {
+        // Delegated under home → bind to home page; else to parent CB section
+        cbId =
+          s.parentCbSectionTempKey === MBZ_HOME_SECTION_TEMP
+            ? homePageId
+            : sectionIdMap.get(s.parentCbSectionTempKey!)!;
+      } else {
+        cbId = sectionIdMap.get(s.tempKey)!;
+      }
       bindings.push({
         course_id: courseId,
         entity_kind: "section",
@@ -166,15 +216,18 @@ export async function importCourseFromMbz(
         modtype: null,
         activity_dir: null,
         payload_field: null,
-        editable: !s.bindingOnly,
+        editable: !s.bindingOnly && !s.mapsToHome,
         meta: {
           ...s.meta,
           bindingOnly: !!s.bindingOnly,
+          mapsToHome: !!s.mapsToHome,
         },
       });
     }
 
     for (const p of mapping.pages) {
+      // Section-summary HTML is patched via the section binding, not an activity row
+      if (p.fromSectionSummary) continue;
       bindings.push({
         course_id: courseId,
         entity_kind: "activity",
@@ -183,8 +236,27 @@ export async function importCourseFromMbz(
         modtype: p.binding.modtype,
         activity_dir: p.binding.activityDir,
         payload_field: p.binding.payloadField,
-        editable: true,
-        meta: p.binding.meta as unknown as Record<string, unknown>,
+        // unilabel / learningmap / lti: show in CB, keep original Moodle XML on export
+        editable: !p.oneWayHomeExtra,
+        meta: {
+          ...(p.binding.meta as unknown as Record<string, unknown>),
+          oneWayHomeExtra: !!p.oneWayHomeExtra,
+        },
+      });
+    }
+
+    // Course-level map: Moodle pluginfile https ↔ @@PLUGINFILE@@ filename (export remap)
+    if (Object.keys(mapping.pluginfileMap.byFilename).length > 0) {
+      bindings.push({
+        course_id: courseId,
+        entity_kind: "activity",
+        cb_id: homePageId,
+        moodle_id: MBZ_PLUGINFILE_MAP_MOODLE_ID,
+        modtype: null,
+        activity_dir: null,
+        payload_field: null,
+        editable: false,
+        meta: pluginfileMapToMeta(mapping.pluginfileMap),
       });
     }
 

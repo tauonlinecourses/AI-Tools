@@ -7,6 +7,7 @@ import type {
   Section,
 } from "../lib/types";
 import * as api from "../lib/api";
+import { validateLessonQuestions } from "../lib/questionValidation";
 import { useSaveStatus } from "../lib/saveStatus";
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
@@ -116,18 +117,42 @@ export function SectionOverview({
   async function setLessonWorkflowStatus(nextStatus: PageWorkflowStatus) {
     if (pages.length === 0 || workflowSaving) return;
     if (nextStatus === lessonWorkflowStatus) return;
-    const nextLabel =
-      nextStatus === "ready_for_implementation" ? "מוכן להטמעה" : "בעבודה";
-    if (
-      !window.confirm(
-        `האם לשנות את הסטטוס של כל עמודי השיעור ל"${nextLabel}"?`
-      )
-    ) {
-      return;
-    }
+
     setWorkflowSaving(true);
     setError(null);
     try {
+      if (nextStatus === "ready_for_implementation") {
+        const components = await api.listComponentsForPages(
+          pages.map((page) => page.id)
+        );
+        const byPage = new Map<string, typeof components>();
+        for (const component of components) {
+          const list = byPage.get(component.page_id) ?? [];
+          list.push(component);
+          byPage.set(component.page_id, list);
+        }
+        const message = validateLessonQuestions(
+          pages.map((page) => ({
+            title: page.title,
+            components: byPage.get(page.id) ?? [],
+          }))
+        );
+        if (message) {
+          window.alert(message);
+          return;
+        }
+      }
+
+      const nextLabel =
+        nextStatus === "ready_for_implementation" ? "מוכן להטמעה" : "בעבודה";
+      if (
+        !window.confirm(
+          `האם לשנות את הסטטוס של כל עמודי השיעור ל"${nextLabel}"?`
+        )
+      ) {
+        return;
+      }
+
       await trackSave(
         api.updateSectionPagesWorkflowStatus(section.id, nextStatus)
       );
