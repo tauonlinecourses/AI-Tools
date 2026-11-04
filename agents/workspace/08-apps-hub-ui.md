@@ -67,7 +67,7 @@ Staff sign-in form (email + password via platform auth). Header block is **cente
 | `src/components/ToolCard.tsx` | One catalog card + open/handoff click handling. |
 | `src/components/ToolIcon.tsx` | Card icon (`iconPaths` by `tool.icon`, falls back to `bolt`). |
 | `src/components/UserMenu.tsx` | Avatar + display name/teams dropdown. |
-| `src/components/ApprovedOnly.tsx` | Route guard for hub-hosted tools (MBZ, Dictionary). |
+| `src/components/ApprovedOnly.tsx` | Route guard for hub-hosted tools (MBZ, Dictionary, Video Transcriber). |
 | `src/lib/openTool.ts` | `handoffToTool(tool)` — mints the hub → tool handoff (`/api/auth-handoff` in dev, absolute URL in prod) and resolves to the target URL. Used by `ToolCard` and the `returnUrl` flow; callers handle `hubPath` (in-app navigate) first and set `window.location.href` themselves. |
 
 Shared launcher UI driven by `locale`:
@@ -80,6 +80,7 @@ Shared launcher UI driven by `locale`:
 - **Admin button** — gear icon link to `/admin` (or `/en/admin`), placed **visually to the right** of the user menu (`dir="ltr"` on the header actions cluster). Visible only when `usePlatformAuth().isAdmin` is true (membership in group slug `admin-all-tools`).
 - **MBZ host / route** — wrapped in `ApprovedOnly` (pending/rejected blocked). Host: unsigned → `LoginPage`; signed-in without `mbz-explorer` entitlement → `<Navigate>` to hub home; otherwise mounts the MBZ app.
 - **Dictionary Tool host / route** — same pattern at `/dictionary-tool/*` (`DictionaryToolHost`, entitlement id `dictionary-tool`).
+- **Video Transcriber host / route** — same pattern at `/video-transcriber/*` (`VideoTranscriberHost`, entitlement id `video-transcriber`). Guide-only page (`src/pages/VideoTranscriberPage.tsx`): Hebrew title + description header, install steps, then a centered SharePoint folder button; no zip in the hub repo.
 
 ### Admin page (`/admin`, `/en/admin`)
 

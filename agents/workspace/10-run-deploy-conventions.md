@@ -21,7 +21,7 @@ Implement a small utility or single-page tool as a route in `apps/hub` (for exam
 - does not need isolated environment variables, serverless APIs, or scaling; and
 - is simple enough that it does not justify a standalone application.
 
-It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and list it in `tools.config.ts` with `hubPath` (e.g. `"/mbz-explorer"`) instead of a Vercel `url`. Opening a hub-hosted tool navigates in-app (same Platform session — no auth handoff). **MBZ Explorer** and **Dictionary Tool** are the references: source stays in `apps/mbz-explorer` / `apps/dictionary-tool`; the hub imports them and mounts `/mbz-explorer/*` and `/dictionary-tool/*`.
+It is built and deployed with the existing Hub Vercel project. Register its route in the Hub router and list it in `tools.config.ts` with `hubPath` (e.g. `"/mbz-explorer"`) instead of a Vercel `url`. Opening a hub-hosted tool navigates in-app (same Platform session — no auth handoff). **MBZ Explorer** and **Dictionary Tool** are the references for sibling apps imported into the hub (`apps/mbz-explorer` / `apps/dictionary-tool`). **Video Transcriber** is a guide-only page implemented directly in `apps/hub` (`/video-transcriber`) with a SharePoint download link — no separate app package.
 
 ### Create a standalone app
 

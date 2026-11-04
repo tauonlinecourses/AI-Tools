@@ -51,6 +51,10 @@ export const toolCopy: Record<
     name:        "מילון מונחים",
     description: "המרת קובץ אקסל (מושג, הגדרה) לקובץ XML לייבוא למילון מונחים במודל",
   },
+  "video-transcriber": {
+    name:        "מתמלל וידאו",
+    description: "הורדה והתקנה של תוכנת מתמלל הוידאו משולחן העבודה דרך SharePoint",
+  },
 };
 
 export function localizeTool(

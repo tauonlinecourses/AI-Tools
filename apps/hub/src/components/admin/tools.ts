@@ -12,6 +12,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "mbz-explorer": { he: "ניתוח MBZ", en: "MBZ Explorer" },
   "tau-support": { he: "תמיכה טכנית", en: "TAU Support" },
   "dictionary-tool": { he: "מילון מונחים", en: "Dictionary Tool" },
+  "video-transcriber": { he: "מתמלל וידאו", en: "Video Transcriber" },
 };
 
 export function toolLabel(locale: Locale, toolId: string): string {

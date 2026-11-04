@@ -9,6 +9,7 @@ export const PLATFORM_TOOL_IDS = [
   "tau-support",
   "tool-starter",
   "dictionary-tool",
+  "video-transcriber",
 ] as const;
 
 export type PlatformToolId = (typeof PLATFORM_TOOL_IDS)[number];

@@ -4,6 +4,7 @@ import { HubPage } from "./components/HubPage";
 import { ApprovedOnly } from "./components/ApprovedOnly";
 import { MbzExplorerHost } from "./components/MbzExplorerHost";
 import { DictionaryToolHost } from "./components/DictionaryToolHost";
+import { VideoTranscriberHost } from "./components/VideoTranscriberHost";
 import { AdminPage } from "./components/AdminPage";
 import { RegisterPage } from "./components/RegisterPage";
 import { SetPasswordPage } from "./components/SetPasswordPage";
@@ -11,6 +12,8 @@ import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { ChangePasswordPage } from "./components/ChangePasswordPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 import { DICTIONARY_BASE } from "../../dictionary-tool/src/paths";
+
+const VIDEO_TRANSCRIBER_BASE = "/video-transcriber";
 
 export default function App() {
   return (
@@ -60,6 +63,14 @@ export default function App() {
           element={
             <ApprovedOnly locale="he">
               <DictionaryToolHost locale="he" />
+            </ApprovedOnly>
+          }
+        />
+        <Route
+          path={`${VIDEO_TRANSCRIBER_BASE}/*`}
+          element={
+            <ApprovedOnly locale="he">
+              <VideoTranscriberHost locale="he" />
             </ApprovedOnly>
           }
         />
