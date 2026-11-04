@@ -852,19 +852,19 @@ export function CourseShell({ mode }: CourseShellProps) {
             onClose={() => setOpenMenu(null)}
             items={[
               {
-                label: "שנה שם",
+                label: "שינוי שם",
                 icon: <PencilIcon className="w-3.5 h-3.5 text-surface-500" />,
                 onClick: () => setRenaming({ kind: "page", id: page.id }),
               },
               ...(!isHome
                 ? [
                     {
-                      label: "שכפל עמוד",
+                      label: "שכפול עמוד",
                       icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
                       onClick: () => handleDuplicatePage(page),
                     },
                     {
-                      label: "מחק עמוד",
+                      label: "מחיקת עמוד",
                       icon: <TrashIcon className="w-3.5 h-3.5" />,
                       danger: true,
                       onClick: () => handleDeletePage(page),

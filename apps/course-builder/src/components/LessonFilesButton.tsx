@@ -16,10 +16,10 @@ interface LessonFolderButtonProps {
 }
 
 const enabledStyles =
-  "inline-flex items-center justify-center rounded-control border border-black bg-white text-black transition-colors duration-fast hover:bg-gray-50 active:bg-gray-100";
+  "inline-flex items-center justify-center leading-none rounded-control border border-black bg-white text-black transition-colors duration-fast hover:bg-gray-50 active:bg-gray-100";
 
 const disabledStyles =
-  "inline-flex items-center justify-center rounded-control border border-surface-200 bg-surface-50 text-surface-400 cursor-not-allowed opacity-60";
+  "inline-flex items-center justify-center leading-none rounded-control border border-surface-200 bg-surface-50 text-surface-400 cursor-not-allowed opacity-60";
 
 function LessonFolderButton({
   url,
@@ -30,7 +30,10 @@ function LessonFolderButton({
   showDisabled = false,
 }: LessonFolderButtonProps) {
   const href = url?.trim() ?? "";
-  const sizeClass = compact ? "shrink-0 p-1.5" : "shrink-0 p-2.5";
+  // Compact: fixed square matching status-toggle height (h-8 ≈ text-sm + py-1.5).
+  const sizeClass = compact
+    ? "shrink-0 h-8 w-8"
+    : "shrink-0 p-2.5";
 
   if (!href) {
     if (!showDisabled) return null;

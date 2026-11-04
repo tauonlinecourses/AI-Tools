@@ -133,6 +133,20 @@
     "forumTopicId": "892e5e6659d4b9bfc6e3e96c89fbaa7102a7afb9"
   },
   {
+    "id": "course-v1:TAU+ACD_RFP5_HowToLearn_HE+2026_1",
+    "name": "Learning How to Learn — 2026 Run",
+    "nameHe": "ללמוד איך ללמוד 2026",
+    "forumCategory": "פורום בעיות טכניות",
+    "forumTopicId": "e97da51bb80c6dcb51f870f2e802fa98b9e41468"
+  },
+  {
+    "id": "course-v1:TAU+ACD_PythonIntro_HE+2026_1",
+    "name": "Introduction to Python — Life Sciences",
+    "nameHe": "מבוא לפייתון - מדעי החיים",
+    "forumCategory": "פורום בעיות טכניות",
+    "forumTopicId": "4a212977-f96a-46cc-a397-55a1a66729a7"
+  },
+  {
     "id": "course-v1:TAU+ACD_DetctMstry_HE+2024_1",
     "name": "The Detective Mystery: What Literary Detectives Hide and Reveal",
     "nameHe": "תעלומת הבלש: מה מסתירים מאיתנו ומה יכולים לגלות לנו בלשים ספרותיים",

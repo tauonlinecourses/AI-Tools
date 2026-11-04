@@ -1629,7 +1629,7 @@ export function PageContent({
 
   const pageHeader = (
     <div className="flex flex-col gap-1 min-w-0 w-full">
-      <div className="flex items-center gap-1.5 min-w-0 w-full text-3xl font-semibold tracking-tight text-surface-900">
+      <div className="flex items-center gap-1.5 min-w-0 w-full">
         {isImplement && components !== null && (
           <img
             src={PAGE_TYPE_LOGO[derivePageType(components.map((c) => c.type))]}
@@ -1637,50 +1637,52 @@ export function PageContent({
             className="w-7 h-7 shrink-0"
           />
         )}
-        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          {editable ? (
-            <input
-              value={page.title}
-              title={page.title}
-              placeholder="כותרת העמוד"
-              onChange={(e) => handleTitleChange(e.target.value)}
-              className="min-w-0 flex-1 truncate bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
+        {editable ? (
+          <input
+            value={page.title}
+            title={page.title}
+            placeholder="כותרת העמוד"
+            onChange={(e) => handleTitleChange(e.target.value)}
+            className="min-w-0 flex-1 truncate text-3xl font-semibold tracking-tight text-surface-900 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
+          />
+        ) : (
+          <h1
+            className="min-w-0 flex-1 truncate text-3xl font-semibold tracking-tight text-surface-900"
+            title={page.title}
+          >
+            {page.title}
+          </h1>
+        )}
+        {/* Keep folders next to the title so they stay visible; align with status via items-center. */}
+        {!isHome && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <LessonFilesButton
+              url={lessonFilesFolderUrl}
+              compact
+              showDisabled
             />
-          ) : (
-            <h1 className="min-w-0 flex-1 truncate" title={page.title}>
-              {page.title}
-            </h1>
-          )}
-          {!isHome && (
-            <>
-              <LessonFilesButton
-                url={lessonFilesFolderUrl}
-                compact
-                showDisabled
-              />
-              <LessonVideosButton
-                url={lessonVideosFolderUrl}
-                compact
-                showDisabled
-              />
-            </>
-          )}
-        </div>
+            <LessonVideosButton
+              url={lessonVideosFolderUrl}
+              compact
+              showDisabled
+            />
+          </div>
+        )}
         {editable && (
-          <span className="shrink-0">
+          <div className="shrink-0 flex items-center">
             <PageWorkflowStatusToggle
               status={page.workflow_status}
               onSelect={handleSetWorkflowStatus}
             />
-          </span>
+          </div>
         )}
         {isImplement && components !== null && components.length > 0 && (
-          <span className="shrink-0">
+          <div className="shrink-0 flex items-center">
             <PageImplementationStatusToggle
               status={pageAggregateStatus(components)}
               onSelect={handleSetPageStatus}
             />
-          </span>
+          </div>
         )}
       </div>
       {isImplement && rollup && rollup.total_count > 0 && (
