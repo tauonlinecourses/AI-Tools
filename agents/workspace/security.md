@@ -6,7 +6,7 @@
 
 - **Identity + groups** live in the **Course-Builder** Supabase project (`profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`).
 - **`profiles.status`** is `pending` | `approved` | `rejected` (default `approved` for legacy users). Only **approved** users see hub tools / handoff / admin. Display name is always the email local-part (`handle_new_user`); never user-entered.
-- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu and `accountStatus` from `profiles`. `isAdmin` is true when the user belongs to slug `admin-all-tools` — gates the header admin button and `/admin` UI.
+- **Hub** requires Platform login; tools listed = union of the user’s group tool permissions. Hub auth also loads the user’s group memberships (`listUserGroups` → `groups` select under member RLS) for the header user menu and `accountStatus` from `profiles`. `isAdmin` is true when the user belongs to slug `admin-all-tools` (legacy alias `Admin (all tools)` still accepted) — gates the header admin button and `/admin` UI. Editing the Admin group in the hub UI must not rewrite that slug (pinned to canonical).
 - **Hub admin API** (`/api/admin`): service_role list/create/update of groups + memberships, plus `inviteUser` / `sendInviteEmail` / `approveUser` / `rejectUser` / `removeUser` (Auth `deleteUser`; cannot delete self). Every request verifies JWT then Admin group membership. Non-admins cannot read all users/groups via RLS (member-only selects).
 - **Public register API** (`/api/register`): `GET ?resource=groups` (excludes Admin) and `POST` create pending user with password via `auth.admin.createUser` (**no Auth email**). Self-reg stores `requested_group_id`; no `group_members` until approve.
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub). Handoff requires approved status.
@@ -15,7 +15,8 @@
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login).
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
-- Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data) require a Platform Bearer token and (where applicable) group tool access.
+- **Virtual-Support data**: dedicated Supabase project; RLS on with no anon/authenticated policies. The BFF `/api/data` and `/api/ask` verify the Course-Builder JWT + `virtual-support` entitlement, then use `VS_SUPABASE_SERVICE_ROLE_KEY`.
+- Sensitive `/api/*` routes (chat, LMS, embed, youtube-transcript, tau-data, virtual-support data/ask) require a Platform Bearer token and (where applicable) group tool access.
 - **Local Vite (all apps)**: `vite dev` runs the same `api/*.ts` handlers as production through `packages/dev-api` (`vercelApiPlugin`), so local routes get the same Platform JWT, approved-status and tool gates. There is no separate dev auth code. `vite.config.ts` still never statically imports `@workspace/auth` (Node ESM); handlers load through `server.ssrLoadModule`.
 - **Server auth helpers** all live in `@workspace/auth/server`: `verifyPlatformRequest`, `assertUserIsApproved`, `assertUserHasToolAccess`, `requireToolAccessFromRequest`, `assertUserIsAdmin`, handoff codes, and the re-exported `ADMIN_GROUP_SLUG` / `PLATFORM_TOOL_IDS`. The hub uses them too; it no longer has a local copy.
 - **`withPlatformAuth(handler, { toolId? })`** wraps every `api/chat.ts`. With `toolId` it requires approved status plus tool access; without it (the hub) only approved status. `AuthError` becomes `{ error }` with its status; any other auth failure is 401 `Unauthorized`, and a handler throw is 500. It also unwraps a `{ default: fn }` CJS module object.
@@ -80,18 +81,20 @@ Invite create/copy link: keep Supabase’s official `action_link` token and only
 | `VITE_PLATFORM_SUPABASE_URL` / `ANON_KEY` | Hub + every tool (browser) | Course-Builder project — **required**; do not rely on `VITE_SUPABASE_*` fallback |
 | `VITE_SUPABASE_*` (course-builder) | Course-Builder app | Same project as Platform (also set `VITE_PLATFORM_*`) |
 | `VITE_SUPABASE_*` (tau-support) | Tau browser | Data project URL only; never use as Platform Auth |
-| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` | Hub (+ tau server) | Course-Builder service_role for handoff codes / group checks |
+| `VITE_SUPABASE_*` (virtual-support) | VS browser | Data project URL only; never use as Platform Auth |
+| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` | Hub (+ tau / VS server) | Course-Builder service_role for handoff codes / group checks |
 | `TAU_SUPABASE_SERVICE_ROLE_KEY` | Tau server only | Never `VITE_` |
+| `VS_SUPABASE_URL` / `VS_SUPABASE_SERVICE_ROLE_KEY` | Virtual Support server only | Never `VITE_` for the service role |
 | `OPENAI_API_KEY` | Server only | Never `VITE_` |
 
 ## Permission groups (Course-Builder `groups` / `group_tools`)
 
 | Name | Slug | Tools | Notes |
 |---|---|---|---|
-| Admin | `admin-all-tools` | `course-builder`, `mbz-explorer`, `tau-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`) |
-| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder` | |
+| Admin | `admin-all-tools` (legacy: `Admin (all tools)`) | `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`). `isAdminGroupSlug` accepts both forms. |
+| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder`, `virtual-support` | |
 
-Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`).
+Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` (`admin-all-tools`) in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`).
 
 ## Ops — onboard a user
 
@@ -115,7 +118,7 @@ on conflict do nothing;
 ```
 
 4. Set hub/tool env vars; set `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` on hub (and tau) Vercel projects.
-5. Apply migration `010_profile_status.sql` on Course-Builder.
+5. Apply migration `010_profile_status.sql` on Course-Builder. Also apply `013_normalize_admin_group_slug.sql` if the Admin group slug was rewritten by the hub Admin UI.
 
 ### Local Windows + corporate TLS proxy
 
@@ -123,8 +126,9 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 
 ## Migrations
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_add_dictionary_tool.sql` (extends `group_tools` check to include `dictionary-tool` + keep production `virtual-support`; seeds `dictionary-tool` on staff/admin groups)
+- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_add_dictionary_tool.sql` (extends `group_tools` check to include `dictionary-tool` + keep production `virtual-support`; seeds `dictionary-tool` on staff/admin groups), `013_normalize_admin_group_slug.sql` (pins Admin slug to `admin-all-tools` after hub UI `slugify` rewrote `Admin (all tools)`), `014_seed_virtual_support_groups.sql` (grants `virtual-support` to Admin / learning-systems / all-staff)
 - Tau-Support: `008_lock_anon_access.sql` (applied)
+- Virtual-Support: `001_init.sql` (folders, documents, doc_chunks, match RPC, doc-images bucket; RLS locked)
 
 ## Access-control audit (what blocks unauthenticated / unauthorized use)
 

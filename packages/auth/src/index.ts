@@ -30,8 +30,11 @@ export {
   startToolHandoff,
   exchangeHandoffCode,
   ADMIN_GROUP_SLUG,
+  ADMIN_GROUP_SLUG_LEGACY,
+  ADMIN_GROUP_SLUGS,
   PLATFORM_TOOL_IDS,
   isAdminFromGroups,
+  isAdminGroupSlug,
   isPlatformToolId,
 } from "./client.js";
 

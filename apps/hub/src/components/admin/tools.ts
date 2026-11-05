@@ -11,6 +11,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "course-builder": { he: "פיתוח קורסים", en: "Course Builder" },
   "mbz-explorer": { he: "ניתוח MBZ", en: "MBZ Explorer" },
   "tau-support": { he: "תמיכה טכנית", en: "TAU Support" },
+  "virtual-support": { he: "מדריכים - Virtual TAU", en: "Virtual Support" },
   "dictionary-tool": { he: "מילון מונחים", en: "Dictionary Tool" },
   "video-transcriber": { he: "מתמלל וידאו", en: "Video Transcriber" },
 };

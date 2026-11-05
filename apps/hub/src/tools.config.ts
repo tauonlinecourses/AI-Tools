@@ -95,6 +95,16 @@ export const tools: Tool[] = [
     category:    "Education",
   },
   {
+    id:          "virtual-support",
+    name:        "Virtual Support",
+    description: "Organization knowledge base with grounded Q&A over staff documents.",
+    url:         "https://ai-tools-virtual-support.vercel.app",
+    devUrl:      "http://localhost:5180",
+    icon:        "library",
+    status:      "beta",
+    category:    "Education",
+  },
+  {
     id:          "dictionary-tool",
     name:        "Dictionary Tool",
     description: "Convert an Excel glossary (term + definition) into Moodle-importable XML.",

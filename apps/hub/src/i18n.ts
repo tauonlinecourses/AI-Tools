@@ -47,6 +47,10 @@ export const toolCopy: Record<
     name:        "תמיכה טכנית - קמפוס IL",
     description: "ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
   },
+  "virtual-support": {
+    name:        "מדריכים - Virtual TAU",
+    description: "מאגר ידע ארגוני של מחלקת התמיכה ושאלות מבוססות מסמכים",
+  },
   "dictionary-tool": {
     name:        "מילון מונחים",
     description: "המרת קובץ אקסל (מושג, הגדרה) לקובץ XML לייבוא למילון מונחים במודל",

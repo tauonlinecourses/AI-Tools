@@ -95,7 +95,7 @@ After deploying, update `apps/hub/src/tools.config.ts` with the real Vercel tool
 
 1. Copy `apps/tool-starter/` to `apps/tool-myname/` (includes `agents/` — keep it; put tool-specific agent docs there)
 2. In the copy, rename `"name": "tool-starter"` in `package.json` to `"name": "tool-myname"`
-3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175, course-builder 5176, mbz-explorer 5177, tau-support 5178, dictionary-tool 5179 — pick the next free one)
+3. Assign a free local Vite port in `vite.config.ts` (hub 5173, video-curator 5174, tool-starter 5175, course-builder 5176, mbz-explorer 5177, tau-support 5178, dictionary-tool 5179, virtual-support 5180 — pick the next free one)
 4. Edit `apps/tool-myname/src/App.tsx` to build the tool
 5. Update `apps/tool-myname/agents/README.md` (and add specs as needed) for this tool
 6. Ensure `public/favicon.png` matches `apps/hub/public/favicon.png` and `index.html` links `<link rel="icon" type="image/png" href="/favicon.png" />`

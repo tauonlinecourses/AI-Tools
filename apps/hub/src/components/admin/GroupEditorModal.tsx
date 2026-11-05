@@ -20,7 +20,7 @@ export function GroupEditorModal({
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  // Only catalog tools from this branch — ignore WIP ids (e.g. virtual-support)
+  // Only catalog tools from this branch — ignore unknown/WIP ids not in PLATFORM_TOOL_IDS
   // that live in the DB from other branches; the API preserves those on save.
   const [toolIds, setToolIds] = useState<string[]>(
     (initial?.toolIds ?? []).filter((id) =>
