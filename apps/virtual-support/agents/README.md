@@ -20,7 +20,7 @@ Workspace height is locked to `calc(100vh - header)`; side panels share that hei
 
 ### מקורות interaction
 
-- Click a topic → shows its pages in the pages column.
+- Click a topic → shows its pages in the pages column. Each topic row shows its page count.
 - Click a page → opens it in the left document viewer.
 - Opening a doc from chat citations selects its topic automatically.
 - While the editor is open (edit or new page), opening another page from מקורות, a citation, or `+ הוספת עמוד` asks to confirm discarding unsaved changes.
@@ -34,7 +34,7 @@ Out of scope for v1: nested folders, PDF/Word uploads, saved notebooks, durable 
 
 ```
 Browser (ToolAuthGate toolId=virtual-support)
-  → POST /api/data   { action, payload }   → service_role CRUD + reindex
+  → POST /api/data   { action, payload }   → service_role CRUD; indexDocument re-indexes after save
   → POST /api/ask    { question, history } → rewrite → embed → match_doc_chunks_hybrid → gpt-4o
   → POST /api/chat   (standard ai-client; Ask does not call this from the browser)
 ```
@@ -54,7 +54,9 @@ Tables (see `supabase/migrations/001_init.sql`, `002_hybrid_search.sql`, `003_as
 
 Deleting a folder moves its documents to unfiled, then deletes the folder. Deleting a document cascades chunks.
 
-## Indexing (on save)
+## Indexing (after save, in the background)
+
+`createDocument` / `updateDocument` only write the page, so saving returns fast. The browser then calls `indexDocument {id}` without waiting (one run per page at a time; a save during a run queues one more). The page header shows "✓ נשמר", then "מעדכן את המערכת…" until it finishes, or "נשמר, אבל העדכון לחיפוש נכשל. נסו שוב" on failure. While indexing runs, closing the tab asks for confirmation. If a run never happens (tab closed anyway), the page stays saved but search keeps the old version until the next save. `indexDocument` reads the saved page from the DB and runs `reindexDocument`:
 
 1. Hash `title + body` (`sha256`).
 2. Strip HTML → plain text; chunk ~1200 chars with ~200 overlap on paragraph boundaries.
@@ -127,7 +129,7 @@ pnpm --filter virtual-support eval    # re-test set from ask_eval_cases (see Ask
 
 ## BFF actions (`/api/data`)
 
-`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `deleteDocument`, `uploadImage`, `rateAnswer`.
+`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `indexDocument`, `deleteDocument`, `uploadImage`, `rateAnswer`.
 
 ## Env
 

@@ -1,5 +1,5 @@
 import { Spinner } from "@workspace/ui";
-import type { Document, Folder } from "../lib/types";
+import type { Document, Folder, IndexStatus } from "../lib/types";
 import { DocBody } from "./DocBody";
 
 const lastEditFormat = new Intl.DateTimeFormat("he-IL", {
@@ -16,14 +16,61 @@ interface DocViewProps {
   doc: Document | null;
   folder?: Folder | null;
   loading?: boolean;
+  /** Show a short "saved" note (right after a save). */
+  justSaved?: boolean;
+  /** Background search indexing of this page; undefined = up to date. */
+  indexStatus?: IndexStatus;
+  onRetryIndex?: () => void;
   onClose?: () => void;
   onEdit: () => void;
+}
+
+function SaveStatus({
+  justSaved,
+  indexStatus,
+  onRetryIndex,
+}: Pick<DocViewProps, "justSaved" | "indexStatus" | "onRetryIndex">) {
+  if (indexStatus === "failed") {
+    return (
+      <p className="mt-1 text-xs text-danger" role="status">
+        נשמר, אבל העדכון לחיפוש נכשל.{" "}
+        {onRetryIndex ? (
+          <button
+            type="button"
+            onClick={onRetryIndex}
+            className="font-medium underline hover:no-underline"
+          >
+            נסו שוב
+          </button>
+        ) : null}
+      </p>
+    );
+  }
+  if (!justSaved && indexStatus !== "indexing") return null;
+  return (
+    <p
+      className="mt-1 inline-flex items-center gap-1.5 text-xs text-surface-500"
+      role="status"
+    >
+      {justSaved ? <span className="text-emerald-700">✓ נשמר</span> : null}
+      {justSaved && indexStatus === "indexing" ? <span aria-hidden>·</span> : null}
+      {indexStatus === "indexing" ? (
+        <span className="inline-flex items-center gap-1">
+          <Spinner size="sm" />
+          מעדכן את המערכת…
+        </span>
+      ) : null}
+    </p>
+  );
 }
 
 export function DocView({
   doc,
   folder,
   loading,
+  justSaved,
+  indexStatus,
+  onRetryIndex,
   onClose,
   onEdit,
 }: DocViewProps) {
@@ -70,6 +117,11 @@ export function DocView({
               <time dateTime={doc.updatedAt}>{lastEdit}</time>
             </p>
           ) : null}
+          <SaveStatus
+            justSaved={justSaved}
+            indexStatus={indexStatus}
+            onRetryIndex={onRetryIndex}
+          />
         </div>
         <button
           type="button"

@@ -139,6 +139,11 @@ export async function updateDocument(input: {
   return mapDocument(res.document);
 }
 
+/** Re-index a saved page for search (chunks + embeddings). Slow; run in the background. */
+export async function indexDocument(id: string): Promise<void> {
+  await vsData("indexDocument", { id });
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   await vsData("deleteDocument", { id });
 }

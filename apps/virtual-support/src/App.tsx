@@ -11,14 +11,17 @@ import {
   deleteDocument,
   deleteFolder,
   getDocument,
+  indexDocument,
   listDocuments,
   listFolders,
   renameFolder,
   updateDocument,
 } from "./lib/dataClient";
-import type { Document, Folder } from "./lib/types";
+import type { Document, Folder, IndexStatus } from "./lib/types";
 
 type EditMode = null | "new" | string;
+
+const SAVED_NOTICE_MS = 3000;
 
 const LEAVE_EDIT_CONFIRM = "לצאת מהעריכה? שינויים שלא נשמרו יאבדו.";
 
@@ -33,6 +36,71 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [indexStatus, setIndexStatus] = useState<Record<string, IndexStatus>>(
+    {}
+  );
+  const [savedNoticeId, setSavedNoticeId] = useState<string | null>(null);
+  const savedNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One indexing run per page at a time; a save during a run queues one more.
+  const indexingRef = useRef(new Set<string>());
+  const reindexQueuedRef = useRef(new Set<string>());
+
+  const runIndexing = useCallback(async (id: string) => {
+    if (indexingRef.current.has(id)) {
+      reindexQueuedRef.current.add(id);
+      return;
+    }
+    indexingRef.current.add(id);
+    setIndexStatus((prev) => ({ ...prev, [id]: "indexing" }));
+    let failed = false;
+    try {
+      do {
+        reindexQueuedRef.current.delete(id);
+        try {
+          await indexDocument(id);
+          failed = false;
+        } catch {
+          failed = true;
+        }
+      } while (reindexQueuedRef.current.has(id));
+    } finally {
+      indexingRef.current.delete(id);
+      setIndexStatus((prev) => {
+        const next = { ...prev };
+        if (failed) next[id] = "failed";
+        else delete next[id];
+        return next;
+      });
+    }
+  }, []);
+
+  const showSavedNotice = useCallback((id: string) => {
+    setSavedNoticeId(id);
+    if (savedNoticeTimer.current) clearTimeout(savedNoticeTimer.current);
+    savedNoticeTimer.current = setTimeout(
+      () => setSavedNoticeId(null),
+      SAVED_NOTICE_MS
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (savedNoticeTimer.current) clearTimeout(savedNoticeTimer.current);
+    },
+    []
+  );
+
+  // Closing the tab mid-indexing would leave search on the old version.
+  const anyIndexing = Object.values(indexStatus).includes("indexing");
+  useEffect(() => {
+    if (!anyIndexing) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [anyIndexing]);
 
   const selected = documents.find((d) => d.id === selectedId) ?? null;
   const selectedFolder = selected?.folderId
@@ -174,27 +242,34 @@ export default function App() {
       setSaving(true);
       setError(null);
       try {
+        let savedId: string | null = null;
         if (editMode === "new") {
           const doc = await createDocument(input);
           setDocuments((prev) => [...prev, doc]);
-          setSelectedId(doc.id);
+          savedId = doc.id;
         } else if (typeof editMode === "string") {
           const doc = await updateDocument({ id: editMode, ...input });
           setDocuments((prev) =>
             prev.map((d) => (d.id === doc.id ? doc : d))
           );
-          setSelectedId(doc.id);
+          savedId = doc.id;
         }
         setEditMode(null);
         setNewFolderId(null);
         setViewerOpen(true);
+        if (savedId) {
+          setSelectedId(savedId);
+          showSavedNotice(savedId);
+          // Saved in the DB; search indexing continues in the background.
+          void runIndexing(savedId);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "שמירה נכשלה");
       } finally {
         setSaving(false);
       }
     },
-    [editMode]
+    [editMode, runIndexing, showSavedNotice]
   );
 
   const handleDelete = useCallback(async () => {
@@ -311,6 +386,11 @@ export default function App() {
                         doc={selected}
                         folder={selectedFolder}
                         loading={loading}
+                        justSaved={selectedId !== null && savedNoticeId === selectedId}
+                        indexStatus={selectedId ? indexStatus[selectedId] : undefined}
+                        onRetryIndex={() => {
+                          if (selectedId) void runIndexing(selectedId);
+                        }}
                         onClose={closeViewer}
                         onEdit={() => {
                           if (selectedId) setEditMode(selectedId);
