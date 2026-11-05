@@ -225,7 +225,7 @@ export default function App() {
       toolName="Virtual Support"
       toolDescription="Organization knowledge base and grounded Q&A"
       toolNameHe="מדריכים - Virtual TAU"
-      toolDescriptionHe="מאגר ידע ארגוני ושאלות מבוססות מסמכים"
+      toolDescriptionHe="צ׳אט-בוט המבוסס על מאגר הידע הארגוני לתמיכה טכנית"
       maxWidth="full"
       padded={false}
       locale="he"
