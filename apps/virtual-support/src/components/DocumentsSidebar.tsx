@@ -23,7 +23,7 @@ interface DocumentsSidebarProps {
   loading?: boolean;
   onSelect: (id: string) => void;
   onAddDocument: (folderId: string | null) => void;
-  onAddFolder: () => void;
+  onAddFolder: (name: string) => void | Promise<void>;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
 }
@@ -44,6 +44,9 @@ export function DocumentsSidebar({
   );
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingBusy, setCreatingBusy] = useState(false);
 
   const byFolder = useMemo(() => {
     const map = new Map<string | null, Document[]>();
@@ -119,10 +122,31 @@ export function DocumentsSidebar({
     setEditingFolderId(null);
   }
 
+  async function commitCreateFolder() {
+    const name = newFolderName.trim();
+    if (!name || creatingBusy) {
+      if (!name) {
+        setCreatingFolder(false);
+        setNewFolderName("");
+      }
+      return;
+    }
+    setCreatingBusy(true);
+    try {
+      await onAddFolder(name);
+      setCreatingFolder(false);
+      setNewFolderName("");
+    } catch {
+      // Parent surfaces the error banner; keep the input open for retry.
+    } finally {
+      setCreatingBusy(false);
+    }
+  }
+
   return (
     <aside
       dir="rtl"
-      className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[1.5rem] bg-[#f3f3f3] ring-1 ring-black/5 md:w-[26%] md:flex-none"
+      className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[1.5rem] bg-white ring-1 ring-black/5 md:w-[26%] md:flex-none"
     >
       <header className="shrink-0 border-b border-surface-200 px-5 py-4">
         <h2 className="text-center text-base font-semibold text-surface-900">
@@ -140,14 +164,43 @@ export function DocumentsSidebar({
         <div className="flex min-h-0 flex-1">
           {/* Sections (folders) — right */}
           <div className="flex w-1/2 min-w-0 flex-col border-e border-surface-200">
-            <button
-              type="button"
-              onClick={onAddFolder}
-              className="flex shrink-0 items-center justify-start gap-1.5 px-5 py-3.5 text-sm font-medium text-[#80397B] hover:bg-black/[0.03]"
-            >
-              <span className="text-base leading-none">+</span>
-              הוספת נושא
-            </button>
+            {creatingFolder ? (
+              <div className="shrink-0 px-3 py-2">
+                <input
+                  autoFocus
+                  dir="rtl"
+                  value={newFolderName}
+                  disabled={creatingBusy}
+                  placeholder="שם הנושא"
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onBlur={() => void commitCreateFolder()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitCreateFolder();
+                    }
+                    if (e.key === "Escape") {
+                      setCreatingFolder(false);
+                      setNewFolderName("");
+                    }
+                  }}
+                  className="w-full border-0 bg-white px-3 py-2 text-right text-sm outline-none ring-1 ring-sky-300 disabled:opacity-60"
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingFolder(true);
+                  setNewFolderName("");
+                  setEditingFolderId(null);
+                }}
+                className="flex shrink-0 items-center justify-start gap-1.5 px-5 py-3.5 text-sm font-medium text-[#80397B] hover:bg-black/[0.03]"
+              >
+                <span className="text-base leading-none">+</span>
+                הוספת נושא
+              </button>
+            )}
             <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
               {sections.map((section) => {
                 const selected = section.key === activeSection?.key;

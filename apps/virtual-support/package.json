@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "vitest run --config vitest.smoke.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

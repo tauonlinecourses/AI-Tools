@@ -71,15 +71,16 @@ export default function App() {
     setError(null);
   }, []);
 
-  const handleAddFolder = useCallback(async () => {
-    const name = window.prompt("שם התיקייה החדשה:");
-    if (!name?.trim()) return;
+  const handleAddFolder = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setError(null);
     try {
-      const folder = await createFolder(name.trim());
+      const folder = await createFolder(trimmed);
       setFolders((prev) => [...prev, folder]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "יצירת תיקייה נכשלה");
+      throw err;
     }
   }, []);
 
@@ -199,83 +200,85 @@ export default function App() {
         ) : (
           <div
             dir="rtl"
-            className="flex h-full min-h-0 flex-col gap-3 px-5 py-3 md:flex-row md:items-stretch md:px-6"
+            className="flex h-full min-h-0 flex-col gap-2 px-5 py-3 md:px-6"
           >
-            {/* RTL flex: first child = right edge — floating panel */}
-            <DocumentsSidebar
-              folders={folders}
-              documents={documents}
-              selectedId={selectedId}
-              loading={loading}
-              onSelect={openDocument}
-              onAddDocument={handleAddDocument}
-              onAddFolder={() => void handleAddFolder()}
-              onRenameFolder={(id, name) => void handleRenameFolder(id, name)}
-              onDeleteFolder={(id) => void handleDeleteFolder(id)}
-            />
-
-            {/* flex-1 (not fixed 50%) so 25%+25%+gaps do not clip the outer left margin */}
-            <main className="order-first h-full min-h-0 min-w-0 flex-1 overflow-hidden md:order-none">
-              <AskPage
-                onOpenDocument={(doc: Document) => {
-                  setDocuments((prev) => {
-                    const exists = prev.some((d) => d.id === doc.id);
-                    return exists
-                      ? prev.map((d) => (d.id === doc.id ? doc : d))
-                      : [...prev, doc];
-                  });
-                  openDocument(doc.id);
-                }}
-              />
-            </main>
-
-            {showViewer ? (
-              <section className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[1.5rem] bg-white ring-1 ring-black/5 md:w-[25%] md:max-w-[25%] md:flex-none">
-                {error ? (
-                  <p className="shrink-0 border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-danger">
-                    {error}
-                  </p>
-                ) : null}
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  {editMode !== null ? (
-                    <DocEditor
-                      initial={editingDoc}
-                      folders={folders}
-                      folderId={
-                        editMode === "new"
-                          ? newFolderId
-                          : editingDoc?.folderId ?? null
-                      }
-                      busy={saving}
-                      deleting={deleting}
-                      error={error}
-                      onSave={handleSave}
-                      onDelete={
-                        editMode !== "new"
-                          ? () => void handleDelete()
-                          : undefined
-                      }
-                      onCancel={() => {
-                        setEditMode(null);
-                        setNewFolderId(null);
-                        setError(null);
-                        if (!selectedId) setViewerOpen(false);
-                      }}
-                    />
-                  ) : (
-                    <DocView
-                      doc={selected}
-                      folder={selectedFolder}
-                      loading={loading}
-                      onClose={closeViewer}
-                      onEdit={() => {
-                        if (selectedId) setEditMode(selectedId);
-                      }}
-                    />
-                  )}
-                </div>
-              </section>
+            {error ? (
+              <p className="shrink-0 rounded-[1rem] border border-rose-100 bg-rose-50 px-4 py-2 text-xs text-danger">
+                {error}
+              </p>
             ) : null}
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row md:items-stretch">
+              <DocumentsSidebar
+                folders={folders}
+                documents={documents}
+                selectedId={selectedId}
+                loading={loading}
+                onSelect={openDocument}
+                onAddDocument={handleAddDocument}
+                onAddFolder={handleAddFolder}
+                onRenameFolder={(id, name) => void handleRenameFolder(id, name)}
+                onDeleteFolder={(id) => void handleDeleteFolder(id)}
+              />
+
+              {/* flex-1 (not fixed 50%) so 25%+25%+gaps do not clip the outer left margin */}
+              <main className="order-first h-full min-h-0 min-w-0 flex-1 overflow-hidden md:order-none">
+                <AskPage
+                  onOpenDocument={(doc: Document) => {
+                    setDocuments((prev) => {
+                      const exists = prev.some((d) => d.id === doc.id);
+                      return exists
+                        ? prev.map((d) => (d.id === doc.id ? doc : d))
+                        : [...prev, doc];
+                    });
+                    openDocument(doc.id);
+                  }}
+                />
+              </main>
+
+              {showViewer ? (
+                <section className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-[1.5rem] bg-white ring-1 ring-black/5 md:w-[25%] md:max-w-[25%] md:flex-none">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    {editMode !== null ? (
+                      <DocEditor
+                        initial={editingDoc}
+                        folders={folders}
+                        folderId={
+                          editMode === "new"
+                            ? newFolderId
+                            : editingDoc?.folderId ?? null
+                        }
+                        busy={saving}
+                        deleting={deleting}
+                        error={error}
+                        onSave={handleSave}
+                        onDelete={
+                          editMode !== "new"
+                            ? () => void handleDelete()
+                            : undefined
+                        }
+                        onCancel={() => {
+                          setEditMode(null);
+                          setNewFolderId(null);
+                          setError(null);
+                          if (!selectedId) setViewerOpen(false);
+                        }}
+                      />
+                    ) : (
+                      <DocView
+                        doc={selected}
+                        folder={selectedFolder}
+                        loading={loading}
+                        onClose={closeViewer}
+                        onEdit={() => {
+                          if (selectedId) setEditMode(selectedId);
+                        }}
+                      />
+                    )}
+                  </div>
+                </section>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

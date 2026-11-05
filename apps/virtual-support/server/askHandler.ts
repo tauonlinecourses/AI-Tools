@@ -1,10 +1,21 @@
 /**
- * RAG Ask: embed question → match_doc_chunks → grounded Hebrew answer.
+ * RAG Ask (Stage 1):
+ *   rewrite follow-up → embed → hybrid search (vector + keyword, RRF)
+ *   → rank pages → full page text as context → grounded Hebrew answer.
  */
 
 import { handler as chatHandler } from "@workspace/ai-client/server";
 import { createVsServiceClient } from "./vsSupabase.js";
 import { embedTexts } from "./embedCore.js";
+import { htmlToPlainText } from "./docPlainText.js";
+import {
+  buildContext,
+  extractKeywordTerms,
+  rankPages,
+  type ContextPage,
+  type HybridHit,
+  type RankedPage,
+} from "./askRetrieval.js";
 
 export type AskMessage = {
   role: "user" | "assistant";
@@ -24,68 +35,147 @@ export type AskResult = {
   sources: AskSource[];
 };
 
-type ChunkHit = {
-  id: string;
-  document_id: string;
-  chunk_index: number;
-  content: string;
-  similarity: number;
-};
-
-const MATCH_COUNT = 8;
+/** Chunks fetched from the hybrid search before grouping into pages. */
+const MATCH_COUNT = 20;
+/** Cosine similarity a chunk needs to count as relevant on meaning alone. */
 const MATCH_THRESHOLD = 0.3;
+/** Full pages sent to the model. */
+const MAX_PAGES = 4;
 const MAX_HISTORY = 12;
+/** Per history message; keeps the whole payload under ai-client's 64k total. */
+const MAX_HISTORY_CHARS = 3000;
+/** ai-client allows 16k chars per message; leave headroom for wrapper text. */
+const MAX_USER_MESSAGE_CHARS = 15_000;
+const MAX_QUESTION_CHARS = 2000;
+const ANSWER_MODEL = "gpt-4o";
+const REWRITE_MODEL = "gpt-4o-mini";
+
+const NO_MATCH_ANSWER =
+  "לא מצאתי מידע רלוונטי במאגר המסמכים לשאלה הזו. נסו לנסח מחדש, או בדקו שמסמך מתאים קיים במערכת.";
 
 const SYSTEM_PROMPT = `אתה עוזר ידע של מחלקת התמיכה הטכנית בארגון.
 ענה בעברית, בבהירות ובקיצור.
-הסתמך רק על קטעי המסמכים שסופקו בהקשר.
-אם הקטעים אינם מכסים את השאלה — אמור במפורש שאין מספיק מידע במאגר הידע, ואל תמציא.
+הסתמך רק על המסמכים שסופקו בהקשר.
+אם המסמכים אינם מכסים את השאלה — אמור במפורש שאין מספיק מידע במאגר הידע, ואל תמציא.
+כשהתשובה היא הליך או רשימת שלבים, צטט את השלבים כפי שהם מופיעים במסמך, בסדרם המקורי, בלי לקצר או לשנות ניסוח.
 כשאתה משתמש במסמך, ציין את כותרתו.`;
 
-export async function runAsk(input: {
-  question: string;
-  history?: AskMessage[];
-}): Promise<AskResult> {
-  const question = input.question?.trim() ?? "";
-  if (!question) {
-    throw new Error("question is required");
-  }
+const REWRITE_PROMPT = `תפקידך לנסח מחדש שאלת המשך כשאלה עצמאית לחיפוש במאגר ידע של תמיכה טכנית.
+השתמש בהיסטוריית השיחה כדי להשלים הקשר חסר (למשל "זה", "ואם זה לא עובד").
+שמור מונחים מדויקים כפי שהם: שמות מערכות, קודי שגיאה, מילים באנגלית.
+החזר רק את השאלה המנוסחת בעברית, בשורה אחת, בלי הסברים.
+אם השאלה כבר עצמאית — החזר אותה כפי שהיא.`;
 
-  const client = createVsServiceClient();
-  const { embeddings } = await embedTexts([question]);
-  const queryEmbedding = embeddings[0]!;
+type ChatMessage = { role: "user" | "assistant"; content: string };
 
-  const { data: hits, error } = await client.rpc("match_doc_chunks", {
-    query_embedding: queryEmbedding,
-    match_count: MATCH_COUNT,
-    match_threshold: MATCH_THRESHOLD,
+async function callChat(
+  messages: ChatMessage[],
+  systemPrompt: string,
+  model: string
+): Promise<string> {
+  const webReq = new Request("http://localhost/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, systemPrompt, model }),
   });
 
+  const webRes = await chatHandler(webReq);
+  const body = (await webRes.json().catch(() => null)) as {
+    content?: string;
+    error?: string;
+  } | null;
+
+  if (!webRes.ok) {
+    throw new Error(body?.error || `Chat failed (${webRes.status})`);
+  }
+  const content = (body?.content ?? "").trim();
+  if (!content) throw new Error("Empty model response");
+  return content;
+}
+
+function cleanHistory(history: AskMessage[] | undefined): ChatMessage[] {
+  return (history ?? [])
+    .filter(
+      (m) =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim()
+    )
+    .slice(-MAX_HISTORY)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CHARS) }));
+}
+
+/**
+ * Turn a follow-up into a standalone question for retrieval.
+ * No history → no model call. Any failure → original question.
+ */
+export async function rewriteQuestion(
+  question: string,
+  history: ChatMessage[]
+): Promise<string> {
+  if (history.length === 0) return question;
+  const transcript = history
+    .map((m) => `${m.role === "user" ? "משתמש" : "עוזר"}: ${m.content}`)
+    .join("\n\n");
+  try {
+    const rewritten = await callChat(
+      [
+        {
+          role: "user",
+          content: `היסטוריית השיחה:\n${transcript}\n\nשאלת ההמשך:\n${question}`,
+        },
+      ],
+      REWRITE_PROMPT,
+      REWRITE_MODEL
+    );
+    const line = rewritten.split("\n")[0]!.trim();
+    return line && line.length <= MAX_QUESTION_CHARS ? line : question;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        event: "vs_rewrite_failed",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    );
+    return question;
+  }
+}
+
+export type RetrievedPage = RankedPage & ContextPage;
+
+export type RetrievalResult = {
+  searchQuery: string;
+  keywordText: string;
+  hits: HybridHit[];
+  pages: RetrievedPage[];
+};
+
+/** Hybrid search + page ranking + full-page hydration. No answer model call. */
+export async function retrieve(searchQuery: string): Promise<RetrievalResult> {
+  const client = createVsServiceClient();
+  const keywords = extractKeywordTerms(searchQuery);
+  const { embeddings } = await embedTexts([searchQuery]);
+
+  const { data, error } = await client.rpc("match_doc_chunks_hybrid", {
+    query_embedding: embeddings[0]!,
+    query_text: keywords.text,
+    match_count: MATCH_COUNT,
+  });
   if (error) throw new Error(error.message);
 
-  const chunkHits = (hits ?? []) as ChunkHit[];
-  if (chunkHits.length === 0) {
-    return {
-      answer:
-        "לא מצאתי מידע רלוונטי במאגר המסמכים לשאלה הזו. נסו לנסח מחדש, או בדקו שמסמך מתאים קיים במערכת.",
-      sources: [],
-    };
+  const hits = (data ?? []) as HybridHit[];
+  const ranked = rankPages(hits, keywords.groups, MATCH_THRESHOLD, MAX_PAGES);
+  if (ranked.length === 0) {
+    return { searchQuery, keywordText: keywords.text, hits, pages: [] };
   }
 
-  // Best excerpt per document.
-  const bestByDoc = new Map<string, ChunkHit>();
-  for (const hit of chunkHits) {
-    const prev = bestByDoc.get(hit.document_id);
-    if (!prev || hit.similarity > prev.similarity) {
-      bestByDoc.set(hit.document_id, hit);
-    }
-  }
-
-  const docIds = [...bestByDoc.keys()];
   const { data: docs, error: docsErr } = await client
     .from("documents")
-    .select("id, title, folder_id")
-    .in("id", docIds);
+    .select("id, title, body, folder_id")
+    .in(
+      "id",
+      ranked.map((p) => p.documentId)
+    );
   if (docsErr) throw new Error(docsErr.message);
 
   const folderIds = [
@@ -107,81 +197,65 @@ export async function runAsk(input: {
     }
   }
 
-  const docMeta = new Map(
-    (docs ?? []).map((d) => [
-      d.id as string,
-      {
-        title: (d.title as string) || "ללא כותרת",
-        folderName: d.folder_id
-          ? folderNameById.get(d.folder_id as string) ?? null
-          : null,
-      },
-    ])
-  );
-
-  const sources: AskSource[] = [...bestByDoc.values()]
-    .sort((a, b) => b.similarity - a.similarity)
-    .map((hit) => {
-      const meta = docMeta.get(hit.document_id);
-      return {
-        documentId: hit.document_id,
-        title: meta?.title ?? "ללא כותרת",
-        folderName: meta?.folderName ?? null,
-        excerpt: hit.content.slice(0, 400),
-        similarity: hit.similarity,
-      };
+  const docById = new Map((docs ?? []).map((d) => [d.id as string, d]));
+  const pages: RetrievedPage[] = [];
+  for (const rankedPage of ranked) {
+    const doc = docById.get(rankedPage.documentId);
+    if (!doc) continue; // deleted between search and hydrate
+    const folderId = doc.folder_id as string | null;
+    pages.push({
+      ...rankedPage,
+      title: (doc.title as string) || "ללא כותרת",
+      folderName: folderId ? folderNameById.get(folderId) ?? null : null,
+      text: htmlToPlainText((doc.body as string) ?? ""),
     });
+  }
 
-  const contextBlock = sources
-    .map(
-      (s, i) =>
-        `[מסמך ${i + 1}: ${s.title}${s.folderName ? ` (${s.folderName})` : ""}]\n${s.excerpt}`
-    )
-    .join("\n\n---\n\n");
+  return { searchQuery, keywordText: keywords.text, hits, pages };
+}
 
-  const history = (input.history ?? [])
-    .filter(
-      (m) =>
-        (m.role === "user" || m.role === "assistant") &&
-        typeof m.content === "string" &&
-        m.content.trim()
-    )
-    .slice(-MAX_HISTORY);
+export async function runAsk(input: {
+  question: string;
+  history?: AskMessage[];
+}): Promise<AskResult> {
+  const question = (input.question?.trim() ?? "").slice(0, MAX_QUESTION_CHARS);
+  if (!question) {
+    throw new Error("question is required");
+  }
 
-  const messages = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    {
-      role: "user" as const,
-      content: `הקשר ממסמכי הידע:\n\n${contextBlock}\n\n---\n\nשאלת המשתמש:\n${question}`,
-    },
-  ];
+  const history = cleanHistory(input.history);
+  const searchQuery = await rewriteQuestion(question, history);
+  const { pages } = await retrieve(searchQuery);
 
-  const webReq = new Request("http://localhost/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages,
-      systemPrompt: SYSTEM_PROMPT,
-      model: "gpt-4o",
-    }),
+  if (pages.length === 0) {
+    return { answer: NO_MATCH_ANSWER, sources: [] };
+  }
+
+  const prefix = "הקשר ממסמכי הידע:\n\n";
+  const suffix = `\n\n---\n\nשאלת המשתמש:\n${question}`;
+  const budget = MAX_USER_MESSAGE_CHARS - prefix.length - suffix.length;
+  const { block, included } = buildContext(pages, budget);
+  if (included.length === 0) {
+    return { answer: NO_MATCH_ANSWER, sources: [] };
+  }
+
+  const pageById = new Map(pages.map((p) => [p.documentId, p]));
+  const sources: AskSource[] = included.map((p) => {
+    const page = pageById.get(p.documentId)!;
+    return {
+      documentId: page.documentId,
+      title: page.title,
+      folderName: page.folderName,
+      excerpt: page.bestHit.content.slice(0, 400),
+      similarity: page.bestSimilarity,
+    };
   });
 
-  const webRes = await chatHandler(webReq);
-  const body = (await webRes.json().catch(() => null)) as {
-    content?: string;
-    error?: string;
-  } | null;
-
-  if (!webRes.ok) {
-    throw new Error(
-      body?.error || `Chat failed (${webRes.status})`
-    );
-  }
-
-  const answer = (body?.content ?? "").trim();
-  if (!answer) {
-    throw new Error("Empty model response");
-  }
+  const answer = await callChat(
+    [...history, { role: "user", content: prefix + block + suffix }],
+    SYSTEM_PROMPT,
+    ANSWER_MODEL
+  );
 
   return { answer, sources };
 }
