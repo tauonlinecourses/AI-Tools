@@ -284,7 +284,7 @@ export function DocumentsSidebar({
                   <li key={section.key} className="group relative">
                     <div
                       className={`flex items-stretch ${
-                        selected ? "bg-[#e5e5e5]" : "hover:bg-[#ebebeb]"
+                        selected ? "bg-[#e5e5e5]" : "hover:bg-[#f3f3f3]"
                       }`}
                     >
                       {/* First in RTL = outer (right) edge tab */}
@@ -313,14 +313,22 @@ export function DocumentsSidebar({
                           onDoubleClick={() => {
                             if (folder) startRename(folder);
                           }}
-                          className="min-w-0 flex-1 truncate px-4 py-3 text-right text-sm text-surface-800"
+                          className="flex min-w-0 flex-1 items-center justify-start gap-1.5 px-4 py-3 text-sm text-surface-800"
                         >
-                          {section.name}
+                          <span className="min-w-0 truncate text-right">
+                            {section.name}
+                          </span>
+                          <span
+                            className="shrink-0 tabular-nums text-xs text-surface-400"
+                            aria-label={`${section.docs.length} עמודים`}
+                          >
+                            {section.docs.length}
+                          </span>
                         </button>
                       )}
                       {folder ? (
                         <div
-                          className={`relative flex shrink-0 items-center ps-1 pe-2 ${
+                          className={`relative flex shrink-0 items-center pe-2 ${
                             menuFolderId === folder.id
                               ? "opacity-100"
                               : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
@@ -338,7 +346,11 @@ export function DocumentsSidebar({
                                 id === folder.id ? null : folder.id
                               );
                             }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-surface-500 hover:bg-white hover:text-surface-800"
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded text-surface-500 hover:text-surface-800 ${
+                              selected
+                                ? "hover:bg-[#ebebeb]"
+                                : "group-hover:bg-[#f3f3f3] hover:bg-[#f3f3f3]"
+                            }`}
                           >
                             <MoreVerticalIcon />
                           </button>
