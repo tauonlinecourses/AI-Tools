@@ -1,10 +1,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Spinner } from "@workspace/ui";
-import { askQuestion, getDocument } from "../lib/dataClient";
-import type { AskSource, ChatTurn, Document } from "../lib/types";
+import { askQuestion } from "../lib/dataClient";
+import { splitCitations } from "../lib/citations";
+import type { AskSource, ChatTurn } from "../lib/types";
 
 interface AskPageProps {
-  onOpenDocument?: (doc: Document) => void;
+  /**
+   * auto = true when opened automatically after an answer (the parent skips
+   * it while the user is editing); false when the user clicked a citation.
+   * The parent opens from its loaded page list, so this is instant.
+   */
+  onOpenDocument?: (documentId: string, opts: { auto: boolean }) => void;
+}
+
+function CitationChip({
+  n,
+  source,
+  onOpen,
+}: {
+  n: number;
+  source: AskSource;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={source.title}
+      aria-label={`מקור ${n}: ${source.title}`}
+      onClick={onOpen}
+      className="mx-0.5 inline-flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-surface-200 px-1 align-[0.15em] text-[0.65rem] font-semibold leading-none text-surface-700 transition-colors hover:bg-surface-300"
+    >
+      {n}
+    </button>
+  );
+}
+
+function AnswerText({
+  turn,
+  onOpenSource,
+}: {
+  turn: ChatTurn;
+  onOpenSource: (source: AskSource) => void;
+}) {
+  const sources = turn.sources ?? [];
+  const segments = splitCitations(turn.content, sources.length);
+  return (
+    <p className="whitespace-pre-wrap text-[1.05rem] leading-7 text-surface-900">
+      {segments.map((seg, i) =>
+        seg.type === "text" ? (
+          <span key={i}>{seg.text}</span>
+        ) : (
+          <CitationChip
+            key={i}
+            n={seg.n}
+            source={sources[seg.n - 1]!}
+            onOpen={() => onOpenSource(sources[seg.n - 1]!)}
+          />
+        )
+      )}
+    </p>
+  );
 }
 
 export function AskPage({ onOpenDocument }: AskPageProps) {
@@ -17,6 +72,13 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, busy]);
+
+  const openSource = useCallback(
+    (source: AskSource, auto = false) => {
+      onOpenDocument?.(source.documentId, { auto });
+    },
+    [onOpenDocument]
+  );
 
   const handleAsk = useCallback(async () => {
     const question = input.trim();
@@ -41,6 +103,9 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
           sources: result.sources,
         },
       ]);
+      // Open the first cited page; the parent ignores this while editing.
+      const first = result.sources[0];
+      if (result.cited && first) openSource(first, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "השאלה נכשלה");
       setTurns((prev) => [
@@ -53,21 +118,7 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
     } finally {
       setBusy(false);
     }
-  }, [busy, input, turns]);
-
-  const openSource = useCallback(
-    async (source: AskSource) => {
-      try {
-        const doc = await getDocument(source.documentId);
-        onOpenDocument?.(doc);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "טעינת המסמך נכשלה"
-        );
-      }
-    },
-    [onOpenDocument]
-  );
+  }, [busy, input, openSource, turns]);
 
   return (
     <div dir="rtl" className="relative flex h-full min-h-0 flex-col bg-[#f8f9fa]">
@@ -86,18 +137,21 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
           </div>
         ) : null}
 
-        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6">
           {turns.map((turn, i) => (
             <div key={i} className="flex flex-col gap-2">
               {turn.role === "user" ? (
-                <div className="self-start rounded-[1rem] bg-white px-4 py-3 text-sm leading-relaxed text-surface-900 ring-1 ring-black/5">
+                <div className="max-w-[min(100%,36rem)] self-start rounded-[2rem] bg-[#e8eaed] px-5 py-3.5 text-sm leading-relaxed text-surface-900">
                   <p className="whitespace-pre-wrap">{turn.content}</p>
                 </div>
               ) : (
-                <div className="rounded-[1rem] bg-white px-4 py-4 text-sm leading-relaxed text-surface-900 ring-1 ring-black/5">
-                  <p className="whitespace-pre-wrap">{turn.content}</p>
+                <div className="text-surface-900">
+                  <AnswerText
+                    turn={turn}
+                    onOpenSource={(s) => openSource(s)}
+                  />
                   {turn.sources && turn.sources.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-surface-100 pt-3">
+                    <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-surface-100 pt-3">
                       <span className="me-1 text-xs text-surface-500">
                         מקורות:
                       </span>
@@ -105,11 +159,15 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
                         <button
                           key={s.documentId}
                           type="button"
-                          title={s.title}
-                          onClick={() => void openSource(s)}
-                          className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-100 px-2 text-[0.7rem] font-semibold text-surface-700 transition-colors hover:bg-sky-100 hover:text-sky-950"
+                          title={
+                            s.folderName ? `${s.folderName} · ${s.title}` : s.title
+                          }
+                          onClick={() => openSource(s)}
+                          className="inline-flex h-6 max-w-[16rem] items-center gap-1 rounded-full bg-surface-100 px-2 text-[0.7rem] text-surface-700 transition-colors hover:bg-surface-200"
                         >
-                          {idx + 1}
+                          <span className="font-semibold">{idx + 1}</span>
+                          <span aria-hidden>·</span>
+                          <span className="truncate">{s.title}</span>
                         </button>
                       ))}
                     </div>

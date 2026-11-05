@@ -101,7 +101,19 @@ describe("ask smoke (dev data)", () => {
     // 5. Optional full answer.
     if (process.env.SMOKE_ANSWER === "1") {
       const res = await runAsk({ question: titleQ });
-      console.log(`\n=== full answer ===\n${res.answer}\nsources: ${res.sources.map((s) => s.title).join(" | ")}`);
+      console.log(
+        `\n=== full answer (cited=${res.cited}) ===\n${res.answer}\nsources: ${res.sources
+          .map((s, i) => `[${i + 1}] ${s.title}`)
+          .join(" | ")}`
+      );
+      // Every [n] must point at a returned source.
+      for (const m of res.answer.matchAll(/\[(\d+)\]/g)) {
+        expect(Number(m[1])).toBeLessThanOrEqual(res.sources.length);
+      }
+
+      const off = await runAsk({ question: "מה המתכון הכי טוב לעוגת שוקולד?" });
+      console.log(`\n=== off-topic answer (cited=${off.cited}) ===\n${off.answer}`);
+      expect(off.sources).toHaveLength(0);
     }
   });
 });

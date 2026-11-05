@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageLayout } from "@workspace/ui";
 import { AskPage } from "./components/AskPage";
 import { DocEditor } from "./components/DocEditor";
@@ -10,6 +10,7 @@ import {
   createFolder,
   deleteDocument,
   deleteFolder,
+  getDocument,
   listDocuments,
   listFolders,
   renameFolder,
@@ -18,6 +19,8 @@ import {
 import type { Document, Folder } from "./lib/types";
 
 type EditMode = null | "new" | string;
+
+const LEAVE_EDIT_CONFIRM = "לצאת מהעריכה? שינויים שלא נשמרו יאבדו.";
 
 export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -37,6 +40,18 @@ export default function App() {
     : null;
 
   const showViewer = viewerOpen || editMode !== null;
+
+  // Read the latest edit mode inside async callbacks (e.g. an answer that
+  // arrives after the user started editing).
+  const editModeRef = useRef<EditMode>(editMode);
+  editModeRef.current = editMode;
+
+  /** true when it is OK to leave the editor (not editing, or user confirmed). */
+  const confirmLeaveEdit = useCallback(
+    () =>
+      editModeRef.current === null || window.confirm(LEAVE_EDIT_CONFIRM),
+    []
+  );
 
   const refresh = useCallback(async () => {
     if (!isDataConfigured) return;
@@ -58,11 +73,45 @@ export default function App() {
   }, [refresh]);
 
   const openDocument = useCallback((id: string) => {
+    if (!confirmLeaveEdit()) return;
     setSelectedId(id);
     setViewerOpen(true);
     setEditMode(null);
     setError(null);
-  }, []);
+  }, [confirmLeaveEdit]);
+
+  // Latest page list for async callbacks.
+  const documentsRef = useRef(documents);
+  documentsRef.current = documents;
+
+  /**
+   * Open a page from a chat citation. Uses the already-loaded page list
+   * (instant); only fetches when the page is not loaded yet, e.g. created by
+   * someone else after this app loaded.
+   */
+  const openFromChat = useCallback(
+    async (id: string, { auto }: { auto: boolean }) => {
+      // Never interrupt editing for an automatic open.
+      if (auto && editModeRef.current !== null) return;
+      if (documentsRef.current.some((d) => d.id === id)) {
+        openDocument(id);
+        return;
+      }
+      try {
+        const doc = await getDocument(id);
+        setDocuments((prev) =>
+          prev.some((d) => d.id === doc.id)
+            ? prev.map((d) => (d.id === doc.id ? doc : d))
+            : [...prev, doc]
+        );
+        if (auto && editModeRef.current !== null) return;
+        openDocument(doc.id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "טעינת המסמך נכשלה");
+      }
+    },
+    [openDocument]
+  );
 
   const closeViewer = useCallback(() => {
     setViewerOpen(false);
@@ -108,12 +157,13 @@ export default function App() {
   }, []);
 
   const handleAddDocument = useCallback((folderId: string | null) => {
+    if (!confirmLeaveEdit()) return;
     setNewFolderId(folderId);
     setEditMode("new");
     setSelectedId(null);
     setViewerOpen(true);
     setError(null);
-  }, []);
+  }, [confirmLeaveEdit]);
 
   const handleSave = useCallback(
     async (input: {
@@ -224,15 +274,7 @@ export default function App() {
               {/* flex-1 (not fixed 50%) so 25%+25%+gaps do not clip the outer left margin */}
               <main className="order-first h-full min-h-0 min-w-0 flex-1 overflow-hidden md:order-none">
                 <AskPage
-                  onOpenDocument={(doc: Document) => {
-                    setDocuments((prev) => {
-                      const exists = prev.some((d) => d.id === doc.id);
-                      return exists
-                        ? prev.map((d) => (d.id === doc.id ? doc : d))
-                        : [...prev, doc];
-                    });
-                    openDocument(doc.id);
-                  }}
+                  onOpenDocument={(id, opts) => void openFromChat(id, opts)}
                 />
               </main>
 

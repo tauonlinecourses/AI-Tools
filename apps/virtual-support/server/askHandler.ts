@@ -16,6 +16,12 @@ import {
   type HybridHit,
   type RankedPage,
 } from "./askRetrieval.js";
+import {
+  isRefusal,
+  processCitations,
+  REFUSAL_SENTENCE,
+  stripCitationMarkers,
+} from "./askCitations.js";
 
 export type AskMessage = {
   role: "user" | "assistant";
@@ -31,8 +37,16 @@ export type AskSource = {
 };
 
 export type AskResult = {
+  /** Answer text; `[n]` markers refer to sources[n - 1]. */
   answer: string;
   sources: AskSource[];
+  /**
+   * true → answer has validated inline citations and sources are exactly the
+   * cited pages (sources[0] = first cited, opened automatically by the UI).
+   * false → refusal, no match, or the model did not cite (sources = all pages
+   * sent, as a fallback; nothing opens automatically).
+   */
+  cited: boolean;
 };
 
 /** Chunks fetched from the hybrid search before grouping into pages. */
@@ -49,16 +63,34 @@ const MAX_USER_MESSAGE_CHARS = 15_000;
 const MAX_QUESTION_CHARS = 2000;
 const ANSWER_MODEL = "gpt-4o";
 const REWRITE_MODEL = "gpt-4o-mini";
+/**
+ * Low temperature so the same question gets the same answer/refusal
+ * (the OpenAI default of 1.0 made borderline questions flip between runs).
+ */
+const ANSWER_TEMPERATURE = 0.1;
+const REWRITE_TEMPERATURE = 0;
 
 const NO_MATCH_ANSWER =
   "לא מצאתי מידע רלוונטי במאגר המסמכים לשאלה הזו. נסו לנסח מחדש, או בדקו שמסמך מתאים קיים במערכת.";
 
 const SYSTEM_PROMPT = `אתה עוזר ידע של מחלקת התמיכה הטכנית בארגון.
 ענה בעברית, בבהירות ובקיצור.
-הסתמך רק על המסמכים שסופקו בהקשר.
-אם המסמכים אינם מכסים את השאלה — אמור במפורש שאין מספיק מידע במאגר הידע, ואל תמציא.
+הסתמך רק על המסמכים שסופקו בהקשר. המסמכים ממוספרים: [מסמך 1], [מסמך 2] וכן הלאה.
 כשהתשובה היא הליך או רשימת שלבים, צטט את השלבים כפי שהם מופיעים במסמך, בסדרם המקורי, בלי לקצר או לשנות ניסוח.
-כשאתה משתמש במסמך, ציין את כותרתו.`;
+
+ציטוטים — חובה:
+- בסוף כל משפט ובסוף כל שלב, כתוב בסוגריים מרובעים את מספר המסמך שממנו נלקח המידע, למשל: [1]
+- אם המידע נלקח משני מסמכים, כתוב: [1][2]
+- צטט רק מסמכים שבאמת השתמשת בהם.
+- אל תכתוב את כותרות המסמכים או את המילה "מסמך" בתוך הטקסט — רק את המספר בסוגריים.
+
+מתי לענות ומתי לסרב — חשוב:
+- ברירת המחדל היא לענות. בדוק: האם אחד המסמכים מסביר איך לבצע את הפעולה המרכזית שבשאלה, באותה מערכת? אם כן — חובה לענות מהמסמך, גם אם בשאלה יש ניסוח אחר, מילה נרדפת, או פרט נוסף שהמסמך לא מזכיר במפורש (למשל "לקורס אחר", "למשתמש חדש").
+- פרט בשאלה שלא מופיע במסמך אינו סיבה לסרב: ענה על מה שהמסמך מכסה עם ציטוטים, והוסף בסוף משפט אחד שמציין מה בדיוק לא מופיע במסמכים. אל תמציא את החלק החסר.
+- הוסף משפט כזה רק על פרט שהמשתמש שאל עליו. אל תוסיף הערות על מקרים שהמשתמש לא שאל עליהם.
+- מערכת או תוכנה אחרת מזו שבמסמך אינה פרט קטן: אל תעביר הליך ממערכת אחת לאחרת.
+- סרב רק אם אף מסמך אינו מסביר את הפעולה או הנושא של השאלה. במקרה זה ענה במשפט הבא בלבד, בלי ציטוטים ובלי להמציא:
+${REFUSAL_SENTENCE}`;
 
 const REWRITE_PROMPT = `תפקידך לנסח מחדש שאלת המשך כשאלה עצמאית לחיפוש במאגר ידע של תמיכה טכנית.
 השתמש בהיסטוריית השיחה כדי להשלים הקשר חסר (למשל "זה", "ואם זה לא עובד").
@@ -71,12 +103,13 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 async function callChat(
   messages: ChatMessage[],
   systemPrompt: string,
-  model: string
+  model: string,
+  temperature: number
 ): Promise<string> {
   const webReq = new Request("http://localhost/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, systemPrompt, model }),
+    body: JSON.stringify({ messages, systemPrompt, model, temperature }),
   });
 
   const webRes = await chatHandler(webReq);
@@ -102,7 +135,15 @@ function cleanHistory(history: AskMessage[] | undefined): ChatMessage[] {
         m.content.trim()
     )
     .slice(-MAX_HISTORY)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CHARS) }));
+    .map((m) => ({
+      role: m.role,
+      // Old answers' [n] refer to that turn's sources, not this turn's pages.
+      content: (m.role === "assistant"
+        ? stripCitationMarkers(m.content)
+        : m.content
+      ).slice(0, MAX_HISTORY_CHARS),
+    }))
+    .filter((m) => m.content.trim());
 }
 
 /**
@@ -126,7 +167,8 @@ export async function rewriteQuestion(
         },
       ],
       REWRITE_PROMPT,
-      REWRITE_MODEL
+      REWRITE_MODEL,
+      REWRITE_TEMPERATURE
     );
     const line = rewritten.split("\n")[0]!.trim();
     return line && line.length <= MAX_QUESTION_CHARS ? line : question;
@@ -228,7 +270,7 @@ export async function runAsk(input: {
   const { pages } = await retrieve(searchQuery);
 
   if (pages.length === 0) {
-    return { answer: NO_MATCH_ANSWER, sources: [] };
+    return { answer: NO_MATCH_ANSWER, sources: [], cited: false };
   }
 
   const prefix = "הקשר ממסמכי הידע:\n\n";
@@ -236,7 +278,7 @@ export async function runAsk(input: {
   const budget = MAX_USER_MESSAGE_CHARS - prefix.length - suffix.length;
   const { block, included } = buildContext(pages, budget);
   if (included.length === 0) {
-    return { answer: NO_MATCH_ANSWER, sources: [] };
+    return { answer: NO_MATCH_ANSWER, sources: [], cited: false };
   }
 
   const pageById = new Map(pages.map((p) => [p.documentId, p]));
@@ -251,11 +293,27 @@ export async function runAsk(input: {
     };
   });
 
-  const answer = await callChat(
+  const raw = await callChat(
     [...history, { role: "user", content: prefix + block + suffix }],
     SYSTEM_PROMPT,
-    ANSWER_MODEL
+    ANSWER_MODEL,
+    ANSWER_TEMPERATURE
   );
 
-  return { answer, sources };
+  if (isRefusal(raw)) {
+    return { answer: stripCitationMarkers(raw), sources: [], cited: false };
+  }
+
+  const { text, order } = processCitations(raw, sources.length);
+  if (order.length === 0) {
+    // Model answered without citing: keep the sent pages as a fallback list.
+    console.warn(JSON.stringify({ event: "vs_answer_uncited" }));
+    return { answer: text, sources, cited: false };
+  }
+
+  return {
+    answer: text,
+    sources: order.map((n) => sources[n - 1]!),
+    cited: true,
+  };
 }

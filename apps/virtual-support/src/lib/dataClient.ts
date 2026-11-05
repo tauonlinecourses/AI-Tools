@@ -153,10 +153,7 @@ export async function uploadImage(input: {
 export async function askQuestion(input: {
   question: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
-}): Promise<{
-  answer: string;
-  sources: import("./types").AskSource[];
-}> {
+}): Promise<import("./types").AskResult> {
   const token = await getPlatformAccessToken();
   if (!token) {
     throw new Error("Not signed in");
@@ -168,6 +165,7 @@ export async function askQuestion(input: {
   const body = (await res.json().catch(() => null)) as {
     answer?: string;
     sources?: import("./types").AskSource[];
+    cited?: boolean;
     error?: string;
   } | null;
   if (!res.ok) {
@@ -176,5 +174,6 @@ export async function askQuestion(input: {
   return {
     answer: body?.answer ?? "",
     sources: body?.sources ?? [],
+    cited: body?.cited === true,
   };
 }

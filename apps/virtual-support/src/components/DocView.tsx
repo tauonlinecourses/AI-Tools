@@ -2,6 +2,16 @@ import { Spinner } from "@workspace/ui";
 import type { Document, Folder } from "../lib/types";
 import { DocBody } from "./DocBody";
 
+const lastEditFormat = new Intl.DateTimeFormat("he-IL", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatLastEdit(iso: string): string | null {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : lastEditFormat.format(date);
+}
+
 interface DocViewProps {
   doc: Document | null;
   folder?: Folder | null;
@@ -39,9 +49,12 @@ export function DocView({
     );
   }
 
+  const lastEdit = formatLastEdit(doc.updatedAt);
+
   return (
-    <div dir="rtl" className="flex flex-col gap-4 p-4 sm:p-5">
-      <header className="flex items-center gap-2 border-b border-surface-200 pb-3">
+    <div dir="rtl" className="flex flex-col">
+      {/* Sticks to the top of the column's scroll container (App.tsx). */}
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-surface-200 bg-white px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
         <div className="min-w-0 flex-1">
           {folder ? (
             <p className="mb-1 text-xs font-medium text-surface-500">
@@ -51,6 +64,12 @@ export function DocView({
           <h2 className="text-lg font-semibold leading-snug text-surface-900 sm:text-xl">
             {doc.title}
           </h2>
+          {lastEdit ? (
+            <p className="mt-1 text-xs text-surface-500">
+              עודכן לאחרונה:{" "}
+              <time dateTime={doc.updatedAt}>{lastEdit}</time>
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -97,11 +116,13 @@ export function DocView({
         ) : null}
       </header>
 
-      {doc.body.trim() ? (
-        <DocBody body={doc.body} />
-      ) : (
-        <p className="text-sm text-surface-500">אין תוכן במסמך זה.</p>
-      )}
+      <div className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
+        {doc.body.trim() ? (
+          <DocBody body={doc.body} />
+        ) : (
+          <p className="text-sm text-surface-500">אין תוכן במסמך זה.</p>
+        )}
+      </div>
     </div>
   );
 }
