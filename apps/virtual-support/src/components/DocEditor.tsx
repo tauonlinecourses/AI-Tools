@@ -193,7 +193,7 @@ export function DocEditor({
         setUploadError(null);
         void (async () => {
           try {
-            let cleaned = sanitizeDocHtml(html);
+            let cleaned = sanitizeDocHtml(html, { collapseWhitespace: true });
             cleaned = await replaceDataImagesWithUploads(cleaned);
             if (!cleaned.trim() && plain.trim()) {
               cleaned = sanitizeDocHtml(
@@ -343,7 +343,7 @@ export function DocEditor({
           dir="rtl"
           onPaste={handlePaste}
           onInput={onEditorInput}
-          className={`min-h-[16rem] w-full rounded-control border border-surface-200 bg-white px-3 py-2 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 ${DOC_BODY_CLASS} [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-lg [&_h3]:font-bold [&_h4]:mt-2 [&_h4]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pe-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pe-5 [&_li]:my-0.5 [&_strong]:font-bold [&_b]:font-bold`}
+          className={`min-h-[16rem] w-full rounded-control border border-surface-200 bg-white px-3 py-2 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 overflow-x-hidden ${DOC_BODY_CLASS}`}
         />
         {uploading ? (
           <p className="inline-flex items-center gap-2 text-xs text-surface-600">
