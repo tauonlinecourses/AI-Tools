@@ -122,6 +122,7 @@ export default defineConfig(({ mode }) => {
               const body = JSON.parse(raw || "{}") as {
                 question?: string;
                 history?: unknown;
+                sessionId?: unknown;
               };
               const { runAsk } = (await server.ssrLoadModule(
                 "/server/askHandler.ts"
@@ -131,6 +132,8 @@ export default defineConfig(({ mode }) => {
                 history: Array.isArray(body.history)
                   ? (body.history as import("./server/askHandler").AskMessage[])
                   : [],
+                sessionId:
+                  typeof body.sessionId === "string" ? body.sessionId : undefined,
               });
               res.statusCode = 200;
               res.setHeader("Content-Type", "application/json");

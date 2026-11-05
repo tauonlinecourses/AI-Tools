@@ -47,6 +47,8 @@ export type AskResult = {
    * sent, as a fallback; nothing opens automatically).
    */
   cited: boolean;
+  /** ask_log row id, for 👍/👎. Missing when logging is off or failed. */
+  logId?: string;
 };
 
 /** Chunks fetched from the hybrid search before grouping into pages. */
@@ -68,6 +70,11 @@ const REWRITE_MODEL = "gpt-4o-mini";
  * (the OpenAI default of 1.0 made borderline questions flip between runs).
  */
 const ANSWER_TEMPERATURE = 0.1;
+/**
+ * Stored on every ask_log row. Bump when the prompt, models or retrieval
+ * settings change, so logs/evals can be compared before vs after.
+ */
+export const PIPELINE_VERSION = "stage3-2026-11-05";
 const REWRITE_TEMPERATURE = 0;
 
 const NO_MATCH_ANSWER =
@@ -256,10 +263,31 @@ export async function retrieve(searchQuery: string): Promise<RetrievalResult> {
   return { searchQuery, keywordText: keywords.text, hits, pages };
 }
 
-export async function runAsk(input: {
+export type AskOutcome = "answered" | "refused" | "no_match" | "uncited";
+
+export type PageSent = {
+  documentId: string;
+  title: string;
+  similarity: number;
+  keywordRank: number;
+  rrf: number;
+};
+
+/** Full result incl. diagnostics, used for logging and by the eval script. */
+export type AskDetails = {
+  result: AskResult;
+  outcome: AskOutcome;
+  question: string;
+  searchQuery: string;
+  pagesSent: PageSent[];
+  /** Best chunk similarity among all search hits (even ones below the bar). */
+  bestSimilarity: number | null;
+};
+
+export async function askDetailed(input: {
   question: string;
   history?: AskMessage[];
-}): Promise<AskResult> {
+}): Promise<AskDetails> {
   const question = (input.question?.trim() ?? "").slice(0, MAX_QUESTION_CHARS);
   if (!question) {
     throw new Error("question is required");
@@ -267,31 +295,41 @@ export async function runAsk(input: {
 
   const history = cleanHistory(input.history);
   const searchQuery = await rewriteQuestion(question, history);
-  const { pages } = await retrieve(searchQuery);
+  const { pages, hits } = await retrieve(searchQuery);
+  const bestSimilarity =
+    hits.length > 0 ? Math.max(...hits.map((h) => h.similarity)) : null;
+  const base = { question, searchQuery, bestSimilarity };
+  const noMatch: AskDetails = {
+    ...base,
+    result: { answer: NO_MATCH_ANSWER, sources: [], cited: false },
+    outcome: "no_match",
+    pagesSent: [],
+  };
 
-  if (pages.length === 0) {
-    return { answer: NO_MATCH_ANSWER, sources: [], cited: false };
-  }
+  if (pages.length === 0) return noMatch;
 
   const prefix = "הקשר ממסמכי הידע:\n\n";
   const suffix = `\n\n---\n\nשאלת המשתמש:\n${question}`;
   const budget = MAX_USER_MESSAGE_CHARS - prefix.length - suffix.length;
   const { block, included } = buildContext(pages, budget);
-  if (included.length === 0) {
-    return { answer: NO_MATCH_ANSWER, sources: [], cited: false };
-  }
+  if (included.length === 0) return noMatch;
 
   const pageById = new Map(pages.map((p) => [p.documentId, p]));
-  const sources: AskSource[] = included.map((p) => {
-    const page = pageById.get(p.documentId)!;
-    return {
-      documentId: page.documentId,
-      title: page.title,
-      folderName: page.folderName,
-      excerpt: page.bestHit.content.slice(0, 400),
-      similarity: page.bestSimilarity,
-    };
-  });
+  const sentPages = included.map((p) => pageById.get(p.documentId)!);
+  const sources: AskSource[] = sentPages.map((page) => ({
+    documentId: page.documentId,
+    title: page.title,
+    folderName: page.folderName,
+    excerpt: page.bestHit.content.slice(0, 400),
+    similarity: page.bestSimilarity,
+  }));
+  const pagesSent: PageSent[] = sentPages.map((page) => ({
+    documentId: page.documentId,
+    title: page.title,
+    similarity: page.bestSimilarity,
+    keywordRank: page.bestHit.keyword_rank,
+    rrf: page.bestRrf,
+  }));
 
   const raw = await callChat(
     [...history, { role: "user", content: prefix + block + suffix }],
@@ -301,19 +339,85 @@ export async function runAsk(input: {
   );
 
   if (isRefusal(raw)) {
-    return { answer: stripCitationMarkers(raw), sources: [], cited: false };
+    return {
+      ...base,
+      pagesSent,
+      outcome: "refused",
+      result: { answer: stripCitationMarkers(raw), sources: [], cited: false },
+    };
   }
 
   const { text, order } = processCitations(raw, sources.length);
   if (order.length === 0) {
     // Model answered without citing: keep the sent pages as a fallback list.
     console.warn(JSON.stringify({ event: "vs_answer_uncited" }));
-    return { answer: text, sources, cited: false };
+    return {
+      ...base,
+      pagesSent,
+      outcome: "uncited",
+      result: { answer: text, sources, cited: false },
+    };
   }
 
   return {
-    answer: text,
-    sources: order.map((n) => sources[n - 1]!),
-    cited: true,
+    ...base,
+    pagesSent,
+    outcome: "answered",
+    result: {
+      answer: text,
+      sources: order.map((n) => sources[n - 1]!),
+      cited: true,
+    },
   };
+}
+
+/** Insert one anonymous ask_log row. Returns its id, or null on failure. */
+async function logAsk(
+  details: AskDetails,
+  sessionId: string | undefined
+): Promise<string | null> {
+  try {
+    const client = createVsServiceClient();
+    const { data, error } = await client
+      .from("ask_log")
+      .insert({
+        session_id: sessionId?.slice(0, 64) || null,
+        pipeline_version: PIPELINE_VERSION,
+        question: details.question,
+        search_query: details.searchQuery,
+        outcome: details.outcome,
+        answer: details.result.answer,
+        pages_sent: details.pagesSent,
+        cited_document_ids: details.result.cited
+          ? details.result.sources.map((s) => s.documentId)
+          : [],
+        best_similarity: details.bestSimilarity,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return (data?.id as string) ?? null;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        event: "vs_ask_log_failed",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    );
+    return null;
+  }
+}
+
+export async function runAsk(input: {
+  question: string;
+  history?: AskMessage[];
+  /** Random per-chat id from the browser (anonymous). */
+  sessionId?: string;
+  /** false for eval/smoke runs so they do not fill the log. */
+  log?: boolean;
+}): Promise<AskResult> {
+  const details = await askDetailed(input);
+  if (input.log === false) return details.result;
+  const logId = await logAsk(details, input.sessionId);
+  return logId ? { ...details.result, logId } : details.result;
 }

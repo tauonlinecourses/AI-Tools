@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "@workspace/ui";
-import { askQuestion } from "../lib/dataClient";
+import { askQuestion, rateAnswer } from "../lib/dataClient";
 import { splitCitations } from "../lib/citations";
-import type { AskSource, ChatTurn } from "../lib/types";
+import type { AskSource, ChatTurn, Vote } from "../lib/types";
 
 interface AskPageProps {
   /**
@@ -62,12 +62,136 @@ function AnswerText({
   );
 }
 
+function ThumbIcon({ down = false }: { down?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 ${down ? "rotate-180" : ""}`}
+      aria-hidden
+    >
+      <path d="M7 10v11" />
+      <path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 7A2 2 0 0 1 17.5 21H7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L15 2a3 3 0 0 1 0 3.9Z" />
+    </svg>
+  );
+}
+
+/**
+ * 👍/👎 under an answer. Votes save immediately; 👎 also offers an optional
+ * one-line "what was wrong?" comment. Clicking the active vote clears it.
+ * The comment field only stays open while this is the latest answer: asking
+ * a new question closes it (an unsent comment is dropped; the 👎 is kept).
+ */
+function AnswerFeedback({
+  vote,
+  isLatest,
+  onVote,
+  onComment,
+}: {
+  vote: Vote | null;
+  isLatest: boolean;
+  onVote: (vote: Vote | null) => Promise<void>;
+  onComment: (comment: string) => Promise<void>;
+}) {
+  const [comment, setComment] = useState("");
+  const [commentSent, setCommentSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const buttonClass = (active: boolean) =>
+    `inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+      active
+        ? "bg-surface-200 text-surface-900"
+        : "text-surface-400 hover:bg-surface-100 hover:text-surface-700"
+    }`;
+
+  const sendComment = async () => {
+    const text = comment.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      await onComment(text);
+      setCommentSent(true);
+    } catch {
+      // Parent shows the error; keep the text so the user can retry.
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="תשובה טובה"
+          aria-pressed={vote === "up"}
+          title="תשובה טובה"
+          onClick={() => void onVote(vote === "up" ? null : "up")}
+          className={buttonClass(vote === "up")}
+        >
+          <ThumbIcon />
+        </button>
+        <button
+          type="button"
+          aria-label="תשובה לא טובה"
+          aria-pressed={vote === "down"}
+          title="תשובה לא טובה"
+          onClick={() => {
+            setCommentSent(false);
+            void onVote(vote === "down" ? null : "down");
+          }}
+          className={buttonClass(vote === "down")}
+        >
+          <ThumbIcon down />
+        </button>
+        {vote ? (
+          <span className="ms-1 text-xs text-surface-400">תודה על המשוב</span>
+        ) : null}
+      </div>
+
+      {vote === "down" && !commentSent && isLatest ? (
+        <div className="flex max-w-xl items-center gap-2 rounded-full border border-surface-200 bg-white px-3 py-1">
+          <input
+            dir="rtl"
+            type="text"
+            maxLength={500}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void sendComment();
+              }
+            }}
+            placeholder="מה לא היה תקין? (לא חובה)"
+            className="min-w-0 flex-1 bg-transparent py-1 text-sm text-surface-900 outline-none placeholder:text-surface-400"
+          />
+          <button
+            type="button"
+            disabled={!comment.trim() || sending}
+            onClick={() => void sendComment()}
+            className="shrink-0 rounded-full px-2 py-1 text-xs font-medium text-surface-700 hover:bg-surface-100 disabled:opacity-40"
+          >
+            שליחה
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AskPage({ onOpenDocument }: AskPageProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Random per page load; only groups this chat's questions in the log (anonymous).
+  const sessionId = useMemo(() => crypto.randomUUID(), []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,13 +218,15 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
         role: t.role,
         content: t.content,
       }));
-      const result = await askQuestion({ question, history });
+      const result = await askQuestion({ question, history, sessionId });
       setTurns((prev) => [
         ...prev,
         {
           role: "assistant",
           content: result.answer,
           sources: result.sources,
+          logId: result.logId,
+          vote: null,
         },
       ]);
       // Open the first cited page; the parent ignores this while editing.
@@ -118,7 +244,38 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
     } finally {
       setBusy(false);
     }
-  }, [busy, input, openSource, turns]);
+  }, [busy, input, openSource, sessionId, turns]);
+
+  const setTurnVote = useCallback((index: number, vote: Vote | null) => {
+    setTurns((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, vote } : t))
+    );
+  }, []);
+
+  const handleVote = useCallback(
+    async (index: number, logId: string, vote: Vote | null, prev: Vote | null) => {
+      setTurnVote(index, vote); // optimistic
+      try {
+        await rateAnswer({ logId, vote });
+      } catch (err) {
+        setTurnVote(index, prev);
+        setError(err instanceof Error ? err.message : "שמירת המשוב נכשלה");
+      }
+    },
+    [setTurnVote]
+  );
+
+  const handleComment = useCallback(
+    async (logId: string, comment: string) => {
+      try {
+        await rateAnswer({ logId, vote: "down", comment });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "שמירת המשוב נכשלה");
+        throw err;
+      }
+    },
+    []
+  );
 
   return (
     <div dir="rtl" className="relative flex h-full min-h-0 flex-col bg-[#f8f9fa]">
@@ -171,6 +328,17 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
                         </button>
                       ))}
                     </div>
+                  ) : null}
+                  {turn.logId ? (
+                    <AnswerFeedback
+                      vote={turn.vote ?? null}
+                      // A new question appends a turn, so this closes right away.
+                      isLatest={i === turns.length - 1}
+                      onVote={(vote) =>
+                        handleVote(i, turn.logId!, vote, turn.vote ?? null)
+                      }
+                      onComment={(comment) => handleComment(turn.logId!, comment)}
+                    />
                   ) : null}
                 </div>
               )}

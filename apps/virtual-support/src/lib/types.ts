@@ -31,10 +31,16 @@ export type AskResult = {
   sources: AskSource[];
   /** true → sources are exactly the cited pages; sources[0] opens automatically. */
   cited: boolean;
+  /** ask_log row id for 👍/👎 (absent if logging failed). */
+  logId?: string;
 };
+
+export type Vote = "up" | "down";
 
 export type ChatTurn = {
   role: "user" | "assistant";
   content: string;
   sources?: AskSource[];
+  logId?: string;
+  vote?: Vote | null;
 };

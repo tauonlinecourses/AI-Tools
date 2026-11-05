@@ -1,5 +1,5 @@
 /**
- * Virtual Support data BFF actions (folders, documents, image upload).
+ * Virtual Support data BFF actions (folders, documents, image upload, answer votes).
  * Runs with service_role after Platform auth on the API route.
  */
 
@@ -281,6 +281,28 @@ export async function runDataAction(
         };
       }
       return { ok: true, publicUrl, path };
+    }
+
+    case "rateAnswer": {
+      // 👍/👎 on an anonymous ask_log row; vote null clears it.
+      const logId = str(p.logId);
+      if (!logId) throw new Error("logId is required");
+      const vote = p.vote === "up" || p.vote === "down" ? p.vote : null;
+      if (p.vote !== null && vote === null) {
+        throw new Error("vote must be 'up', 'down' or null");
+      }
+      const comment =
+        vote === "down" ? str(p.comment).trim().slice(0, 500) || null : null;
+      const { error } = await client
+        .from("ask_log")
+        .update({
+          vote,
+          vote_comment: comment,
+          voted_at: vote ? new Date().toISOString() : null,
+        })
+        .eq("id", logId);
+      if (error) throw new Error(error.message);
+      return { ok: true };
     }
 
     default:

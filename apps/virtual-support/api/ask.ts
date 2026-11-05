@@ -27,9 +27,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const question =
       body && typeof body.question === "string" ? body.question : "";
     const history = Array.isArray(body?.history) ? body.history : [];
+    const sessionId =
+      body && typeof body.sessionId === "string" ? body.sessionId : undefined;
 
     const { runAsk } = await import("../server/askHandler.js");
-    const result = await runAsk({ question, history });
+    const result = await runAsk({ question, history, sessionId });
     return res.status(200).json(result);
   } catch (err: unknown) {
     return res.status(500).json({

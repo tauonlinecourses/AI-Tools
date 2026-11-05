@@ -100,7 +100,7 @@ describe("ask smoke (dev data)", () => {
 
     // 5. Optional full answer.
     if (process.env.SMOKE_ANSWER === "1") {
-      const res = await runAsk({ question: titleQ });
+      const res = await runAsk({ question: titleQ, log: false });
       console.log(
         `\n=== full answer (cited=${res.cited}) ===\n${res.answer}\nsources: ${res.sources
           .map((s, i) => `[${i + 1}] ${s.title}`)
@@ -111,7 +111,7 @@ describe("ask smoke (dev data)", () => {
         expect(Number(m[1])).toBeLessThanOrEqual(res.sources.length);
       }
 
-      const off = await runAsk({ question: "מה המתכון הכי טוב לעוגת שוקולד?" });
+      const off = await runAsk({ question: "מה המתכון הכי טוב לעוגת שוקולד?", log: false });
       console.log(`\n=== off-topic answer (cited=${off.cited}) ===\n${off.answer}`);
       expect(off.sources).toHaveLength(0);
     }

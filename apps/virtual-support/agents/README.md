@@ -43,7 +43,7 @@ Platform identity lives in the **Course-Builder** Supabase project. Document dat
 
 ## Data model
 
-Tables (see `supabase/migrations/001_init.sql`, `002_hybrid_search.sql`):
+Tables (see `supabase/migrations/001_init.sql`, `002_hybrid_search.sql`, `003_ask_log.sql`):
 
 - `folders` — `name`, `position`
 - `documents` — `folder_id` (nullable = unfiled), `title`, `body` (sanitized HTML), `position`, `content_hash`
@@ -90,20 +90,44 @@ Tuning constants live at the top of `server/askHandler.ts`.
 
 - **Stage 1 (done):** hybrid search, full-page context, follow-up rewrite.
 - **Stage 2 (done):** inline citation per sentence, cited-only sources, auto-open of the first cited page (not while editing), confirm before discarding edits.
-- **Stage 3:** 👍/👎 per answer, stored with question, answer, cited pages and retrieval scores (no review UI yet).
+- **Stage 3 (done):** anonymous Ask log, 👍/👎 with optional comment, re-test (eval) script.
+
+## Ask log & feedback (Stage 3)
+
+**What is stored.** Every question asked in the app writes one row to `ask_log` (rated or not): question, rewritten search query, answer, `outcome` (`answered` / `refused` / `no_match` / `uncited`), pages sent with scores (`pages_sent`), cited page ids, best chunk similarity, `pipeline_version` (constant `PIPELINE_VERSION` in `server/askHandler.ts` — bump it whenever the prompt, models or retrieval settings change), and the vote.
+
+**Anonymous.** No user id or email. `session_id` is a random id generated in the browser per page load, only to group one chat's questions. Kept indefinitely for now; nothing references `ask_log`, so `truncate public.ask_log;` is safe later.
+
+**Feedback UI** (`AskPage.tsx`). 👍/👎 under each logged answer, saved immediately via `/api/data` → `rateAnswer { logId, vote, comment? }`; clicking the active vote clears it. 👎 opens an optional one-line “מה לא היה תקין?” field (≤ 500 chars). Logging failures never block the answer (`vs_ask_log_failed` warning; the answer then has no 👍/👎).
+
+**Reviewing.** In the Supabase table editor open the `ask_log_review` view and filter:
+- `vote = down` — read `vote_comment`, `pages_sent`, `answer`.
+- `refused = true` — content gaps (pages to write).
+- `uncited`, `weak_match` (best similarity < 0.35), `rephrased` (next question in the same chat within 2 min) — answers worth checking even without a vote.
+
+Diagnosing a bad row: expected page **not** in `pages_sent` → search problem; page sent but answer refused/missed → prompt problem; no page covers it → write content; page used but wrong → fix the page.
+
+**Re-test set** (`ask_eval_cases`): `question`, `expected_outcome` (`answer` / `refuse`), `expected_document_ids` (uuid[]; the page(s) that should be found and cited — page ids are in the `documents` table), `note`, `active`. Add cases by copying real questions from the log in the table editor.
+
+```bash
+pnpm --filter virtual-support eval
+```
+
+Runs every active case through the real pipeline (no `ask_log` rows written) and checks **search** (expected page among pages sent), **outcome** (answered vs refused as expected) and **citation** (expected page cited). Prints a line per case, a summary such as `passed 4/5 · search 3/3 · outcome 5/5 · citation 2/3`, failure details, and writes a JSON report to `eval-results/` (git-ignored). Run it before and after any prompt/retrieval change.
 
 ### Tests
 
 ```bash
 pnpm --filter virtual-support test    # unit tests (server/**/*.test.ts, src/**/*.test.ts)
-pnpm --filter virtual-support smoke   # real dev Supabase + OpenAI; reads .env; needs 002 migration
+pnpm --filter virtual-support smoke   # real dev Supabase + OpenAI; reads .env; needs 002 migration; does not write ask_log
+pnpm --filter virtual-support eval    # re-test set from ask_eval_cases (see Ask log & feedback); needs 003 migration
 ```
 
 `SMOKE_ANSWER=1` additionally calls `gpt-4o` and prints a full answer.
 
 ## BFF actions (`/api/data`)
 
-`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `deleteDocument`, `uploadImage`.
+`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `deleteDocument`, `uploadImage`, `rateAnswer`.
 
 ## Env
 
@@ -126,7 +150,7 @@ Vite middleware proxies `/api/data`, `/api/ask`, `/api/chat` with the same Platf
 
 ## Deploy
 
-1. Create Supabase project; apply `supabase/migrations/001_init.sql`, then `002_hybrid_search.sql`.
+1. Create Supabase project; apply `supabase/migrations/001_init.sql`, then `002_hybrid_search.sql`, then `003_ask_log.sql`.
 2. Apply Course-Builder migration `012_virtual_support_tool.sql` (tool allowlist + group grants).
 3. Vercel project root `apps/virtual-support`; include source outside root; link shared `OPENAI_API_KEY` + Platform env + `VS_*`.
 4. Set hub `tools.config.ts` `url` to the live hostname if it differs from the placeholder.

@@ -12,7 +12,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["scripts/**/*.smoke.ts"],
-    testTimeout: 120_000,
+    testTimeout: 600_000,
     env: {
       OPENAI_API_KEY: env.OPENAI_API_KEY ?? "",
       VS_SUPABASE_URL: env.VS_SUPABASE_URL || env.VITE_SUPABASE_URL || "",

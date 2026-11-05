@@ -153,6 +153,8 @@ export async function uploadImage(input: {
 export async function askQuestion(input: {
   question: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Random per-chat id (anonymous), groups questions of one chat in ask_log. */
+  sessionId: string;
 }): Promise<import("./types").AskResult> {
   const token = await getPlatformAccessToken();
   if (!token) {
@@ -166,6 +168,7 @@ export async function askQuestion(input: {
     answer?: string;
     sources?: import("./types").AskSource[];
     cited?: boolean;
+    logId?: string;
     error?: string;
   } | null;
   if (!res.ok) {
@@ -175,5 +178,15 @@ export async function askQuestion(input: {
     answer: body?.answer ?? "",
     sources: body?.sources ?? [],
     cited: body?.cited === true,
+    logId: typeof body?.logId === "string" ? body.logId : undefined,
   };
+}
+
+/** 👍/👎 on a logged answer. vote null clears it; comment only kept for "down". */
+export async function rateAnswer(input: {
+  logId: string;
+  vote: import("./types").Vote | null;
+  comment?: string;
+}): Promise<void> {
+  await vsData("rateAnswer", input);
 }
