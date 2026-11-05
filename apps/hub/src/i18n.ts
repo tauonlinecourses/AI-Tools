@@ -49,7 +49,7 @@ export const toolCopy: Record<
   },
   "virtual-support": {
     name:        "מדריכים - Virtual TAU",
-    description: "מאגר ידע ארגוני של מחלקת התמיכה ושאלות מבוססות מסמכים",
+    description: "צ׳אט-בוט המבוסס על מאגר הידע הארגוני לתמיכה טכנית",
   },
   "dictionary-tool": {
     name:        "מילון מונחים",
