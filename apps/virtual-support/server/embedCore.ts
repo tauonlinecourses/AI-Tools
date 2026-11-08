@@ -54,11 +54,19 @@ export async function embedTexts(texts: string[]): Promise<EmbedResult> {
   }
 
   const client = new OpenAI({ apiKey });
-  const response = await client.embeddings.create({
-    model: EMBED_MODEL,
-    input: texts.map((t) => t.trim()),
-    dimensions: EMBED_DIMENSIONS,
-  });
+  let response: OpenAI.Embeddings.CreateEmbeddingResponse;
+  try {
+    response = await client.embeddings.create({
+      model: EMBED_MODEL,
+      input: texts.map((t) => t.trim()),
+      dimensions: EMBED_DIMENSIONS,
+    });
+  } catch (err) {
+    // OpenAI's message can quote the API key, so log only status and code.
+    const { status, code } = err as { status?: unknown; code?: unknown };
+    console.error(JSON.stringify({ event: "embed_failed", status, code }));
+    throw new EmbedError("AI service is temporarily unavailable", 502);
+  }
 
   const byIndex = [...response.data].sort((a, b) => a.index - b.index);
   const embeddings = byIndex.map((row) => row.embedding);

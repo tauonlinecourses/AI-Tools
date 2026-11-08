@@ -153,6 +153,6 @@ Vite middleware proxies `/api/data`, `/api/ask`, `/api/chat` with the same Platf
 ## Deploy
 
 1. Create Supabase project; apply `supabase/migrations/001_init.sql`, then `002_hybrid_search.sql`, then `003_ask_log.sql`.
-2. Apply Course-Builder migration `012_virtual_support_tool.sql` (tool allowlist + group grants).
+2. Apply Course-Builder migrations `012_add_dictionary_tool.sql` (tool allowlist, including `virtual-support`) and `014_seed_virtual_support_groups.sql` (group grants).
 3. Vercel project root `apps/virtual-support`; include source outside root; link shared `OPENAI_API_KEY` + Platform env + `VS_*`.
 4. Set hub `tools.config.ts` `url` to the live hostname if it differs from the placeholder.

@@ -1,6 +1,6 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
-import { ADMIN_GROUP_SLUG } from "./constants";
+import { ADMIN_GROUP_SLUG, normalizeAccountStatus } from "./constants";
 import {
   getPlatformPublicConfig,
   getPlatformServiceRoleKey,
@@ -11,6 +11,8 @@ export {
   ADMIN_GROUP_SLUG,
   PLATFORM_TOOL_IDS,
   isPlatformToolId,
+  normalizeAccountStatus,
+  type AccountStatus,
   type PlatformToolId,
 } from "./constants";
 
@@ -155,12 +157,12 @@ export async function assertUserIsApproved(userId: string): Promise<void> {
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
-  const status = data?.status;
-  if (status === "pending") {
-    throw new AuthError("Account pending admin approval", 403);
-  }
+  const status = normalizeAccountStatus(data?.status);
   if (status === "rejected") {
     throw new AuthError("Account was rejected", 403);
+  }
+  if (status !== "approved") {
+    throw new AuthError("Account pending admin approval", 403);
   }
 }
 
@@ -247,6 +249,29 @@ function resolveHandlerFunction<Req, Res>(
 
 const HANDOFF_TTL_MS = 2 * 60 * 1000;
 
+/**
+ * Expired rows still hold session tokens, so remove them whenever a new code
+ * is minted. Best-effort: a failed cleanup must never block a login.
+ */
+async function purgeExpiredHandoffCodes(
+  admin: ReturnType<typeof createPlatformServiceClient>
+): Promise<void> {
+  try {
+    const { error } = await admin
+      .from("auth_handoff_codes")
+      .delete()
+      .lt("expires_at", new Date().toISOString());
+    if (error) throw error;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        event: "handoff_purge_failed",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
+}
+
 export async function createHandoffCode(params: {
   userId: string;
   toolId: string;
@@ -258,6 +283,7 @@ export async function createHandoffCode(params: {
   await assertUserHasToolAccess(params.userId, params.toolId);
   const code = randomBytes(24).toString("hex");
   const admin = createPlatformServiceClient();
+  await purgeExpiredHandoffCodes(admin);
   const { error } = await admin.from("auth_handoff_codes").insert({
     code,
     user_id: params.userId,

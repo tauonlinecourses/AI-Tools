@@ -27,37 +27,32 @@ export type AskOptions = {
 /**
  * Low-level fetch call to /api/chat. Use useAI() in components instead.
  */
-async function platformAuthHeaders(): Promise<Record<string, string>> {
+type AuthClient = { authFetch: typeof fetch };
+
+async function loadAuthClient(): Promise<AuthClient | null> {
   try {
     // Prefer a normal dynamic import so Vite rewrites `@workspace/auth/client`
     // for the browser. `new Function(import)` bypasses Vite and leaves a bare
-    // specifier that fails at runtime → empty headers → /api/chat 401.
-    let getToken: () => Promise<string | null>;
+    // specifier that fails at runtime → no auth header → /api/chat 401.
     try {
-      const mod = await import("@workspace/auth/client");
-      getToken = mod.getPlatformAccessToken;
+      return await import("@workspace/auth/client");
     } catch {
       const importer = new Function(
         "specifier",
         "return import(specifier)"
-      ) as (specifier: string) => Promise<{
-        getPlatformAccessToken: () => Promise<string | null>;
-      }>;
-      const mod = await importer("@workspace/auth/client");
-      getToken = mod.getPlatformAccessToken;
+      ) as (specifier: string) => Promise<AuthClient>;
+      return await importer("@workspace/auth/client");
     }
-    const token = await getToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
-    return {};
+    return null;
   }
 }
 
 export async function aiChat(options: AskOptions): Promise<string> {
-  const authHeaders = await platformAuthHeaders();
-  const res = await fetch("/api/chat", {
+  const auth = await loadAuthClient();
+  const res = await (auth?.authFetch ?? fetch)("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options),
   });
 

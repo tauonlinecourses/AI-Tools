@@ -461,9 +461,10 @@ RAG columns on `qa_pairs` / `info_docs` / `kb_chunks`:
 - `kb_chunks.metadata` — for Q↔A: `thread_id`, `answer_message_id`, …; for info docs: `title`, `kind: 'info_doc'`, `body`
 - Storage bucket `info-doc-images` — public; paste-to-upload from the SPA
 
-RLS is on for all tables with open `anon`/`authenticated` CRUD policies
-(internal staff tool). The **service_role / secret key must never ship to the
-browser**. Tighten policies when adding staff login.
+RLS is on for all tables and the open `anon`/`authenticated` policies were removed
+(`008_lock_anon_access.sql`); the browser reaches this data only through the
+`/api/tau-data` BFF. The **service_role / secret key must never ship to the
+browser**.
 
 #### Phase 2 embeddings (built)
 

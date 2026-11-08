@@ -4,16 +4,12 @@
 import {
   AuthError,
   createPlatformServiceClient as serviceClient,
+  normalizeAccountStatus,
 } from "@workspace/auth/server";
 import { setUserGroups } from "./membership";
 import type { AccountStatus, AdminGroupSummary, AdminUserRow } from "./types";
 
-function asAccountStatus(value: unknown): AccountStatus {
-  if (value === "pending" || value === "rejected" || value === "approved") {
-    return value;
-  }
-  return "approved";
-}
+const NOT_PENDING_MESSAGE = "Only pending users can be approved or rejected";
 
 export async function listAdminUsers(): Promise<AdminUserRow[]> {
   const admin = serviceClient();
@@ -43,7 +39,7 @@ export async function listAdminUsers(): Promise<AdminUserRow[]> {
   for (const p of profiles ?? []) {
     profileById.set(String(p.id), {
       displayName: (p.display_name as string | null) ?? null,
-      status: asAccountStatus(p.status),
+      status: normalizeAccountStatus(p.status),
       requestedGroupId:
         p.requested_group_id != null ? String(p.requested_group_id) : null,
     });
@@ -76,7 +72,7 @@ export async function listAdminUsers(): Promise<AdminUserRow[]> {
       id: u.id,
       email: u.email ?? "",
       displayName: profile?.displayName ?? null,
-      status: profile?.status ?? "approved",
+      status: profile?.status ?? "pending",
       requestedGroupId: profile?.requestedGroupId ?? null,
       groups,
     };
@@ -102,6 +98,9 @@ export async function approveUser(input: {
     .maybeSingle();
   if (profErr) throw profErr;
   if (!profile) throw new AuthError("User profile not found", 404);
+  if (profile.status !== "pending") {
+    throw new AuthError(NOT_PENDING_MESSAGE, 409);
+  }
 
   let groupIds = Array.isArray(input.groupIds)
     ? [...new Set(input.groupIds.map((g) => g.trim()).filter(Boolean))]
@@ -113,7 +112,10 @@ export async function approveUser(input: {
     throw new AuthError("Select at least one team to approve", 400);
   }
 
-  const { error: updErr } = await admin
+  // Groups first: if this fails the user is still pending and can be retried.
+  await setUserGroups(userId, groupIds);
+
+  const { data: approved, error: updErr } = await admin
     .from("profiles")
     .update({
       status: "approved",
@@ -121,10 +123,11 @@ export async function approveUser(input: {
       reviewed_at: new Date().toISOString(),
       reviewed_by: input.reviewerId,
     })
-    .eq("id", userId);
+    .eq("id", userId)
+    .eq("status", "pending")
+    .select("id");
   if (updErr) throw updErr;
-
-  await setUserGroups(userId, groupIds);
+  if (!approved?.length) throw new AuthError(NOT_PENDING_MESSAGE, 409);
 
   const users = await listAdminUsers();
   const user = users.find((u) => u.id === userId);
@@ -142,13 +145,16 @@ export async function rejectUser(input: {
   const admin = serviceClient();
   const { data: profile, error: profErr } = await admin
     .from("profiles")
-    .select("id")
+    .select("id, status")
     .eq("id", userId)
     .maybeSingle();
   if (profErr) throw profErr;
   if (!profile) throw new AuthError("User profile not found", 404);
+  if (profile.status !== "pending") {
+    throw new AuthError(NOT_PENDING_MESSAGE, 409);
+  }
 
-  const { error: updErr } = await admin
+  const { data: rejected, error: updErr } = await admin
     .from("profiles")
     .update({
       status: "rejected",
@@ -156,8 +162,11 @@ export async function rejectUser(input: {
       reviewed_at: new Date().toISOString(),
       reviewed_by: input.reviewerId,
     })
-    .eq("id", userId);
+    .eq("id", userId)
+    .eq("status", "pending")
+    .select("id");
   if (updErr) throw updErr;
+  if (!rejected?.length) throw new AuthError(NOT_PENDING_MESSAGE, 409);
 
   const { error: delErr } = await admin
     .from("group_members")

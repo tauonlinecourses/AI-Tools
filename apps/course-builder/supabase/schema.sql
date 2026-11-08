@@ -288,10 +288,10 @@ create table course_mbz_bindings (
 alter table course_mbz_sources enable row level security;
 alter table course_mbz_bindings enable row level security;
 
-create policy "anon_authenticated_all" on course_mbz_sources
-  for all to anon, authenticated
+create policy "authenticated_all" on course_mbz_sources
+  for all to authenticated
   using (true) with check (true);
 
-create policy "anon_authenticated_all" on course_mbz_bindings
-  for all to anon, authenticated
+create policy "authenticated_all" on course_mbz_bindings
+  for all to authenticated
   using (true) with check (true);

@@ -81,7 +81,7 @@ Other unsupported activities (`forum`, …) stay in the archive and in `<sequenc
 
 ## Migration
 
-Apply [`supabase/migrations/016_course_mbz_roundtrip.sql`](../supabase/migrations/016_course_mbz_roundtrip.sql) on the live project (tables + Storage bucket + open RLS policies matching current MVP).
+Apply [`supabase/migrations/016_course_mbz_roundtrip.sql`](../supabase/migrations/016_course_mbz_roundtrip.sql) on the live project (tables + Storage bucket), then [`020_mbz_authenticated_only.sql`](../supabase/migrations/020_mbz_authenticated_only.sql), which limits them to logged-in users.
 
 ## Manual Moodle restore checkpoint
 

@@ -34,8 +34,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await runAsk({ question, history, sessionId });
     return res.status(200).json(result);
   } catch (err: unknown) {
+    // Details stay in the server log; users get a plain message.
+    console.error(
+      JSON.stringify({
+        event: "vs_ask_failed",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    );
     return res.status(500).json({
-      error: err instanceof Error ? err.message : "ask failed",
+      error: "לא הצלחנו לענות על השאלה כרגע. נסו שוב בעוד כמה דקות.",
     });
   }
 }

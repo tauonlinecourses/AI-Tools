@@ -1,4 +1,5 @@
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { normalizeAccountStatus, type AccountStatus } from "./constants.js";
 import { getPlatformPublicConfig, requirePlatformPublicConfig } from "./env.js";
 
 let browserClient: SupabaseClient | null = null;
@@ -18,6 +19,73 @@ export function getPlatformClient(): SupabaseClient {
     },
   });
   return browserClient;
+}
+
+let sessionEndedListener: (() => void) | null = null;
+let holdRequestsWhenSessionEnded = false;
+
+/**
+ * Lets the app react when Auth says this login no longer exists.
+ * With `holdRequests`, the failed request never settles, so no screen shows an
+ * auth error behind the app's own sign-in prompt. Signing in reloads the page.
+ */
+export function setPlatformSessionEndedListener(
+  listener: (() => void) | null,
+  options: { holdRequests?: boolean } = {}
+): void {
+  sessionEndedListener = listener;
+  holdRequestsWhenSessionEnded = Boolean(listener && options.holdRequests);
+}
+
+function reportSessionEnded(): Promise<void> {
+  sessionEndedListener?.();
+  return holdRequestsWhenSessionEnded
+    ? new Promise<void>(() => undefined)
+    : Promise.resolve();
+}
+
+/** Clears only this browser's copy of a login that has already ended. */
+export async function clearLocalPlatformSession(): Promise<void> {
+  await getPlatformClient().auth.signOut({ scope: "local" });
+}
+
+const ENDED_SESSION_CODES = new Set([
+  "session_not_found",
+  "refresh_token_not_found",
+  "refresh_token_already_used",
+]);
+
+function isEndedSessionError(err: unknown): boolean {
+  const { code, name, message } = (err ?? {}) as {
+    code?: unknown;
+    name?: unknown;
+    message?: unknown;
+  };
+  return (
+    name === "AuthSessionMissingError" ||
+    (typeof code === "string" && ENDED_SESSION_CODES.has(code)) ||
+    (typeof message === "string" && message.includes("Invalid Refresh Token"))
+  );
+}
+
+/** True when opening a tool failed because the login itself is gone. */
+export function isEndedSessionHandoffError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return (
+    message.startsWith("Invalid or expired session") ||
+    message.startsWith("Session expired")
+  );
+}
+
+async function isEndedSessionResponse(res: Response): Promise<boolean> {
+  if (res.status !== 401) return false;
+  const body = (await res.clone().json().catch(() => null)) as {
+    error?: unknown;
+  } | null;
+  return (
+    typeof body?.error === "string" &&
+    body.error.startsWith("Invalid or expired session")
+  );
 }
 
 export async function getPlatformSession(): Promise<Session | null> {
@@ -46,7 +114,10 @@ export async function ensureFreshPlatformSession(): Promise<Session | null> {
   const { data, error } = await client.auth.refreshSession({
     refresh_token: session.refresh_token,
   });
-  if (error) throw error;
+  if (error) {
+    if (isEndedSessionError(error)) await reportSessionEnded();
+    throw error;
+  }
   return data.session;
 }
 
@@ -98,7 +169,7 @@ export type PlatformGroup = {
   slug: string;
 };
 
-export type AccountStatus = "pending" | "approved" | "rejected";
+export type { AccountStatus };
 
 /** Current user's profile status (RLS: own row only). */
 export async function getMyAccountStatus(): Promise<AccountStatus> {
@@ -118,12 +189,7 @@ export async function getMyAccountStatus(): Promise<AccountStatus> {
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
-  const status = data?.status;
-  if (status === "pending" || status === "rejected" || status === "approved") {
-    return status;
-  }
-  // Legacy users without a status column value — allow access.
-  return "approved";
+  return normalizeAccountStatus(data?.status);
 }
 
 export async function updatePlatformPassword(password: string): Promise<void> {
@@ -150,6 +216,16 @@ export async function resetPlatformPasswordForEmail(
  * Re-authenticate with email + password (e.g. verify current password before
  * changing it). Throws on wrong credentials.
  */
+/** True when Auth rejected an email + password pair (not a network failure). */
+export function isInvalidCredentialsError(err: unknown): boolean {
+  const { code, message } = (err ?? {}) as { code?: unknown; message?: unknown };
+  return (
+    code === "invalid_credentials" ||
+    (typeof message === "string" &&
+      message.toLowerCase().includes("invalid login credentials"))
+  );
+}
+
 export async function verifyPlatformPassword(
   email: string,
   password: string
@@ -258,7 +334,9 @@ export async function authFetch(
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers });
+  const res = await fetch(input, { ...init, headers });
+  if (await isEndedSessionResponse(res)) await reportSessionEnded();
+  return res;
 }
 
 /** Hub origin from `VITE_HUB_URL`, or local/prod defaults. */
