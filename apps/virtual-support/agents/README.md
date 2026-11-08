@@ -11,7 +11,7 @@ Single screen with three columns (RTL):
 | Column | Width | Purpose |
 |--------|-------|---------|
 | **מקורות (right)** | ~26% | Floating rounded white panel (`bg-white`), RTL. Header **Virtual TAU מסמכים**, then OneNote-style split: **נושאים** (folders, right, colored tabs) + **עמודים** (documents in the selected topic, left). |
-| **צ׳אט (middle)** | `flex-1` (~50% with both side panels) | Page-grey Ask canvas (`#f8f9fa`, NotebookLM-style messages): user turns in a `#e8eaed` pill (`rounded-[2rem]`, `text-sm`, `px-5 py-3.5`); assistant answers flush on the canvas with larger type (`~1.05rem`), no card/blob. Inline numbered citation chips + source chips under the answer. |
+| **צ׳אט (middle)** | `flex-1` (~50% with both side panels) | Page-grey Ask canvas (`#f8f9fa`, NotebookLM-style messages): user turns in a `#e8eaed` pill (`rounded-[2rem]`, `text-sm`, `px-5 py-3.5`); assistant answers flush on the canvas with larger type (`~1.05rem`), no card/blob. Inline numbered citation chips + source chips under the answer. Footer under the composer notes that Q&A is retained for quality improvement, plus an AI-may-err / verify-against-source disclaimer. |
 | **מסמך (left)** | ~25%, hidden until open | Floating rounded panel matching sources height. Viewer / editor from sidebar or chat citations. Delete lives on the edit form (not the read-only viewer). |
 
 Workspace height is locked to `calc(100vh - header)`; side panels share that height via the padded flex row (`px-5` / `md:px-6`, `py-3`, `gap-3`) so left/right read as floating cards inset from the screen edges.

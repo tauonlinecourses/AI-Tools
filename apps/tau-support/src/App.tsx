@@ -1610,7 +1610,7 @@ export default function App() {
       toolName="TAU Support"
       toolDescription="Check campus IL forum threads for new student comments across your courses"
       toolNameHe="תמיכה טכנית - קמפוס IL"
-      toolDescriptionHe="ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
+      toolDescriptionHe="ריכוז השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
     >
       <div className="relative mx-auto flex w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
         <div

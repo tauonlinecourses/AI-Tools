@@ -45,7 +45,7 @@ export const toolCopy: Record<
   },
   "tau-support": {
     name:        "תמיכה טכנית - קמפוס IL",
-    description: "ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
+    description: "ריכוז השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL",
   },
   "virtual-support": {
     name:        "מדריכים - Virtual TAU",

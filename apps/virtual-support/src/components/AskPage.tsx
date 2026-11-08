@@ -393,8 +393,11 @@ export function AskPage({ onOpenDocument }: AskPageProps) {
               </svg>
             </button>
           </div>
-          <p className="mt-2 text-center text-[0.65rem] text-surface-400">
-            התשובות מבוססות על המסמכים במאגר. מומלץ לוודא מול המקור.
+          <p className="mt-2 text-center text-xs leading-relaxed text-surface-400">
+            השאלות והתשובות נשמרות במערכת לצורך שיפור המערכת ובדיקת איכות
+            התשובות.
+            <br />
+            הבינה המלאכותית עלולה לבצע טעויות, מומלץ לוודא מול המקור.
           </p>
         </div>
       </div>
