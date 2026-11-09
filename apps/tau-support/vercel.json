@@ -2,6 +2,9 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter tau-support",
   "outputDirectory": "dist",
+  "functions": {
+    "api/tau-data.ts": { "maxDuration": 60 }
+  },
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../pnpm-lock.yaml ../../packages/ui ../../packages/config ../../packages/ai-client ../../packages/auth",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }

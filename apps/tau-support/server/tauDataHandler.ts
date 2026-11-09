@@ -37,6 +37,11 @@ import {
   syncLastCheckAllToSupabase,
 } from "../src/lib/lastCheckAllSync.js";
 
+/** Loaded on demand so other actions don't pay for the dashboard's modules. */
+function loadDashboard() {
+  return import("./questionDashboard.js");
+}
+
 export async function runTauDataAction(
   action: string,
   payload: unknown
@@ -103,6 +108,18 @@ export async function runTauDataAction(
         return await embedInfoDocs();
       case "countPendingInfoDocEmbeddings":
         return await countPendingInfoDocEmbeddings();
+      case "getDashboardSnapshot":
+        return await (await loadDashboard()).getDashboardSnapshot();
+      case "getDashboardQuestionBodies":
+        return await (await loadDashboard()).getDashboardQuestionBodies(
+          (p?.threadIds as string[]) ?? []
+        );
+      case "embedDashboardQuestions":
+        return await (await loadDashboard()).embedDashboardQuestions();
+      case "rebuildDashboardClusters":
+        return await (await loadDashboard()).rebuildDashboardClusters();
+      case "nameDashboardClusters":
+        return await (await loadDashboard()).nameDashboardClusters();
       case "syncLastCheckAll":
         return await syncLastCheckAllToSupabase(p as never);
       case "hydrateLastCheckAll":

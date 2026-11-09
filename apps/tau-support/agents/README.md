@@ -179,6 +179,18 @@ platform.
   `info_docs.common_questions text[]` for question-shaped RAG retrieval.
 - `../supabase/migrations/009_info_doc_pinned.sql` — `info_docs.pinned`
   (at most one); seeds **הקדמה - חשוב לקרוא!**.
+- `../supabase/migrations/010_question_dashboard.sql` — `question_embeddings`
+  (one question-only vector per student thread, 256 dims) and
+  `question_dashboard_snapshot` (saved dashboard result).
+- `../server/questionDashboard.ts` — Dashboard pipeline, run by **רענן ניתוח**
+  in three calls: embed new questions → average-linkage clustering
+  (`SIMILARITY_THRESHOLD`) + UMAP 3D layout → AI cluster names, merge of
+  same-topic groups, and sorting into the closed category list
+  (`src/lib/categoryColors.ts`, which also sets each category's color).
+  Separate from `kb_chunks`; RAG retrieval does not use it.
+- `../src/components/QuestionsDashboard.tsx` / `QuestionMap3D.tsx` — **דשבורד**
+  header toggle: stat tiles, categories chart, repeated-question groups and a
+  lazy-loaded 3D map. Filters by course and category.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -651,7 +663,8 @@ Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
 `004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`,
-`007_info_doc_common_questions.sql`, and/or `009_info_doc_pinned.sql`.
+`007_info_doc_common_questions.sql`, `009_info_doc_pinned.sql`, and/or
+`010_question_dashboard.sql`.
 
 ### Load behavior
 
