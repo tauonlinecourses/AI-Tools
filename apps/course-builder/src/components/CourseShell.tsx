@@ -762,6 +762,13 @@ export function CourseShell({ mode }: CourseShellProps) {
         onClick={() => {
           if (!isUnavailableInImplement) selectPage(page.id);
         }}
+        onDoubleClick={(e) => {
+          if (!editable || isRenaming) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setOpenMenu(null);
+          setRenaming({ kind: "page", id: page.id });
+        }}
         aria-disabled={isUnavailableInImplement}
         title={
           isUnavailableInImplement

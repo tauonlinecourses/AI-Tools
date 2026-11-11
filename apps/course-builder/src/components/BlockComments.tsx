@@ -99,11 +99,11 @@ export function BlockComments({
   const badgeCount = unresolved > 0 ? unresolved : resolved;
   const badgeTone = unresolved > 0 ? "open" : "resolved";
 
-  const iconOpacity = !hasAny
-    ? "opacity-25 hover:opacity-60"
-    : unresolved > 0
-      ? "opacity-100"
-      : "opacity-70 hover:opacity-100";
+  // Full opacity when empty or when there are open comments; softer only for resolved-only.
+  const iconOpacity =
+    hasAny && unresolved === 0
+      ? "opacity-70 hover:opacity-100"
+      : "opacity-100";
 
   const iconTop = mode === "review" ? "top-0.5" : "top-2";
 

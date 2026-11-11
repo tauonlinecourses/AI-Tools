@@ -1,6 +1,6 @@
 import type { CourseViewMode, ImageProps } from "../../lib/types";
 import { useEffect, useState } from "react";
-import { MediaImage } from "./MediaImage";
+import { MediaImage, type MediaImagePaint } from "./MediaImage";
 
 interface Props {
   props: ImageProps;
@@ -16,88 +16,101 @@ function defaultImageLabel(pageTitle: string, imageNumber: number): string {
   return `${pageTitle.trim() || "ללא כותרת"} | תמונה מספר ${imageNumber}`;
 }
 
-function ImagePlaceholder({
-  label,
-  url,
-}: {
-  label: string;
-  url?: string;
-}) {
-  const href = url?.trim() || undefined;
-
-  const body = (
-    <>
-      <p className="text-surface-700 text-xl sm:text-2xl font-semibold text-center max-w-2xl">
-        {label}
-      </p>
-      {!href && (
-        <p className="text-sm sm:text-base text-surface-500 font-medium">ללא קובץ</p>
-      )}
-    </>
-  );
-
-  const bodyClass =
-    "absolute inset-0 flex flex-col items-center justify-center gap-6 px-6";
-
-  return (
-    <div className="relative aspect-video w-full bg-[#E8EAED] overflow-hidden select-none">
-      {href ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          className={`${bodyClass} cursor-pointer hover:bg-black/10 transition-colors duration-fast`}
-          title="פתח תמונה"
-        >
-          {body}
-        </a>
-      ) : (
-        <div className={bodyClass}>{body}</div>
-      )}
-    </div>
-  );
-}
-
 export function ImageBlock({ props, mode, pageTitle, imageNumber }: Props) {
-  const [imgError, setImgError] = useState(false);
   const imageHref = props.imageUrl?.trim() || undefined;
   const label = defaultImageLabel(pageTitle, imageNumber);
+  const [imgStatus, setImgStatus] = useState<"none" | "loading" | "loaded" | "error">(
+    imageHref ? "loading" : "none"
+  );
+  const [paintVia, setPaintVia] = useState<MediaImagePaint["via"] | null>(null);
+  const openOnClick = mode !== "review";
 
   useEffect(() => {
-    setImgError(false);
+    setImgStatus(imageHref ? "loading" : "none");
+    setPaintVia(null);
   }, [imageHref]);
 
-  const hasImage = !!imageHref && !imgError;
+  const naturalImage = imgStatus === "loaded" && paintVia === "img";
+  const framedPaint = imgStatus === "loaded" && paintVia === "iframe";
+  const imageShowing = naturalImage || framedPaint;
+  const showTitle = !imageShowing;
+  const showNoFile = imgStatus === "none" || imgStatus === "error";
 
-  if (!hasImage) {
-    return <ImagePlaceholder label={label} url={imageHref} />;
-  }
+  const labelEl = showTitle ? (
+    <div className="flex flex-col items-center justify-center gap-6 max-w-2xl">
+      <p className="text-surface-700 text-xl sm:text-2xl font-semibold text-center">
+        {label}
+      </p>
+      {showNoFile && (
+        <p className="text-sm sm:text-base text-surface-500 font-medium">ללא קובץ</p>
+      )}
+    </div>
+  ) : null;
 
-  const image = (
+  const media = imageHref ? (
     <MediaImage
       url={imageHref}
-      className="w-full aspect-video object-cover"
-      onStatus={(status) => {
-        if (status === "error") setImgError(true);
-        else if (status === "loaded") setImgError(false);
+      className={
+        naturalImage
+          ? "w-full h-auto block"
+          : `absolute inset-0 w-full h-full object-contain ${
+              framedPaint ? "" : "invisible"
+            }`
+      }
+      onStatus={(status, paint) => {
+        if (status === "loaded") {
+          setPaintVia(paint?.via ?? "img");
+          setImgStatus("loaded");
+        } else if (status === "error") {
+          setPaintVia(null);
+          setImgStatus("error");
+        } else {
+          setPaintVia(null);
+          setImgStatus("loading");
+        }
       }}
     />
-  );
+  ) : null;
 
-  // Edit/implement: open the image URL on click. Preview: display only.
-  if (mode !== "review") {
+  // Natural img: height follows the image. Otherwise grey aspect-video placeholder /
+  // framed iframe. Always `block` so <a> keeps aspect-ratio height.
+  const frameClass = naturalImage
+    ? "relative block w-full overflow-hidden select-none"
+    : `relative block aspect-video w-full overflow-hidden select-none ${
+        framedPaint ? "" : "bg-[#E8EAED]"
+      }`;
+
+  if (imageHref && openOnClick) {
     return (
       <a
         href={imageHref}
         target="_blank"
         rel="noreferrer"
-        className="block w-full cursor-pointer hover:opacity-90 transition-opacity"
+        className={`${frameClass} ${
+          naturalImage
+            ? "cursor-pointer hover:opacity-90 transition-opacity duration-fast"
+            : "cursor-pointer hover:bg-black/10 transition-colors duration-fast"
+        }`}
         title="פתח תמונה"
       >
-        {image}
+        {media}
+        {showTitle && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6">
+            {labelEl}
+          </div>
+        )}
       </a>
     );
   }
 
-  return image;
+  return (
+    <div className={frameClass}>
+      {media}
+      {showTitle && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6">
+          {labelEl}
+        </div>
+      )}
+    </div>
+  );
 }
