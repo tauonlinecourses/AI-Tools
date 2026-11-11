@@ -72,8 +72,10 @@ export function UserMenu({
               {email}
             </span>
           )}
+          {/* RTL in Hebrew so the first group sits on the right (the parent is LTR). */}
           <span
             className="block truncate text-xs text-surface-500"
+            dir={locale === "he" ? "rtl" : "ltr"}
             title={groupsInline}
           >
             {groupsInline}
