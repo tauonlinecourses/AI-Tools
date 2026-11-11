@@ -184,7 +184,7 @@ platform.
   `question_dashboard_snapshot` (saved dashboard result).
 - `../supabase/migrations/011_question_categories.sql` — saved per-question
   `category` + `category_key` on `question_embeddings`.
-- `../server/questionDashboard.ts` — Dashboard pipeline, run by **רענן ניתוח**
+- `../server/questionDashboard.ts` — Dashboard pipeline, run by the dashboard's **מיון שאלות חדשות** button
   in three steps: embed new questions → sort each new or edited question into
   the closed category list (`src/lib/categoryColors.ts`, which also sets each
   category's color) with `gpt-4o-mini`, saved so it runs once per question

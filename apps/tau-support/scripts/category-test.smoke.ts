@@ -91,7 +91,7 @@ describe("category test", () => {
     const snapshot = snapshotRow?.payload as DashboardSnapshot | undefined;
     if (!snapshot) throw new Error("No saved dashboard snapshot yet.");
     if (snapshot.formatVersion !== DASHBOARD_FORMAT_VERSION) {
-      throw new Error("Saved snapshot is an old format: click רענן ניתוח first.");
+      throw new Error("Saved snapshot is an old format: click מיון שאלות חדשות first.");
     }
 
     // Rule-based posts ("אין בעיות", no content, self-intro) never use AI.

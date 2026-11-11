@@ -9,6 +9,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type YAxisTickContentProps,
 } from "recharts";
 import { Button, Spinner } from "@workspace/ui";
 import { categoryColor } from "../lib/categoryColors";
@@ -81,12 +82,18 @@ function StatTile({ label, value }: { label: string; value: string }) {
 
 function CategoryChart({
   data,
+  selected,
+  onSelect,
 }: {
   data: { category: string; questions: number; color: string }[];
+  /** The category shown on the map, or null for all. */
+  selected: string | null;
+  onSelect: (category: string) => void;
 }) {
   return (
     // In an RTL parent, SVG text anchors flip and axis labels land on the bars.
-    <div dir="ltr" className="w-full">
+    // Clicking a bar focuses the SVG and its shapes; hide the browser outline.
+    <div dir="ltr" className="w-full [&_*:focus]:outline-none">
     <ResponsiveContainer width="100%" height={Math.max(160, data.length * 44)}>
       <BarChart
         data={data}
@@ -108,7 +115,25 @@ function CategoryChart({
           width={130}
           tickLine={false}
           axisLine={false}
-          tick={{ fill: "#52514e", fontSize: 13 }}
+          tick={(props: YAxisTickContentProps) => {
+            const category = String(props.payload.value);
+            const faded = selected !== null && selected !== category;
+            return (
+              <text
+                x={props.x}
+                y={props.y}
+                dy="0.355em"
+                textAnchor="start"
+                fill="#52514e"
+                fontSize={13}
+                opacity={faded ? 0.5 : 1}
+                style={{ cursor: "pointer" }}
+                onClick={() => onSelect(category)}
+              >
+                {category}
+              </text>
+            );
+          }}
         />
         <Tooltip
           cursor={{ fill: "#f2f1ec" }}
@@ -118,9 +143,18 @@ function CategoryChart({
           dataKey="questions"
           barSize={20}
           radius={[4, 0, 0, 4]}
+          cursor="pointer"
+          onClick={(_entry, index) => {
+            const row = data[index];
+            if (row) onSelect(row.category);
+          }}
         >
           {data.map((row) => (
-            <Cell key={row.category} fill={row.color} />
+            <Cell
+              key={row.category}
+              fill={row.color}
+              fillOpacity={selected === null || selected === row.category ? 1 : 0.3}
+            />
           ))}
           {/* On a reversed axis, "right" means the bar's far (visually left) end. */}
           <LabelList dataKey="questions" position="right" fill="#52514e" />
@@ -399,53 +433,61 @@ export function QuestionsDashboard() {
 
   return (
     <div dir="rtl" className="space-y-5 p-5">
-      <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => void handleRefresh()}
-          disabled={progress !== null}
-          className="order-last ms-auto shrink-0"
-        >
-          רענן ניתוח
-        </Button>
-        {progress ? (
-          <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm text-surface-600">
-            <Spinner size="sm" /> {progress}
-          </span>
-        ) : snapshot ? (
-          <span className="shrink-0 whitespace-nowrap text-sm text-surface-600">
-            עודכן לאחרונה: {new Date(snapshot.computedAt).toLocaleString("he-IL")}
-          </span>
-        ) : null}
+      <div className="space-y-2">
+        {/* Row 1: dropdowns, last-updated time, refresh. */}
+        <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleRefresh()}
+            disabled={progress !== null}
+            className="order-last ms-auto shrink-0"
+          >
+            מיון שאלות חדשות
+          </Button>
+          {progress ? (
+            <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm text-surface-600">
+              <Spinner size="sm" /> {progress}
+            </span>
+          ) : snapshot ? (
+            <span className="shrink-0 whitespace-nowrap text-sm text-surface-600">
+              עודכן לאחרונה: {new Date(snapshot.computedAt).toLocaleString("he-IL")}
+            </span>
+          ) : null}
+          {current ? (
+            <div className="order-first flex min-w-0 flex-1 justify-start gap-2">
+              <select
+                aria-label="סינון לפי קורס"
+                className={selectClass}
+                value={courseFilter}
+                onChange={(e) => setCourseFilter(e.target.value)}
+              >
+                <option value={ALL}>כל הקורסים</option>
+                {courseIds.map((id) => (
+                  <option key={id} value={id}>
+                    {courseName(id)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="סינון לפי קטגוריה"
+                className={selectClass}
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value={ALL}>כל הקטגוריות</option>
+                {allCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+        {/* Row 2: date range. */}
         {current ? (
-          <div className="order-first flex min-w-0 flex-1 justify-start gap-2">
-            <select
-              aria-label="סינון לפי קורס"
-              className={selectClass}
-              value={courseFilter}
-              onChange={(e) => setCourseFilter(e.target.value)}
-            >
-              <option value={ALL}>כל הקורסים</option>
-              {courseIds.map((id) => (
-                <option key={id} value={id}>
-                  {courseName(id)}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="סינון לפי קטגוריה"
-              className={selectClass}
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <option value={ALL}>כל הקטגוריות</option>
-              {allCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
             <label className={dateLabelClass}>
               מתאריך
               <input
@@ -485,12 +527,12 @@ export function QuestionsDashboard() {
         <p className="rounded-control border border-surface-200 p-8 text-center text-surface-600">
           {snapshot ? (
             <>
-              הניתוח השמור נבנה בגרסה קודמת. לחצו על <strong>רענן ניתוח</strong>{" "}
+              הניתוח השמור נבנה בגרסה קודמת. לחצו על <strong>מיון שאלות חדשות</strong>{" "}
               כדי לבנות אותו מחדש לפי קטגוריות.
             </>
           ) : (
             <>
-              עדיין אין ניתוח. לחצו על <strong>רענן ניתוח</strong> כדי למיין את
+              עדיין אין ניתוח. לחצו על <strong>מיון שאלות חדשות</strong> כדי למיין את
               שאלות הפורום. בהרצה הראשונה זה עשוי לקחת כמה דקות.
             </>
           )}
@@ -536,7 +578,21 @@ export function QuestionsDashboard() {
                 שאלות לפי קטגוריה
               </h2>
               {categoryData.length > 0 ? (
-                <CategoryChart data={categoryData} />
+                <>
+                  <CategoryChart
+                    data={categoryData}
+                    selected={categoryFilter === ALL ? null : categoryFilter}
+                    onSelect={(category) =>
+                      setCategoryFilter((current) =>
+                        current === category ? ALL : category
+                      )
+                    }
+                  />
+                  <p className="mt-2 text-xs text-surface-600">
+                    לחיצה על עמודה מציגה רק את הקטגוריה הזו. לחיצה נוספת מחזירה
+                    את כל הקטגוריות.
+                  </p>
+                </>
               ) : (
                 <p className="text-sm text-surface-600">אין נתונים להצגה.</p>
               )}
