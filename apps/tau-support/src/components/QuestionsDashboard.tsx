@@ -419,11 +419,6 @@ export function QuestionsDashboard() {
     );
   }
 
-  const largest = categoryGroups[0];
-  const largestShare =
-    largest && visiblePoints.length
-      ? Math.round((largest.questions.length / visiblePoints.length) * 100)
-      : 0;
   const selectClass =
     "min-w-0 max-w-[14rem] flex-1 truncate rounded-md border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-900";
   const dateLabelClass =
@@ -539,7 +534,7 @@ export function QuestionsDashboard() {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <StatTile
               label="שאלות שנותחו"
               value={visiblePoints.length.toLocaleString("he-IL")}
@@ -547,14 +542,6 @@ export function QuestionsDashboard() {
             <StatTile
               label="קטגוריות"
               value={categoryGroups.length.toLocaleString("he-IL")}
-            />
-            <StatTile
-              label={
-                largest
-                  ? `הקטגוריה הגדולה · ${largestShare}% מהשאלות`
-                  : "הקטגוריה הגדולה"
-              }
-              value={largest?.category ?? "—"}
             />
           </div>
 

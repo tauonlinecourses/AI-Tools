@@ -179,6 +179,13 @@ function formatFetchError(err: unknown): string {
 const AUTH_REQUIRED_MESSAGE =
   "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT) בהגדרות, או כבו את ״Use browser cookies״ והגדירו LMS_USERNAME / LMS_PASSWORD בשרת (התחברות חד-פעמית לכל הריצה).";
 
+/** Shareable address of the questions dashboard; every other view lives at "/". */
+const DASHBOARD_PATH = "/dashboard";
+
+function isDashboardUrl(): boolean {
+  return window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH;
+}
+
 function courseDisplayName(courseId: string): string {
   const course = findCourseById(courseId);
   return course?.nameHe || course?.name || courseId;
@@ -246,7 +253,8 @@ export default function App() {
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [docsMode, setDocsMode] = useState(false);
   const [emailMode, setEmailMode] = useState(false);
-  const [dashboardMode, setDashboardMode] = useState(false);
+  // Opening a /dashboard link starts on the dashboard.
+  const [dashboardMode, setDashboardMode] = useState(isDashboardUrl);
   const [infoDocs, setInfoDocs] = useState<InfoDoc[]>([]);
   const [infoDocsLoading, setInfoDocsLoading] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -1376,6 +1384,30 @@ export default function App() {
     });
   }, []);
 
+  // Keep the address bar in step with the dashboard, so it can be shared and
+  // the browser's back/forward buttons move in and out of it.
+  useEffect(() => {
+    if (dashboardMode !== isDashboardUrl()) {
+      window.history.pushState({}, "", dashboardMode ? DASHBOARD_PATH : "/");
+    }
+  }, [dashboardMode]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const onDashboard = isDashboardUrl();
+      setDashboardMode(onDashboard);
+      if (onDashboard) {
+        setDocsMode(false);
+        setEmailMode(false);
+        setInfoDocEditMode(null);
+        setInfoDocError(null);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   const handleSelectTopic = useCallback((id: string) => {
     setSelectedTopicId(id);
     setInfoDocEditMode(null);
@@ -1792,7 +1824,27 @@ export default function App() {
                           : undefined
                       }
                     >
-                      דשבורד
+                      <span className="inline-flex items-center gap-1.5">
+                        {/* Dashboard grid icon (four panels). */}
+                        <svg
+                          className="shrink-0"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <rect x="3" y="3" width="7" height="9" rx="1" />
+                          <rect x="14" y="3" width="7" height="5" rx="1" />
+                          <rect x="14" y="12" width="7" height="9" rx="1" />
+                          <rect x="3" y="16" width="7" height="5" rx="1" />
+                        </svg>
+                        דשבורד
+                      </span>
                     </Button>
                     <Button
                       variant="secondary"
