@@ -71,6 +71,90 @@ function groupByCategory(points: DashboardPoint[]): CategoryGroup[] {
     .sort((a, b) => b.questions.length - a.questions.length);
 }
 
+/** A local-time "YYYY-MM-DD" string, the format date inputs use. */
+function toDateInputValue(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** The day of the earliest question, or "" when no question has a date. */
+function firstQuestionDate(points: DashboardPoint[]): string {
+  let min = Infinity;
+  for (const p of points) {
+    const ms = p.createdAt ? Date.parse(p.createdAt) : NaN;
+    if (ms < min) min = ms;
+  }
+  return Number.isFinite(min) ? toDateInputValue(min) : "";
+}
+
+interface MonthCount {
+  label: string;
+  questions: number;
+}
+
+/** Questions per calendar month, oldest first, with empty months kept as 0. */
+function countByMonth(points: DashboardPoint[]): MonthCount[] {
+  const counts = new Map<string, number>();
+  let first: Date | null = null;
+  let last: Date | null = null;
+  for (const p of points) {
+    if (!p.createdAt) continue;
+    const d = new Date(p.createdAt);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (!first || d < first) first = d;
+    if (!last || d > last) last = d;
+  }
+  if (!first || !last) return [];
+
+  const out: MonthCount[] = [];
+  const cursor = new Date(first.getFullYear(), first.getMonth(), 1);
+  const end = new Date(last.getFullYear(), last.getMonth(), 1);
+  while (cursor <= end) {
+    out.push({
+      label: cursor.toLocaleDateString("he-IL", { month: "short", year: "2-digit" }),
+      questions: counts.get(`${cursor.getFullYear()}-${cursor.getMonth()}`) ?? 0,
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+}
+
+function MonthlyChart({ data, color }: { data: MonthCount[]; color: string }) {
+  return (
+    // LTR so time runs left to right, oldest month first.
+    <div dir="ltr" className="w-full [&_*:focus]:outline-none">
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data} margin={{ top: 16, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid vertical={false} stroke="#e7e6df" />
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#52514e", fontSize: 12 }}
+          />
+          <YAxis
+            allowDecimals={false}
+            width={36}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: "#52514e", fontSize: 12 }}
+          />
+          <Tooltip
+            cursor={{ fill: "#f2f1ec" }}
+            formatter={(value) => [String(value), "שאלות"]}
+          />
+          <Bar dataKey="questions" fill={color} radius={[4, 4, 0, 0]} maxBarSize={40}>
+            <LabelList dataKey="questions" position="top" fill="#52514e" fontSize={11} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-control border border-surface-200 bg-white p-4 text-right">
@@ -370,6 +454,13 @@ export function QuestionsDashboard() {
     [current]
   );
 
+  // The start date defaults to the first question's day: an empty startDate
+  // shows (and filters) as that day.
+  const firstDate = useMemo(
+    () => firstQuestionDate(current?.points ?? []),
+    [current]
+  );
+
   const filteredPoints = useMemo(() => {
     // Whole days in the viewer's time zone, inclusive at both ends.
     const fromMs = startDate ? Date.parse(`${startDate}T00:00:00`) : null;
@@ -411,6 +502,8 @@ export function QuestionsDashboard() {
     [filteredPoints]
   );
 
+  const monthlyData = useMemo(() => countByMonth(visiblePoints), [visiblePoints]);
+
   if (loading) {
     return (
       <div className="flex justify-center p-12">
@@ -419,6 +512,11 @@ export function QuestionsDashboard() {
     );
   }
 
+  const filtersActive =
+    courseFilter !== ALL ||
+    categoryFilter !== ALL ||
+    (startDate !== "" && startDate !== firstDate) ||
+    endDate !== "";
   const selectClass =
     "min-w-0 max-w-[14rem] flex-1 truncate rounded-md border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-900";
   const dateLabelClass =
@@ -488,7 +586,8 @@ export function QuestionsDashboard() {
               <input
                 type="date"
                 className={dateInputClass}
-                value={startDate}
+                value={startDate || firstDate}
+                min={firstDate || undefined}
                 max={endDate || undefined}
                 onChange={(e) => setStartDate(e.target.value)}
               />
@@ -499,10 +598,24 @@ export function QuestionsDashboard() {
                 type="date"
                 className={dateInputClass}
                 value={endDate}
-                min={startDate || undefined}
+                min={startDate || firstDate || undefined}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </label>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCourseFilter(ALL);
+                setCategoryFilter(ALL);
+                setStartDate("");
+                setEndDate("");
+              }}
+              disabled={!filtersActive}
+              className="shrink-0"
+            >
+              איפוס סינון
+            </Button>
           </div>
         ) : null}
       </div>
@@ -585,6 +698,28 @@ export function QuestionsDashboard() {
               )}
             </section>
           </div>
+
+          <section className="rounded-control border border-surface-200 p-4">
+            <h2 className="mb-3 font-semibold text-surface-900">
+              שאלות לפי חודש
+              {categoryFilter !== ALL ? (
+                <span className="font-normal text-surface-600">
+                  {" "}
+                  · {categoryFilter}
+                </span>
+              ) : null}
+            </h2>
+            {monthlyData.length > 0 ? (
+              <MonthlyChart
+                data={monthlyData}
+                color={
+                  categoryFilter === ALL ? "#0284c7" : categoryColor(categoryFilter)
+                }
+              />
+            ) : (
+              <p className="text-sm text-surface-600">אין נתונים להצגה.</p>
+            )}
+          </section>
 
           <section className="overflow-hidden rounded-control border border-surface-200">
             <h2 className="border-b border-surface-200 px-4 py-3 font-semibold text-surface-900">
