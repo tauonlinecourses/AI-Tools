@@ -30,6 +30,8 @@ export interface EmbedResult {
   embeddings: number[][];
   model: string;
   dimensions: number;
+  /** Input tokens billed for this call (0 when OpenAI omits usage). */
+  tokens: number;
 }
 
 export async function embedTexts(texts: string[]): Promise<EmbedResult> {
@@ -71,5 +73,6 @@ export async function embedTexts(texts: string[]): Promise<EmbedResult> {
     embeddings,
     model: EMBED_MODEL,
     dimensions: EMBED_DIMENSIONS,
+    tokens: response.usage?.prompt_tokens ?? 0,
   };
 }

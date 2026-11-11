@@ -177,7 +177,15 @@ export async function handler(request: Request): Promise<Response> {
       latencyMs: Date.now() - started,
     });
 
-    return Response.json({ content });
+    // Token counts let callers track cost; null when OpenAI omits them.
+    const usage = completion.usage
+      ? {
+          inputTokens: completion.usage.prompt_tokens,
+          outputTokens: completion.usage.completion_tokens,
+        }
+      : null;
+
+    return Response.json({ content, usage });
   } catch (err) {
     const status =
       typeof (err as { status?: unknown })?.status === 'number'

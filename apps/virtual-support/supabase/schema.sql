@@ -191,8 +191,17 @@ create table if not exists public.ask_log (
   vote              text check (vote in ('up', 'down')),
   vote_comment      text,
   voted_at          timestamptz,
+  -- Stage A dashboard metrics (see migrations/004_ask_metrics.sql).
+  latency_ms        jsonb,
+  total_ms          integer,
+  usage             jsonb not null default '[]'::jsonb,
+  input_tokens      integer,
+  output_tokens     integer,
+  embed_tokens      integer,
+  cost_usd          numeric(12, 6),
+  error_message     text,
   constraint ask_log_outcome_check
-    check (outcome in ('answered', 'refused', 'no_match', 'uncited'))
+    check (outcome in ('answered', 'refused', 'no_match', 'uncited', 'error'))
 );
 
 create index if not exists idx_ask_log_created_at on public.ask_log(created_at desc);

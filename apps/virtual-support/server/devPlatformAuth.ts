@@ -19,9 +19,12 @@ function env(name: string): string | undefined {
 }
 
 const TOOL_ID = "virtual-support";
+/** Mirrors ADMIN_GROUP_SLUG in @workspace/auth (not imported; see header). */
+const ADMIN_GROUP_SLUG = "admin-all-tools";
 
 export async function requireVsPlatformAuth(
-  authorizationHeader: string | undefined
+  authorizationHeader: string | undefined,
+  options: { requireAdmin?: boolean } = {}
 ): Promise<void> {
   const token = authorizationHeader?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (!token) {
@@ -90,5 +93,21 @@ export async function requireVsPlatformAuth(
   }
   if (allowed !== true) {
     throw new DevAuthError(`No access to tool: ${TOOL_ID}`, 403);
+  }
+
+  if (options.requireAdmin) {
+    // Same rule as assertUserIsAdmin in @workspace/auth/server (canonical slug).
+    const { data: adminRows, error: adminErr } = await admin
+      .from("group_members")
+      .select("group_id, groups!inner(slug)")
+      .eq("user_id", data.user.id)
+      .eq("groups.slug", ADMIN_GROUP_SLUG)
+      .limit(1);
+    if (adminErr) {
+      throw new DevAuthError(adminErr.message, 500);
+    }
+    if (!adminRows?.length) {
+      throw new DevAuthError("Admin access required", 403);
+    }
   }
 }

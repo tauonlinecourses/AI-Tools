@@ -154,3 +154,13 @@ Vite middleware proxies `/api/data`, `/api/ask`, `/api/chat` with the same Platf
 2. Apply Course-Builder migration `012_virtual_support_tool.sql` (tool allowlist + group grants).
 3. Vercel project root `apps/virtual-support`; include source outside root; link shared `OPENAI_API_KEY` + Platform env + `VS_*`.
 4. Set hub `tools.config.ts` `url` to the live hostname if it differs from the placeholder.
+
+## Admin dashboard (Stage A)
+
+Tab **דשבורד** next to **מסמכים וצ׳אט**, shown only to members of the platform Admin group (`admin-all-tools`). The browser hides the tab (`useIsAdmin` in `src/lib/metricsClient.ts`); `/api/admin-metrics` re-checks with `assertUserIsAdmin` (dev: `requireVsPlatformAuth(..., { requireAdmin: true })`) and returns 403 otherwise. The page is lazy-loaded so recharts is only downloaded by admins.
+
+- **Data:** every Ask writes `latency_ms` per stage (rewrite / embed / search / answer / total), token `usage` per model call, `input_tokens` / `output_tokens` / `embed_tokens`, `cost_usd`, and failed requests as `outcome = 'error'` with `error_message` (`<stage>: <message>`). Migration `004_ask_metrics.sql`. Rows from before 004 count in volume/feedback but not in latency/token/cost charts.
+- **Cost:** estimated from `server/pricing.ts` (USD per 1M tokens). Prices are unverified — check OpenAI's pricing page and update when models change.
+- **Aggregation:** `server/dashboardMetrics.ts` (pure, tested) over ask_log rows for 7 / 30 / 90 days, bucketed by Israel day. Rephrase = next question in the same chat within 2 minutes (same rule as `ask_log_review`). Breakdowns use the folder/document of the first cited page (else first page sent).
+- **Rows:** 1 health (volume, error rate, P50/P95 per stage with a 5s line, cost per question) · 2 retrieval (no-match rate, median best similarity, median top RRF, index freshness = docs whose `content_hash` is missing or no longer matches title+body) · 3 quality (abstention + uncited rate with pipeline-version release markers) · 4 users (👎 and rephrase rate, by topic and document) · tokens and cost (tokens per model per day, cost per day, cost per question, by model and stage).
+- **Not yet (Stage B/C):** judge scores (faithfulness, citation support, context recall/precision), nightly golden-set run, alerts, review queue, drill-down, release gate, escalations.

@@ -7,11 +7,13 @@ import {
 } from "./server/devPlatformAuth";
 
 async function requireVsAuth(
-  req: import("http").IncomingMessage
+  req: import("http").IncomingMessage,
+  options: { requireAdmin?: boolean } = {}
 ): Promise<void> {
   const auth = req.headers.authorization;
   await requireVsPlatformAuth(
-    typeof auth === "string" ? auth : undefined
+    typeof auth === "string" ? auth : undefined,
+    options
   );
 }
 
@@ -146,6 +148,35 @@ export default defineConfig(({ mode }) => {
               res.end(
                 JSON.stringify({
                   error: err instanceof Error ? err.message : "ask failed",
+                })
+              );
+            }
+          });
+
+          server.middlewares.use("/api/admin-metrics", async (req, res) => {
+            res.setHeader("Content-Type", "application/json");
+            if (req.method !== "POST") {
+              res.statusCode = 405;
+              res.end(JSON.stringify({ error: "Method not allowed" }));
+              return;
+            }
+            bridgeEnv(env);
+            const raw = await readBody(req);
+            try {
+              await requireVsAuth(req, { requireAdmin: true });
+              const body = JSON.parse(raw || "{}") as { days?: unknown };
+              const { getDashboardMetrics } = (await server.ssrLoadModule(
+                "/server/metricsHandler.ts"
+              )) as typeof import("./server/metricsHandler");
+              const result = await getDashboardMetrics(body.days);
+              res.statusCode = 200;
+              res.end(JSON.stringify(result));
+            } catch (err: unknown) {
+              res.statusCode =
+                err instanceof DevAuthError ? err.statusCode : 500;
+              res.end(
+                JSON.stringify({
+                  error: err instanceof Error ? err.message : "metrics failed",
                 })
               );
             }

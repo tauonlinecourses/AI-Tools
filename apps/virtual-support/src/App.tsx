@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageLayout } from "@workspace/ui";
 import { AskPage } from "./components/AskPage";
+// Lazy: only admins open it, so recharts is not in everyone's bundle.
+const DashboardPage = lazy(() =>
+  import("./components/dashboard/DashboardPage").then((m) => ({
+    default: m.DashboardPage,
+  }))
+);
+import { useIsAdmin } from "./lib/metricsClient";
 import { DocEditor } from "./components/DocEditor";
 import { DocView } from "./components/DocView";
 import { DocumentsSidebar } from "./components/DocumentsSidebar";
@@ -23,6 +30,9 @@ type EditMode = null | "new" | string;
 const LEAVE_EDIT_CONFIRM = "לצאת מהעריכה? שינויים שלא נשמרו יאבדו.";
 
 export default function App() {
+  const isAdmin = useIsAdmin();
+  const [view, setView] = useState<"workspace" | "dashboard">("workspace");
+  const showDashboard = isAdmin && view === "dashboard";
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -252,13 +262,57 @@ export default function App() {
             dir="rtl"
             className="flex h-full min-h-0 flex-col gap-2 px-5 py-3 md:px-6"
           >
-            {error ? (
+            {isAdmin ? (
+              <nav className="flex shrink-0 gap-1" aria-label="תצוגה">
+                {(
+                  [
+                    ["workspace", "מסמכים וצ׳אט"],
+                    ["dashboard", "דשבורד"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setView(key)}
+                    aria-pressed={view === key}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      view === key
+                        ? "bg-surface-900 text-white"
+                        : "text-surface-600 hover:bg-white"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            ) : null}
+
+            {error && !showDashboard ? (
               <p className="shrink-0 rounded-[1rem] border border-rose-100 bg-rose-50 px-4 py-2 text-xs text-danger">
                 {error}
               </p>
             ) : null}
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row md:items-stretch">
+            {showDashboard ? (
+              <div className="min-h-0 flex-1">
+                <Suspense
+                  fallback={
+                    <p className="py-20 text-center text-sm text-surface-500">
+                      טוען דשבורד…
+                    </p>
+                  }
+                >
+                  <DashboardPage />
+                </Suspense>
+              </div>
+            ) : null}
+
+            {/* Kept mounted while the dashboard is open so the chat is not lost. */}
+            <div
+              className={`min-h-0 flex-1 flex-col gap-3 md:flex-row md:items-stretch ${
+                showDashboard ? "hidden" : "flex"
+              }`}
+            >
               <DocumentsSidebar
                 folders={folders}
                 documents={documents}

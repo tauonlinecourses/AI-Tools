@@ -6,7 +6,8 @@
 
 import { handler as chatHandler } from "@workspace/ai-client/server";
 import { createVsServiceClient } from "./vsSupabase.js";
-import { embedTexts } from "./embedCore.js";
+import { EMBED_MODEL, embedTexts } from "./embedCore.js";
+import { estimateCostUsd, type ModelUsage } from "./pricing.js";
 import { htmlToPlainText } from "./docPlainText.js";
 import {
   buildContext,
@@ -107,11 +108,44 @@ const REWRITE_PROMPT = `תפקידך לנסח מחדש שאלת המשך כשא�
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
+export type AskStage = "rewrite" | "embed" | "search" | "answer";
+
+/** Timings and token usage collected while answering one question. */
+export type AskTrace = {
+  latencyMs: Partial<Record<AskStage, number>>;
+  usage: ModelUsage[];
+  /** Last stage that started; names the failing stage when an error is thrown. */
+  stage: AskStage | "start";
+};
+
+export function newTrace(): AskTrace {
+  return { latencyMs: {}, usage: [], stage: "start" };
+}
+
+/** Run `fn`, adding its duration to `trace.latencyMs[stage]`. */
+async function timed<T>(
+  trace: AskTrace | undefined,
+  stage: AskStage,
+  fn: () => Promise<T>
+): Promise<T> {
+  if (trace) trace.stage = stage;
+  const started = Date.now();
+  try {
+    return await fn();
+  } finally {
+    if (trace) {
+      trace.latencyMs[stage] = (trace.latencyMs[stage] ?? 0) + Date.now() - started;
+    }
+  }
+}
+
 async function callChat(
   messages: ChatMessage[],
   systemPrompt: string,
   model: string,
-  temperature: number
+  temperature: number,
+  trace?: AskTrace,
+  stage: AskStage = "answer"
 ): Promise<string> {
   const webReq = new Request("http://localhost/api/chat", {
     method: "POST",
@@ -122,9 +156,18 @@ async function callChat(
   const webRes = await chatHandler(webReq);
   const body = (await webRes.json().catch(() => null)) as {
     content?: string;
+    usage?: { inputTokens?: number; outputTokens?: number } | null;
     error?: string;
   } | null;
 
+  if (body?.usage && trace) {
+    trace.usage.push({
+      stage,
+      model,
+      inputTokens: body.usage.inputTokens ?? 0,
+      outputTokens: body.usage.outputTokens ?? 0,
+    });
+  }
   if (!webRes.ok) {
     throw new Error(body?.error || `Chat failed (${webRes.status})`);
   }
@@ -159,23 +202,28 @@ function cleanHistory(history: AskMessage[] | undefined): ChatMessage[] {
  */
 export async function rewriteQuestion(
   question: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  trace?: AskTrace
 ): Promise<string> {
   if (history.length === 0) return question;
   const transcript = history
     .map((m) => `${m.role === "user" ? "משתמש" : "עוזר"}: ${m.content}`)
     .join("\n\n");
   try {
-    const rewritten = await callChat(
-      [
-        {
-          role: "user",
-          content: `היסטוריית השיחה:\n${transcript}\n\nשאלת ההמשך:\n${question}`,
-        },
-      ],
-      REWRITE_PROMPT,
-      REWRITE_MODEL,
-      REWRITE_TEMPERATURE
+    const rewritten = await timed(trace, "rewrite", () =>
+      callChat(
+        [
+          {
+            role: "user",
+            content: `היסטוריית השיחה:\n${transcript}\n\nשאלת ההמשך:\n${question}`,
+          },
+        ],
+        REWRITE_PROMPT,
+        REWRITE_MODEL,
+        REWRITE_TEMPERATURE,
+        trace,
+        "rewrite"
+      )
     );
     const line = rewritten.split("\n")[0]!.trim();
     return line && line.length <= MAX_QUESTION_CHARS ? line : question;
@@ -200,13 +248,36 @@ export type RetrievalResult = {
 };
 
 /** Hybrid search + page ranking + full-page hydration. No answer model call. */
-export async function retrieve(searchQuery: string): Promise<RetrievalResult> {
+export async function retrieve(
+  searchQuery: string,
+  trace?: AskTrace
+): Promise<RetrievalResult> {
   const client = createVsServiceClient();
   const keywords = extractKeywordTerms(searchQuery);
-  const { embeddings } = await embedTexts([searchQuery]);
+  const { embeddings, tokens } = await timed(trace, "embed", () =>
+    embedTexts([searchQuery])
+  );
+  trace?.usage.push({
+    stage: "embed",
+    model: EMBED_MODEL,
+    inputTokens: tokens,
+    outputTokens: 0,
+  });
 
+  return timed(trace, "search", () =>
+    searchAndHydrate(client, searchQuery, keywords, embeddings[0]!)
+  );
+}
+
+/** Hybrid search RPC, page ranking, then load the full pages. */
+async function searchAndHydrate(
+  client: ReturnType<typeof createVsServiceClient>,
+  searchQuery: string,
+  keywords: ReturnType<typeof extractKeywordTerms>,
+  embedding: number[]
+): Promise<RetrievalResult> {
   const { data, error } = await client.rpc("match_doc_chunks_hybrid", {
-    query_embedding: embeddings[0]!,
+    query_embedding: embedding,
     query_text: keywords.text,
     match_count: MATCH_COUNT,
   });
@@ -284,18 +355,25 @@ export type AskDetails = {
   bestSimilarity: number | null;
 };
 
-export async function askDetailed(input: {
-  question: string;
-  history?: AskMessage[];
-}): Promise<AskDetails> {
-  const question = (input.question?.trim() ?? "").slice(0, MAX_QUESTION_CHARS);
+function normalizeQuestion(question: string | undefined): string {
+  return (question?.trim() ?? "").slice(0, MAX_QUESTION_CHARS);
+}
+
+export async function askDetailed(
+  input: {
+    question: string;
+    history?: AskMessage[];
+  },
+  trace?: AskTrace
+): Promise<AskDetails> {
+  const question = normalizeQuestion(input.question);
   if (!question) {
     throw new Error("question is required");
   }
 
   const history = cleanHistory(input.history);
-  const searchQuery = await rewriteQuestion(question, history);
-  const { pages, hits } = await retrieve(searchQuery);
+  const searchQuery = await rewriteQuestion(question, history, trace);
+  const { pages, hits } = await retrieve(searchQuery, trace);
   const bestSimilarity =
     hits.length > 0 ? Math.max(...hits.map((h) => h.similarity)) : null;
   const base = { question, searchQuery, bestSimilarity };
@@ -331,11 +409,15 @@ export async function askDetailed(input: {
     rrf: page.bestRrf,
   }));
 
-  const raw = await callChat(
-    [...history, { role: "user", content: prefix + block + suffix }],
-    SYSTEM_PROMPT,
-    ANSWER_MODEL,
-    ANSWER_TEMPERATURE
+  const raw = await timed(trace, "answer", () =>
+    callChat(
+      [...history, { role: "user", content: prefix + block + suffix }],
+      SYSTEM_PROMPT,
+      ANSWER_MODEL,
+      ANSWER_TEMPERATURE,
+      trace,
+      "answer"
+    )
   );
 
   if (isRefusal(raw)) {
@@ -371,10 +453,54 @@ export async function askDetailed(input: {
   };
 }
 
+/** ask_log metric columns (migration 004) from a finished or failed trace. */
+export function traceColumns(trace: AskTrace, totalMs: number) {
+  const sum = (items: ModelUsage[], key: "inputTokens" | "outputTokens") =>
+    items.reduce((n, u) => n + u[key], 0);
+  const chat = trace.usage.filter((u) => u.stage !== "embed");
+  const embed = trace.usage.filter((u) => u.stage === "embed");
+  return {
+    latency_ms: { ...trace.latencyMs, total: totalMs },
+    total_ms: totalMs,
+    usage: trace.usage,
+    input_tokens: sum(chat, "inputTokens"),
+    output_tokens: sum(chat, "outputTokens"),
+    embed_tokens: sum(embed, "inputTokens"),
+    cost_usd: estimateCostUsd(trace.usage),
+  };
+}
+
+type LogRow = {
+  question: string;
+  searchQuery: string;
+  outcome: AskOutcome | "error";
+  answer: string;
+  pagesSent: PageSent[];
+  citedDocumentIds: string[];
+  bestSimilarity: number | null;
+  errorMessage?: string;
+};
+
+function detailsToLogRow(details: AskDetails): LogRow {
+  return {
+    question: details.question,
+    searchQuery: details.searchQuery,
+    outcome: details.outcome,
+    answer: details.result.answer,
+    pagesSent: details.pagesSent,
+    citedDocumentIds: details.result.cited
+      ? details.result.sources.map((s) => s.documentId)
+      : [],
+    bestSimilarity: details.bestSimilarity,
+  };
+}
+
 /** Insert one anonymous ask_log row. Returns its id, or null on failure. */
 async function logAsk(
-  details: AskDetails,
-  sessionId: string | undefined
+  row: LogRow,
+  sessionId: string | undefined,
+  trace: AskTrace,
+  totalMs: number
 ): Promise<string | null> {
   try {
     const client = createVsServiceClient();
@@ -383,15 +509,15 @@ async function logAsk(
       .insert({
         session_id: sessionId?.slice(0, 64) || null,
         pipeline_version: PIPELINE_VERSION,
-        question: details.question,
-        search_query: details.searchQuery,
-        outcome: details.outcome,
-        answer: details.result.answer,
-        pages_sent: details.pagesSent,
-        cited_document_ids: details.result.cited
-          ? details.result.sources.map((s) => s.documentId)
-          : [],
-        best_similarity: details.bestSimilarity,
+        question: row.question,
+        search_query: row.searchQuery,
+        outcome: row.outcome,
+        answer: row.answer,
+        pages_sent: row.pagesSent,
+        cited_document_ids: row.citedDocumentIds,
+        best_similarity: row.bestSimilarity,
+        error_message: row.errorMessage?.slice(0, 1000) ?? null,
+        ...traceColumns(trace, totalMs),
       })
       .select("id")
       .single();
@@ -416,8 +542,40 @@ export async function runAsk(input: {
   /** false for eval/smoke runs so they do not fill the log. */
   log?: boolean;
 }): Promise<AskResult> {
-  const details = await askDetailed(input);
+  const trace = newTrace();
+  const started = Date.now();
+  let details: AskDetails;
+  try {
+    details = await askDetailed(input, trace);
+  } catch (err) {
+    const question = normalizeQuestion(input.question);
+    // Empty questions are bad input, not pipeline errors; do not log them.
+    if (input.log !== false && question) {
+      const message = err instanceof Error ? err.message : String(err);
+      await logAsk(
+        {
+          question,
+          searchQuery: question,
+          outcome: "error",
+          answer: "",
+          pagesSent: [],
+          citedDocumentIds: [],
+          bestSimilarity: null,
+          errorMessage: `${trace.stage}: ${message}`,
+        },
+        input.sessionId,
+        trace,
+        Date.now() - started
+      );
+    }
+    throw err;
+  }
   if (input.log === false) return details.result;
-  const logId = await logAsk(details, input.sessionId);
+  const logId = await logAsk(
+    detailsToLogRow(details),
+    input.sessionId,
+    trace,
+    Date.now() - started
+  );
   return logId ? { ...details.result, logId } : details.result;
 }
