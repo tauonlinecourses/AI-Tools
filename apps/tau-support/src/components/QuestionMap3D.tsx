@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { CATEGORY_COLORS, OTHER_CATEGORY_COLOR } from "../lib/categoryColors";
-import type {
-  DashboardCluster,
-  DashboardPoint,
-} from "../lib/dashboardTypes";
+import type { DashboardPoint } from "../lib/dashboardTypes";
 
-const UNGROUPED_COLOR = "#d6d5ce";
 const HOVER_LINE_CHARS = 55;
 const OTHER_LABEL = "קטגוריות נוספות";
-const UNGROUPED_LABEL = "שאלות ללא קבוצה";
 
 type PlotlyElement = HTMLDivElement & {
   on?: (event: string, cb: (e: PlotlyClick) => void) => void;
@@ -16,13 +11,13 @@ type PlotlyElement = HTMLDivElement & {
 };
 
 interface PlotlyClick {
-  points: { customdata?: number | null }[];
+  points: { customdata?: string | null }[];
 }
 
 interface Props {
   points: DashboardPoint[];
-  clusters: DashboardCluster[];
-  onSelectCluster: (id: number) => void;
+  /** A click on a point opens that question's category. */
+  onSelectCategory: (category: string) => void;
 }
 
 /** Plotly hover labels don't wrap on their own. */
@@ -41,22 +36,16 @@ function wrapLines(text: string): string {
   return lines.join("<br>");
 }
 
-function hoverText(point: DashboardPoint, clusterName?: string): string {
+function hoverText(point: DashboardPoint): string {
   // Student text must not be read as Plotly's pseudo-HTML.
   const safe = (s: string) => wrapLines(s.replace(/[<>&]/g, " "));
   const parts = [`<b>${safe(point.title)}</b>`];
   if (point.snippet) parts.push(safe(point.snippet));
-  if (clusterName) parts.push(`<i>${safe(clusterName)}</i>`);
+  parts.push(`<i>${safe(point.category)}</i>`);
   return parts.join("<br>");
 }
 
-function trace(
-  name: string,
-  points: DashboardPoint[],
-  clusterById: Map<number, DashboardCluster>,
-  color: string,
-  size: number
-) {
+function trace(name: string, points: DashboardPoint[], color: string) {
   return {
     type: "scatter3d",
     mode: "markers",
@@ -64,52 +53,26 @@ function trace(
     x: points.map((p) => p.x),
     y: points.map((p) => p.y),
     z: points.map((p) => p.z),
-    customdata: points.map((p) => p.clusterId),
-    text: points.map((p) =>
-      hoverText(
-        p,
-        p.clusterId === null ? undefined : clusterById.get(p.clusterId)?.name
-      )
-    ),
+    customdata: points.map((p) => p.category),
+    text: points.map(hoverText),
     hovertemplate: "%{text}<extra></extra>",
-    marker: { color, size, opacity: 0.9 },
+    marker: { color, size: 4, opacity: 0.9 },
   };
 }
 
-function buildTraces({
-  points,
-  clusters,
-}: Omit<Props, "onSelectCluster">) {
-  const clusterById = new Map(clusters.map((c) => [c.id, c]));
-  const categoryOf = (p: DashboardPoint) =>
-    p.clusterId === null ? null : clusterById.get(p.clusterId)?.category ?? null;
-
+function buildTraces(points: DashboardPoint[]) {
   const traces = Object.entries(CATEGORY_COLORS).map(([category, color]) =>
     trace(
       category,
-      points.filter((p) => categoryOf(p) === category),
-      clusterById,
-      color,
-      4
+      points.filter((p) => p.category === category),
+      color
     )
   );
   traces.push(
     trace(
       OTHER_LABEL,
-      points.filter((p) => {
-        const category = categoryOf(p);
-        return category !== null && !(category in CATEGORY_COLORS);
-      }),
-      clusterById,
-      OTHER_CATEGORY_COLOR,
-      4
-    ),
-    trace(
-      UNGROUPED_LABEL,
-      points.filter((p) => p.clusterId === null),
-      clusterById,
-      UNGROUPED_COLOR,
-      2.5
+      points.filter((p) => !(p.category in CATEGORY_COLORS)),
+      OTHER_CATEGORY_COLOR
     )
   );
   // Empty traces would add legend entries for categories that aren't shown.
@@ -135,12 +98,11 @@ const layout = {
   hoverlabel: { align: "right", font: { size: 13 } },
 };
 
-export function QuestionMap3D({ onSelectCluster, ...traceProps }: Props) {
+export function QuestionMap3D({ points, onSelectCategory }: Props) {
   const containerRef = useRef<PlotlyElement | null>(null);
-  const onSelectRef = useRef(onSelectCluster);
-  onSelectRef.current = onSelectCluster;
+  const onSelectRef = useRef(onSelectCategory);
+  onSelectRef.current = onSelectCategory;
   const [loadError, setLoadError] = useState(false);
-  const { points, clusters } = traceProps;
 
   useEffect(() => {
     let cancelled = false;
@@ -152,14 +114,14 @@ export function QuestionMap3D({ onSelectCluster, ...traceProps }: Props) {
         if (cancelled || !element) return;
         await Plotly.react(
           element,
-          buildTraces({ points, clusters }),
+          buildTraces(points),
           layout,
           { displaylogo: false, responsive: true, displayModeBar: false }
         );
         element.removeAllListeners?.("plotly_click");
         element.on?.("plotly_click", (event) => {
-          const id = event.points[0]?.customdata;
-          if (typeof id === "number") onSelectRef.current(id);
+          const category = event.points[0]?.customdata;
+          if (typeof category === "string") onSelectRef.current(category);
         });
       } catch {
         if (!cancelled) setLoadError(true);
@@ -168,7 +130,7 @@ export function QuestionMap3D({ onSelectCluster, ...traceProps }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [points, clusters]);
+  }, [points]);
 
   useEffect(() => {
     const element = containerRef.current;

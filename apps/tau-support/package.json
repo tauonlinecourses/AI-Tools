@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "category-test": "vitest run --config vitest.smoke.config.ts scripts/category-test.smoke.ts",
+    "category-test:score": "vitest run --config vitest.smoke.config.ts scripts/category-score.smoke.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

@@ -116,10 +116,10 @@ export async function runTauDataAction(
         );
       case "embedDashboardQuestions":
         return await (await loadDashboard()).embedDashboardQuestions();
-      case "rebuildDashboardClusters":
-        return await (await loadDashboard()).rebuildDashboardClusters();
-      case "nameDashboardClusters":
-        return await (await loadDashboard()).nameDashboardClusters();
+      case "categorizeDashboardQuestions":
+        return await (await loadDashboard()).categorizeDashboardQuestions();
+      case "buildDashboardSnapshot":
+        return await (await loadDashboard()).buildDashboardSnapshot();
       case "syncLastCheckAll":
         return await syncLastCheckAllToSupabase(p as never);
       case "hydrateLastCheckAll":

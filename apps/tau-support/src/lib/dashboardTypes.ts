@@ -10,38 +10,22 @@ export interface DashboardPoint {
   snippet?: string;
   createdAt: string | null;
   status: QuestionStatus;
-  /** null = no similar question found (not part of any group). */
-  clusterId: number | null;
+  /** One of the fixed names in categoryColors.ts. */
+  category: string;
   x: number;
   y: number;
   z: number;
 }
 
-export interface DashboardCluster {
-  id: number;
-  name: string;
-  category: string;
-  size: number;
-  unansweredCount: number;
-  courseIds: string[];
-  firstAt: string | null;
-  lastAt: string | null;
-  /** Threads closest to the group's center, most typical first. */
-  sampleThreadIds: string[];
-  /** Fixed group (e.g. "אין בעיות"): AI naming and merging leave it alone. */
-  reserved?: boolean;
-  /** Questions with no similar partner, collected per category; not repeats. */
-  lone?: boolean;
-}
+/** Bump when the snapshot shape changes; older snapshots ask for a refresh. */
+export const DASHBOARD_FORMAT_VERSION = 2;
 
 export interface DashboardSnapshot {
+  /** Missing on snapshots saved before per-question categories (v1). */
+  formatVersion?: number;
   computedAt: string;
-  similarityThreshold: number;
   /** Questions in the database, before MAX_DASHBOARD_QUESTIONS is applied. */
   totalAvailable: number;
-  /** False until the AI naming step has finished. */
-  named: boolean;
-  clusters: DashboardCluster[];
   points: DashboardPoint[];
 }
 
@@ -49,6 +33,9 @@ export interface DashboardStepResult {
   ok: boolean;
   message?: string;
   embedded?: number;
+  /** Questions given a saved category in this call. */
+  categorized?: number;
   remaining?: number;
-  clusters?: number;
+  /** Questions saved in the snapshot. */
+  questions?: number;
 }

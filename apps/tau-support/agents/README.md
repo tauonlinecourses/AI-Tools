@@ -182,15 +182,25 @@ platform.
 - `../supabase/migrations/010_question_dashboard.sql` — `question_embeddings`
   (one question-only vector per student thread, 256 dims) and
   `question_dashboard_snapshot` (saved dashboard result).
+- `../supabase/migrations/011_question_categories.sql` — saved per-question
+  `category` + `category_key` on `question_embeddings`.
 - `../server/questionDashboard.ts` — Dashboard pipeline, run by **רענן ניתוח**
-  in three calls: embed new questions → average-linkage clustering
-  (`SIMILARITY_THRESHOLD`) + UMAP 3D layout → AI cluster names, merge of
-  same-topic groups, and sorting into the closed category list
-  (`src/lib/categoryColors.ts`, which also sets each category's color).
-  Separate from `kb_chunks`; RAG retrieval does not use it.
+  in three steps: embed new questions → sort each new or edited question into
+  the closed category list (`src/lib/categoryColors.ts`, which also sets each
+  category's color) with `gpt-4o-mini`, saved so it runs once per question
+  (bump `CATEGORY_PROMPT_VERSION` after editing the prompt to re-sort all) →
+  save every question with its category + a UMAP 3D position as the snapshot.
+  No similar-question groups. Rule-based posts (אין בעיות / no content /
+  self-intro → אחר) skip the AI. Snapshots carry `formatVersion`; an older
+  one shows a "refresh" message. Separate from `kb_chunks`; RAG retrieval
+  does not use it.
+- `../scripts/category-test.smoke.ts` — read-only sorting test on a seeded
+  sample (`pnpm --filter tau-support category-test`); label the CSV in
+  `category-test-results/` and score with `category-test:score`.
 - `../src/components/QuestionsDashboard.tsx` / `QuestionMap3D.tsx` — **דשבורד**
-  header toggle: stat tiles, categories chart, repeated-question groups and a
-  lazy-loaded 3D map. Filters by course and category.
+  header toggle: stat tiles, categories chart, per-category question lists
+  (newest first) and a lazy-loaded 3D map colored by category (a click opens
+  that category). Filters by course, category and date.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -663,8 +673,8 @@ Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
 `004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`,
-`007_info_doc_common_questions.sql`, `009_info_doc_pinned.sql`, and/or
-`010_question_dashboard.sql`.
+`007_info_doc_common_questions.sql`, `009_info_doc_pinned.sql`,
+`010_question_dashboard.sql`, and/or `011_question_categories.sql`.
 
 ### Load behavior
 

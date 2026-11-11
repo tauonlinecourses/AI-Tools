@@ -1,53 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  assignLoneQuestions,
-  clusterBySimilarity,
   isNoIssueReply,
   isNonWordComment,
   isSelfIntroduction,
-  mergeClusters,
-  orderByCentrality,
-  parseClusterMerges,
-  parseCategoryAssignment,
-  parseClusterNames,
+  parseIndexedAnswers,
   seededRandom,
   shortenAndNormalize,
   toFixedCategory,
 } from "./questionClustering";
-
-function unit(v: number[]): number[] {
-  return shortenAndNormalize(v, v.length);
-}
-
-describe("clusterBySimilarity", () => {
-  it("groups close vectors and leaves outliers unlabeled", () => {
-    const vectors = [
-      unit([1, 0.02, 0]),
-      unit([0, 1, 0.02]),
-      unit([1, 0, 0.03]),
-      unit([0.03, 1, 0]),
-      unit([1, 0.04, 0.01]),
-      unit([0, 0, 1]),
-    ];
-    expect(clusterBySimilarity(vectors, 0.9)).toEqual([0, 1, 0, 1, 0, -1]);
-  });
-
-  it("returns all -1 when nothing is similar enough", () => {
-    expect(clusterBySimilarity([[1, 0], [0, 1]], 0.5)).toEqual([-1, -1]);
-  });
-
-  it("handles empty and single inputs", () => {
-    expect(clusterBySimilarity([], 0.5)).toEqual([]);
-    expect(clusterBySimilarity([[1, 0]], 0.5)).toEqual([-1]);
-  });
-});
-
-describe("orderByCentrality", () => {
-  it("puts the most typical member first", () => {
-    const vectors = [unit([1, 0.5]), unit([1, 0]), unit([1, -0.5])];
-    expect(orderByCentrality(vectors, [0, 1, 2])[0]).toBe(1);
-  });
-});
 
 describe("shortenAndNormalize", () => {
   it("cuts and rescales to unit length", () => {
@@ -131,52 +91,6 @@ describe("isNonWordComment", () => {
   });
 });
 
-describe("assignLoneQuestions", () => {
-  const point = (threadId: string, clusterId: number | null) => ({
-    threadId,
-    courseId: "c",
-    title: threadId,
-    createdAt: "2026-01-01",
-    status: "unanswered" as const,
-    clusterId,
-    x: 0,
-    y: 0,
-    z: 0,
-  });
-
-  it("groups lone questions per category and leaves the rest alone", () => {
-    const result = assignLoneQuestions(
-      [
-        {
-          id: 4,
-          name: "x",
-          category: "וידאו",
-          size: 2,
-          unansweredCount: 0,
-          courseIds: [],
-          firstAt: null,
-          lastAt: null,
-          sampleThreadIds: [],
-        },
-      ],
-      [point("a", 4), point("b", null), point("c", null), point("d", null)],
-      new Map([
-        ["a", "אחר"],
-        ["b", "וידאו"],
-        ["c", "וידאו"],
-      ])
-    );
-    expect(result.points.map((p) => p.clusterId)).toEqual([4, 5, 5, null]);
-    expect(result.clusters[1]).toMatchObject({
-      id: 5,
-      category: "וידאו",
-      size: 2,
-      unansweredCount: 2,
-      lone: true,
-    });
-  });
-});
-
 describe("isSelfIntroduction", () => {
   it("matches introduction titles only", () => {
     expect(isSelfIntroduction("הצגת עצמי")).toBe(true);
@@ -195,89 +109,15 @@ describe("toFixedCategory", () => {
   });
 });
 
-describe("mergeClusters", () => {
-  const cluster = (id: number, size: number, firstAt: string) => ({
-    id,
-    name: `c${id}`,
-    category: "אחר",
-    size,
-    unansweredCount: 1,
-    courseIds: [`course${id}`],
-    firstAt,
-    lastAt: firstAt,
-    sampleThreadIds: [`t${id}`],
-  });
-  const point = (threadId: string, clusterId: number | null) => ({
-    threadId,
-    courseId: "c",
-    title: threadId,
-    createdAt: null,
-    status: "answered" as const,
-    clusterId,
-    x: 0,
-    y: 0,
-    z: 0,
-  });
-  const clusters = [
-    cluster(0, 2, "2026-03-01"),
-    cluster(1, 5, "2026-01-01"),
-    cluster(2, 3, "2026-02-01"),
-  ];
-
-  it("combines members into the largest and relabels points", () => {
-    const result = mergeClusters(
-      clusters,
-      [point("a", 0), point("b", 1), point("c", null)],
-      [{ name: "וידאו", clusterIds: [0, 1] }]
-    );
-    expect(result.clusters.map((c) => c.id)).toEqual([1, 2]);
-    expect(result.clusters[0]).toMatchObject({
-      name: "וידאו",
-      size: 7,
-      unansweredCount: 2,
-      firstAt: "2026-01-01",
-      lastAt: "2026-03-01",
-    });
-    expect(result.points.map((p) => p.clusterId)).toEqual([1, 1, null]);
-  });
-
-  it("ignores unknown ids and repeated use of a cluster", () => {
-    const result = mergeClusters(clusters, [], [
-      { name: "x", clusterIds: [0, 99] },
-      { name: "y", clusterIds: [1, 2] },
-      { name: "z", clusterIds: [2, 0] },
-    ]);
-    expect(result.clusters.map((c) => [c.id, c.size])).toEqual([
-      [1, 8],
-      [0, 2],
-    ]);
-  });
-
-  it("parses merges and tolerates invalid JSON", () => {
-    expect(
-      parseClusterMerges('{"merges":[{"name":"א","clusters":[1,"x",2]}]}')
-    ).toEqual([{ name: "א", clusterIds: [1, 2] }]);
-    expect(parseClusterMerges("oops")).toEqual([]);
-  });
-});
-
 describe("model output parsers", () => {
-  it("reads names and ignores malformed rows", () => {
-    const names = parseClusterNames(
+  it("reads indexed answers and ignores malformed rows", () => {
+    const names = parseIndexedAnswers(
       '{"names":[{"i":2,"name":" תעודה "},{"i":"x","name":"y"}]}'
     );
     expect([...names]).toEqual([[2, "תעודה"]]);
   });
 
-  it("reads category assignments", () => {
-    const cats = parseCategoryAssignment(
-      '{"categories":[{"name":"וידאו","clusters":[0,3]}]}'
-    );
-    expect(cats.get(3)).toBe("וידאו");
-  });
-
   it("returns empty on invalid JSON", () => {
-    expect(parseClusterNames("oops").size).toBe(0);
-    expect(parseCategoryAssignment("oops").size).toBe(0);
+    expect(parseIndexedAnswers("oops").size).toBe(0);
   });
 });
