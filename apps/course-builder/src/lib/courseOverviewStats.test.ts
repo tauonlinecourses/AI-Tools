@@ -14,6 +14,7 @@ function section(id: string, position = 0): Section {
     opens_at: null,
     assignments_due_at: null,
     files_folder_url: null,
+    videos_folder_url: null,
   };
 }
 
@@ -66,6 +67,11 @@ describe("computeCourseOverviewStats", () => {
     expect(stats.pageTypeCounts.page).toBe(0);
     expect(stats.workflowCounts.in_progress).toBe(0);
     expect(stats.implementRollup.total_count).toBe(0);
+    expect(stats.progressCounts).toEqual({
+      in_progress: 0,
+      ready_for_implementation: 0,
+      implemented: 0,
+    });
   });
 
   it("ignores home page in pageCount and page-type / workflow tallies", () => {
@@ -89,6 +95,11 @@ describe("computeCourseOverviewStats", () => {
     expect(stats.pageTypeCounts.page).toBe(0);
     expect(stats.workflowCounts.in_progress).toBe(0);
     expect(stats.implementRollup.implemented_count).toBe(1);
+    expect(stats.progressCounts).toEqual({
+      in_progress: 0,
+      ready_for_implementation: 0,
+      implemented: 0,
+    });
   });
 
   it("aggregates page types, components, averages, workflow, and rollups", () => {
@@ -165,6 +176,55 @@ describe("computeCourseOverviewStats", () => {
       needs_update_count: 1,
       not_implemented_count: 2,
       total_count: 5,
+    });
+    // p2 in_progress; p1 partial + p3 not started → ready_for_implementation
+    expect(stats.progressCounts).toEqual({
+      in_progress: 1,
+      ready_for_implementation: 2,
+      implemented: 0,
+    });
+  });
+
+  it("splits ready pages into מוכן להטמעה vs הוטמע", () => {
+    const stats = computeCourseOverviewStats({
+      sections: [section("s1")],
+      pages: [
+        page({
+          id: "p1",
+          section_id: "s1",
+          course_id: null,
+          workflow_status: "ready_for_implementation",
+        }),
+        page({
+          id: "p2",
+          section_id: "s1",
+          course_id: null,
+          workflow_status: "ready_for_implementation",
+        }),
+        page({
+          id: "p3",
+          section_id: "s1",
+          course_id: null,
+          workflow_status: "in_progress",
+        }),
+      ],
+      componentRows: [
+        { page_id: "p1", type: "text" },
+        { page_id: "p1", type: "video" },
+        { page_id: "p2", type: "text" },
+        { page_id: "p3", type: "text" },
+      ],
+      perPageRollups: new Map([
+        ["p1", rollup(2, 0, 0)],
+        ["p2", rollup(0, 0, 1)],
+        ["p3", rollup(1, 0, 0)],
+      ]),
+    });
+    // p3 stays בעבודה even though its components are implemented
+    expect(stats.progressCounts).toEqual({
+      in_progress: 1,
+      ready_for_implementation: 1,
+      implemented: 1,
     });
   });
 });

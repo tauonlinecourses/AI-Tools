@@ -44,3 +44,6 @@ export type ChatTurn = {
   logId?: string;
   vote?: Vote | null;
 };
+
+/** Search-index state of a page after a save (absent = up to date). */
+export type IndexStatus = "indexing" | "failed";

@@ -22,12 +22,23 @@ export const PLATFORM_TOOL_IDS = [
   "virtual-support",
   "tool-starter",
   "dictionary-tool",
+  "video-transcriber",
 ] as const;
 
 export type PlatformToolId = (typeof PLATFORM_TOOL_IDS)[number];
 
 export function isPlatformToolId(value: string): value is PlatformToolId {
   return (PLATFORM_TOOL_IDS as readonly string[]).includes(value);
+}
+
+export type AccountStatus = "pending" | "approved" | "rejected";
+
+/**
+ * The one rule for reading a profile status. A missing or unrecognized value
+ * counts as pending, so an unknown account never gets access by default.
+ */
+export function normalizeAccountStatus(value: unknown): AccountStatus {
+  return value === "approved" || value === "rejected" ? value : "pending";
 }
 
 export function isAdminGroupSlug(slug: string): boolean {

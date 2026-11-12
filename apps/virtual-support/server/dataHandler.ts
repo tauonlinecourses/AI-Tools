@@ -1,5 +1,6 @@
 /**
- * Virtual Support data BFF actions (folders, documents, image upload, answer votes).
+ * Virtual Support data BFF actions (folders, documents, search indexing,
+ * image upload, answer votes).
  * Runs with service_role after Platform auth on the API route.
  */
 
@@ -177,20 +178,8 @@ export async function runDataAction(
         .single();
       if (error) throw new Error(error.message);
 
-      const doc = data as DocumentRow;
-      try {
-        await reindexDocument(client, doc.id, title, body);
-      } catch (embedErr) {
-        console.error(
-          JSON.stringify({
-            event: "vs_reindex_failed",
-            documentId: doc.id,
-            error:
-              embedErr instanceof Error ? embedErr.message : String(embedErr),
-          })
-        );
-      }
-      return { ok: true, document: doc };
+      // Search indexing runs separately (indexDocument), so saving is fast.
+      return { ok: true, document: data as DocumentRow };
     }
 
     case "updateDocument": {
@@ -220,20 +209,34 @@ export async function runDataAction(
         .single();
       if (error) throw new Error(error.message);
 
-      const doc = data as DocumentRow;
+      // Search indexing runs separately (indexDocument), so saving is fast.
+      return { ok: true, document: data as DocumentRow };
+    }
+
+    case "indexDocument": {
+      // Re-index one page for search (chunks + embeddings). Called by the
+      // browser right after a save; reads the saved page, so it always
+      // indexes the latest version. No-op when the content is unchanged.
+      const id = str(p.id);
+      if (!id) throw new Error("Document id is required");
+      const { data, error } = await client
+        .from("documents")
+        .select("id, title, body")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("Document not found");
       try {
-        await reindexDocument(client, doc.id, title, body);
+        const result = await reindexDocument(client, data.id, data.title, data.body);
+        return { ok: true, ...result };
       } catch (embedErr) {
+        const message =
+          embedErr instanceof Error ? embedErr.message : String(embedErr);
         console.error(
-          JSON.stringify({
-            event: "vs_reindex_failed",
-            documentId: doc.id,
-            error:
-              embedErr instanceof Error ? embedErr.message : String(embedErr),
-          })
+          JSON.stringify({ event: "vs_reindex_failed", documentId: id, error: message })
         );
+        throw new Error(`Indexing failed: ${message}`);
       }
-      return { ok: true, document: doc };
     }
 
     case "deleteDocument": {

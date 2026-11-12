@@ -7,7 +7,7 @@ interface Props {
   props: QuestionProps;
   mode: CourseViewMode;
   onChange: (props: QuestionProps) => void;
-  /** Implement mode: copy option text (and mark the component implemented upstream). */
+  /** Implement mode: copy option / prompt text to the clipboard. */
   onCopyOption?: (text: string) => void;
 }
 
@@ -182,7 +182,7 @@ export function QuestionBlock({ props, mode, onChange, onCopyOption }: Props) {
             <input
               type={isMultiple ? "checkbox" : "radio"}
               name={radioGroup}
-              className="accent-black shrink-0"
+              className="accent-black shrink-0 size-[1.125rem] cursor-pointer"
               checked={correctIds.has(opt.id)}
               onChange={() => toggleCorrect(opt.id)}
               title="תשובה נכונה"

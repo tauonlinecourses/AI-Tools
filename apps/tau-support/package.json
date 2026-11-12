@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "category-test": "vitest run --config vitest.smoke.config.ts scripts/category-test.smoke.ts",
+    "category-test:score": "vitest run --config vitest.smoke.config.ts scripts/category-score.smoke.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
@@ -16,8 +18,11 @@
     "@workspace/auth": "workspace:*",
     "@workspace/ui": "workspace:*",
     "openai": "^6.48.0",
+    "plotly.js-gl3d-dist-min": "^4.2.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "recharts": "^3.10.1",
+    "umap-js": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",

@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler } from "./server";
 
+vi.mock("openai", () => ({
+  default: class {
+    chat = {
+      completions: {
+        create: async () => {
+          throw Object.assign(new Error("Incorrect API key provided: sk-proj-***tnQA"), {
+            status: 401,
+          });
+        },
+      },
+    };
+  },
+}));
+
 function post(body: unknown): Request {
   return new Request("http://localhost/api/chat", {
     method: "POST",
@@ -59,6 +73,17 @@ describe("ai-client handler validation", () => {
   it("rejects non-string message content", async () => {
     const res = await handler(post({ messages: [{ role: "user", content: 42 }] }));
     expect(res.status).toBe(400);
+  });
+
+  it("never sends OpenAI's error text to the client", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "bad-key");
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const res = await handler(post({ messages: oneMessage }));
+    const text = await res.text();
+    expect(res.status).toBe(502);
+    expect(text).not.toContain("Incorrect API key");
+    expect(text).not.toContain("sk-proj");
+    expect(text).not.toContain("details");
   });
 
   it("returns 500 when OPENAI_API_KEY is missing", async () => {

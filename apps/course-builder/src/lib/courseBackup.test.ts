@@ -4,6 +4,7 @@ vi.mock("./supabase", () => ({ supabase: {} }));
 vi.mock("./api", () => ({
   getCourseTree: vi.fn(),
   listCommentsForPage: vi.fn(),
+  listPageComments: vi.fn(),
   listComponents: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ function validBackup() {
         opens_at: null,
         assignments_due_at: null,
         files_folder_url: null,
+        videos_folder_url: null,
       },
     ],
     pages: [
@@ -65,6 +67,15 @@ function validBackup() {
         created_at: "2026-01-01T00:00:00.000Z",
       },
     ],
+    pageComments: [
+      {
+        pageTempKey: "p1",
+        author_role: "edit",
+        body: "Page note",
+        resolved_at: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+    ],
   };
 }
 
@@ -72,6 +83,11 @@ describe("parseCourseBackup", () => {
   it("accepts a valid backup unchanged", () => {
     const raw = validBackup();
     expect(parseCourseBackup(raw)).toEqual(raw);
+  });
+
+  it("defaults missing pageComments to an empty array", () => {
+    const { pageComments: _ignored, ...legacy } = validBackup();
+    expect(parseCourseBackup(legacy).pageComments).toEqual([]);
   });
 
   it("rejects non-objects and wrong format/version", () => {

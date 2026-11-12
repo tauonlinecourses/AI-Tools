@@ -3,12 +3,20 @@
  *   pnpm --filter virtual-support smoke
  * Reads apps/virtual-support/.env. Requires migration 002_hybrid_search.sql.
  */
+import { fileURLToPath } from "node:url";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 
 const env = loadEnv("development", __dirname, "");
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@workspace/ai-client/server": fileURLToPath(
+        new URL("../../packages/ai-client/src/server.ts", import.meta.url)
+      ),
+    },
+  },
   test: {
     environment: "node",
     include: ["scripts/**/*.smoke.ts"],

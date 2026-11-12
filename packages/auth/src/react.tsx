@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import {
+  clearLocalPlatformSession,
   getMyAccountStatus,
   getPlatformClient,
   getPlatformSession,
@@ -16,11 +18,38 @@ import {
   listAllowedToolIds,
   isAdminFromGroups,
   listUserGroups,
+  setPlatformSessionEndedListener,
   signInWithPassword,
   signOut as platformSignOut,
   type AccountStatus,
   type PlatformGroup,
 } from "./client.js";
+import { createMembershipTracker } from "./membershipTracker.js";
+
+async function fetchAllowedToolIds(): Promise<string[]> {
+  try {
+    return await listAllowedToolIds();
+  } catch {
+    return [];
+  }
+}
+
+async function fetchGroups(): Promise<PlatformGroup[]> {
+  try {
+    return await listUserGroups();
+  } catch {
+    return [];
+  }
+}
+
+async function fetchAccountStatus(): Promise<AccountStatus> {
+  try {
+    return await getMyAccountStatus();
+  } catch {
+    // Fail closed: do not treat unknown status as approved.
+    return "pending";
+  }
+}
 
 type AuthState = {
   configured: boolean;
@@ -33,6 +62,8 @@ type AuthState = {
   isAdmin: boolean;
   /** Profile approval status; null while unsigned or still loading membership. */
   accountStatus: AccountStatus | null;
+  /** True when the login ended without this tab's own sign-out. */
+  sessionEnded: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAllowedTools: () => Promise<void>;
@@ -53,53 +84,64 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     null
   );
 
+  const [tracker] = useState(createMembershipTracker);
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const signingOutRef = useRef(false);
+
   const refreshAllowedTools = useCallback(async () => {
-    if (!configured) {
-      setAllowedToolIds([]);
-      return;
-    }
-    try {
-      const ids = await listAllowedToolIds();
-      setAllowedToolIds(ids);
-    } catch {
-      setAllowedToolIds([]);
-    }
+    setAllowedToolIds(configured ? await fetchAllowedToolIds() : []);
   }, [configured]);
 
   const refreshGroups = useCallback(async () => {
-    if (!configured) {
-      setGroups([]);
-      return;
-    }
-    try {
-      const next = await listUserGroups();
-      setGroups(next);
-    } catch {
-      setGroups([]);
-    }
+    setGroups(configured ? await fetchGroups() : []);
   }, [configured]);
 
   const refreshAccountStatus = useCallback(async () => {
-    if (!configured) {
-      setAccountStatus(null);
-      return;
-    }
-    try {
-      const status = await getMyAccountStatus();
-      setAccountStatus(status);
-    } catch {
-      // Fail closed: do not treat unknown status as approved.
-      setAccountStatus("pending");
-    }
+    setAccountStatus(configured ? await fetchAccountStatus() : null);
   }, [configured]);
 
+  /** Loads all membership at once; `loading` ends when the newest load lands. */
   const refreshMembership = useCallback(async () => {
-    await Promise.all([
-      refreshAllowedTools(),
-      refreshGroups(),
-      refreshAccountStatus(),
+    const request = tracker.beginRequest();
+    const [nextTools, nextGroups, nextStatus] = await Promise.all([
+      fetchAllowedToolIds(),
+      fetchGroups(),
+      fetchAccountStatus(),
     ]);
-  }, [refreshAllowedTools, refreshGroups, refreshAccountStatus]);
+    if (!tracker.isLatest(request)) return;
+    setAllowedToolIds(nextTools);
+    setGroups(nextGroups);
+    setAccountStatus(nextStatus);
+    setLoading(false);
+  }, [tracker]);
+
+  /** A new user blocks the UI until loaded; the same user refreshes quietly. */
+  const syncMembership = useCallback(
+    (userId: string) => {
+      if (tracker.setActiveUser(userId)) setLoading(true);
+      return refreshMembership();
+    },
+    [tracker, refreshMembership]
+  );
+
+  const clearMembership = useCallback(() => {
+    tracker.reset();
+    setAllowedToolIds([]);
+    setGroups([]);
+    setAccountStatus(null);
+    setLoading(false);
+  }, [tracker]);
+
+  useEffect(() => {
+    if (!configured) return;
+    setPlatformSessionEndedListener(() => {
+      setSessionEnded(true);
+      setSession(null);
+      clearMembership();
+      void clearLocalPlatformSession().catch(() => undefined);
+    });
+    return () => setPlatformSessionEndedListener(null);
+  }, [configured, clearMembership]);
 
   useEffect(() => {
     if (!configured) {
@@ -113,21 +155,24 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
         const s = await getPlatformSession();
         if (cancelled) return;
         setSession(s);
-        if (s) await refreshMembership();
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (s) await syncMembership(s.user.id);
+        else clearMembership();
+      } catch {
+        if (!cancelled) clearMembership();
       }
     })();
 
     const { data: sub } = getPlatformClient().auth.onAuthStateChange(
-      (_event, next) => {
+      (event, next) => {
         setSession(next);
         if (next) {
-          void refreshMembership();
+          setSessionEnded(false);
+          void syncMembership(next.user.id);
         } else {
-          setAllowedToolIds([]);
-          setGroups([]);
-          setAccountStatus(null);
+          if (event === "SIGNED_OUT" && !signingOutRef.current) {
+            setSessionEnded(true);
+          }
+          clearMembership();
         }
       }
     );
@@ -136,21 +181,25 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       sub.subscription.unsubscribe();
     };
-  }, [configured, refreshMembership]);
+  }, [configured, syncMembership, clearMembership]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const s = await signInWithPassword(email, password);
     setSession(s);
-    await refreshMembership();
-  }, [refreshMembership]);
+    await syncMembership(s.user.id);
+  }, [syncMembership]);
 
   const signOut = useCallback(async () => {
-    await platformSignOut();
+    signingOutRef.current = true;
+    try {
+      await platformSignOut();
+    } finally {
+      signingOutRef.current = false;
+    }
     setSession(null);
-    setAllowedToolIds([]);
-    setGroups([]);
-    setAccountStatus(null);
-  }, []);
+    setSessionEnded(false);
+    clearMembership();
+  }, [clearMembership]);
 
   const isAdmin = isAdminFromGroups(groups);
 
@@ -164,6 +213,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       groups,
       isAdmin,
       accountStatus,
+      sessionEnded,
       signIn,
       signOut,
       refreshAllowedTools,
@@ -179,6 +229,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
       groups,
       isAdmin,
       accountStatus,
+      sessionEnded,
       signIn,
       signOut,
       refreshAllowedTools,

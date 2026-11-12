@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { persistHubLocale, Spinner } from "@workspace/ui";
+import { isEndedSessionHandoffError } from "@workspace/auth/client";
 import { usePlatformAuth } from "@workspace/auth/react";
-import { listAllowedToolIds } from "@workspace/auth/client";
 import {
   tools,
   toolIsOpenable,
@@ -83,32 +83,38 @@ export function HubPage({ locale }: { locale: Locale }) {
       return;
     }
 
+    // Provider already finished membership load (`loading` is false); reuse it
+    // instead of a second `user_allowed_tools` RPC before handoff.
+    if (!allowedToolIds.includes(tool.id)) {
+      // Signed in but no entitlement for this tool → stay on hub catalog.
+      return;
+    }
+
+    if (tool.hubPath) {
+      navigate(tool.hubPath);
+      return;
+    }
+
     void (async () => {
-      // Fresh entitlement check avoids racing PlatformAuthProvider membership state.
-      let ids: string[];
-      try {
-        ids = await listAllowedToolIds();
-      } catch {
-        return;
-      }
-      if (!ids.includes(tool.id)) {
-        // Signed in but no entitlement for this tool → stay on hub catalog.
-        return;
-      }
-
-      if (tool.hubPath) {
-        navigate(tool.hubPath);
-        return;
-      }
-
       try {
         const target = await handoffToTool(tool);
         window.location.href = target;
-      } catch {
+      } catch (err) {
         // Stay on hub if handoff fails; user can open the tool from the catalog.
+        // An ended login goes to the login page, so keep the way back to the tool.
+        if (isEndedSessionHandoffError(err)) {
+          processedReturnUrls.delete(returnUrl);
+          const restored = new URLSearchParams(window.location.search);
+          restored.set("returnUrl", returnUrl);
+          window.history.replaceState(
+            {},
+            "",
+            `${window.location.pathname}?${restored}`
+          );
+        }
       }
     })();
-  }, [loading, session, accountStatus, navigate]);
+  }, [loading, session, accountStatus, allowedToolIds, navigate]);
 
   if (loading) {
     return (
@@ -175,6 +181,11 @@ export function HubPage({ locale }: { locale: Locale }) {
               <div className="flex items-center gap-2 shrink-0" dir="ltr">
                 <UserMenu
                   locale={locale}
+                  displayName={
+                    user?.email?.includes("@")
+                      ? user.email.split("@")[0]
+                      : user?.email
+                  }
                   email={user?.email}
                   groupNames={groups.map((g) => g.name)}
                   onSignOut={() => void signOut()}

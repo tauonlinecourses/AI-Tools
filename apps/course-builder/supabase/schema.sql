@@ -27,6 +27,7 @@ create table sections (
   opens_at date,                    -- תאריך פתיחה
   assignments_due_at date,          -- תאריך אחרון להגשת מטלות/תרגילים
   files_folder_url text,            -- לינק לתיקיית קבצים של השיעור
+  videos_folder_url text,           -- לינק לתיקיית סרטונים של השיעור
   created_at timestamptz default now()
 );
 
@@ -51,7 +52,7 @@ create table pages (
 create table components (
   id uuid primary key default gen_random_uuid(),
   page_id uuid references pages(id) on delete cascade,
-  type text not null,                    -- 'banner' | 'video' | 'text' | 'question'
+  type text not null,                    -- 'banner' | 'video' | 'text' | 'question' | 'image' | 'text_unit' | 'interactive_unit' | 'button' | …
   position int not null,
   props jsonb not null default '{}',
   implemented_at timestamptz,             -- null until implementer marks it done
@@ -70,6 +71,16 @@ create table component_comments (
   created_at timestamptz default now()
 );
 
+-- Per-page Word-style comments (header thread). Same roles/resolve as blocks.
+create table page_comments (
+  id uuid primary key default gen_random_uuid(),
+  page_id uuid not null references pages(id) on delete cascade,
+  author_role text not null check (author_role in ('edit', 'implement', 'review')),
+  body text not null,
+  resolved_at timestamptz,                -- null = open
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- INDEXES (foreign keys aren't auto-indexed in Postgres)
 -- ============================================================
@@ -80,6 +91,7 @@ create index idx_pages_course_id on pages(course_id);
 create unique index pages_one_home_per_course on pages(course_id) where section_id is null;
 create index idx_components_page_id on components(page_id);
 create index idx_component_comments_component_id on component_comments(component_id);
+create index idx_page_comments_page_id on page_comments(page_id);
 
 -- ============================================================
 -- AUTO-UPDATE updated_at
@@ -217,6 +229,7 @@ alter table sections enable row level security;
 alter table pages enable row level security;
 alter table components enable row level security;
 alter table component_comments enable row level security;
+alter table page_comments enable row level security;
 
 create policy "authenticated_all" on courses
   for all to authenticated
@@ -235,5 +248,50 @@ create policy "authenticated_all" on components
   using (true) with check (true);
 
 create policy "authenticated_all" on component_comments
+  for all to authenticated
+  using (true) with check (true);
+
+create policy "authenticated_all" on page_comments
+  for all to authenticated
+  using (true) with check (true);
+
+-- ============================================================
+-- MBZ roundtrip (see migrations/016_course_mbz_roundtrip.sql)
+-- ============================================================
+
+create table course_mbz_sources (
+  course_id uuid primary key references courses(id) on delete cascade,
+  storage_path text not null,
+  source_filename text not null,
+  source_sha1 text not null,
+  archive_kind text not null check (archive_kind in ('tgz', 'zip', 'tar')),
+  moodle_version text,
+  imported_at timestamptz not null default now(),
+  storage_backend text not null default 'reupload'
+    check (storage_backend in ('supabase', 'idb', 'reupload'))
+);
+
+create table course_mbz_bindings (
+  id uuid primary key default gen_random_uuid(),
+  course_id uuid not null references courses(id) on delete cascade,
+  entity_kind text not null check (entity_kind in ('section', 'activity')),
+  cb_id uuid not null,
+  moodle_id text not null,
+  modtype text,
+  activity_dir text,
+  payload_field text,
+  editable boolean not null default false,
+  meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table course_mbz_sources enable row level security;
+alter table course_mbz_bindings enable row level security;
+
+create policy "authenticated_all" on course_mbz_sources
+  for all to authenticated
+  using (true) with check (true);
+
+create policy "authenticated_all" on course_mbz_bindings
   for all to authenticated
   using (true) with check (true);

@@ -22,6 +22,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   DuplicateIcon,
+  FilmIcon,
   FolderIcon,
   GripIcon,
   MoreVerticalIcon,
@@ -31,6 +32,9 @@ import {
 } from "./icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
 import { exportCourseBackup } from "../lib/courseBackup";
+import { exportCourseMbz, pickOriginalMbzFile } from "../lib/mbzExport";
+import { getCourseMbzSource } from "../lib/mbzStorage";
+import type { CourseMbzSource } from "../lib/mbzTypes";
 
 interface CourseShellProps {
   mode: CourseViewMode;
@@ -175,8 +179,13 @@ export function CourseShell({ mode }: CourseShellProps) {
     perSection: Map<string, StatusRollup>;
   } | null>(null);
   const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
+  const [commentCounts, setCommentCounts] = useState<
+    Map<string, { open: number; resolved: number }>
+  >(new Map());
   const [exportingBackup, setExportingBackup] = useState(false);
+  const [exportingMbz, setExportingMbz] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [mbzSource, setMbzSource] = useState<CourseMbzSource | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
@@ -184,6 +193,9 @@ export function CourseShell({ mode }: CourseShellProps) {
       .getCourseTree(courseId)
       .then(setTree)
       .catch((e: Error) => setError(e.message));
+    getCourseMbzSource(courseId)
+      .then(setMbzSource)
+      .catch(() => setMbzSource(null));
   }, [courseId]);
 
   const refreshRollups = useCallback(() => {
@@ -205,6 +217,14 @@ export function CourseShell({ mode }: CourseShellProps) {
       .catch(() => undefined);
   }, [tree]);
 
+  const refreshCommentCounts = useCallback(() => {
+    if (!tree) return;
+    api
+      .getCommentCountsByPage(tree.pages.map((p) => p.id))
+      .then(setCommentCounts)
+      .catch(() => undefined);
+  }, [tree]);
+
   useEffect(() => {
     refreshRollups();
   }, [refreshRollups]);
@@ -212,6 +232,10 @@ export function CourseShell({ mode }: CourseShellProps) {
   useEffect(() => {
     refreshPageTypes();
   }, [refreshPageTypes]);
+
+  useEffect(() => {
+    refreshCommentCounts();
+  }, [refreshCommentCounts]);
 
   // ─── Derived structure ────────────────────────────────────────────────────
 
@@ -294,10 +318,15 @@ export function CourseShell({ mode }: CourseShellProps) {
     mode,
   ]);
 
-  const selectedPageLessonFilesUrl = useMemo(() => {
-    if (!selectedPage?.section_id || !tree) return null;
+  const selectedPageLessonFolderUrls = useMemo(() => {
+    if (!selectedPage?.section_id || !tree) {
+      return { files: null as string | null, videos: null as string | null };
+    }
     const section = tree.sections.find((s) => s.id === selectedPage.section_id);
-    return section?.files_folder_url ?? null;
+    return {
+      files: section?.files_folder_url ?? null,
+      videos: section?.videos_folder_url ?? null,
+    };
   }, [selectedPage, tree]);
 
   const blockedRequestedSection = useMemo(() => {
@@ -319,19 +348,6 @@ export function CourseShell({ mode }: CourseShellProps) {
     const page = tree.pages.find((candidate) => candidate.id === requested);
     return page?.workflow_status === "in_progress" ? page : null;
   }, [tree, mode, selectedSection, blockedRequestedSection, searchParams]);
-
-  const numbering = useMemo(() => {
-    const map = new Map<string, string>();
-    if (!tree) return map;
-    // Home page has no lesson numbering — shown by title only.
-    tree.sections.forEach((section, sIdx) => {
-      map.set(section.id, `${sIdx + 1}`);
-      (pagesBySection.get(section.id) ?? []).forEach((page, pIdx) => {
-        map.set(page.id, `${sIdx + 1}.${pIdx + 1}`);
-      });
-    });
-    return map;
-  }, [tree, pagesBySection]);
 
   /** Sidebar order: home, then each section's pages. */
   const orderedPages = useMemo(() => {
@@ -392,7 +408,7 @@ export function CourseShell({ mode }: CourseShellProps) {
   }, []);
 
   async function handleExportBackup() {
-    if (!courseId || exportingBackup) return;
+    if (!courseId || exportingBackup || exportingMbz) return;
     setBackupError(null);
     setExportingBackup(true);
     try {
@@ -401,6 +417,36 @@ export function CourseShell({ mode }: CourseShellProps) {
       setBackupError(e instanceof Error ? e.message : String(e));
     } finally {
       setExportingBackup(false);
+    }
+  }
+
+  async function handleExportMbz() {
+    if (!courseId || exportingBackup || exportingMbz || !mbzSource) return;
+    setBackupError(null);
+    setExportingMbz(true);
+    try {
+      const needsFile =
+        !mbzSource.storage_backend ||
+        mbzSource.storage_backend === "reupload" ||
+        mbzSource.storage_path === "reupload";
+      let original: File | null = null;
+      if (needsFile) {
+        original = await pickOriginalMbzFile(mbzSource.source_filename);
+        if (!original) {
+          setBackupError(
+            `הייצוא בוטל — יש לבחור את קובץ ה-MBZ המקורי (${mbzSource.source_filename})`
+          );
+          return;
+        }
+      }
+      const result = await exportCourseMbz(courseId, original);
+      if (result.warnings.length > 0) {
+        setBackupError(result.warnings.join(" · "));
+      }
+    } catch (e) {
+      setBackupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportingMbz(false);
     }
   }
 
@@ -427,8 +473,18 @@ export function CourseShell({ mode }: CourseShellProps) {
     setTree((prev) => {
       if (!prev) return prev;
       return kind === "section"
-        ? { ...prev, sections: prev.sections.map((s) => (s.id === id ? { ...s, title: trimmed } : s)) }
-        : { ...prev, pages: prev.pages.map((p) => (p.id === id ? { ...p, title: trimmed } : p)) };
+        ? {
+            ...prev,
+            sections: prev.sections.map((s) =>
+              s.id === id ? { ...s, title: trimmed } : s
+            ),
+          }
+        : {
+            ...prev,
+            pages: prev.pages.map((p) =>
+              p.id === id ? { ...p, title: trimmed } : p
+            ),
+          };
     });
     try {
       if (kind === "section") await trackSave(api.updateSection(id, { title: trimmed }));
@@ -586,7 +642,14 @@ export function CourseShell({ mode }: CourseShellProps) {
 
   function handleSectionFieldChange(
     fields: Partial<
-      Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+      Pick<
+        Section,
+        | "title"
+        | "opens_at"
+        | "assignments_due_at"
+        | "files_folder_url"
+        | "videos_folder_url"
+      >
     >
   ) {
     if (!selectedSection) return;
@@ -663,7 +726,6 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isHome = isHomePage(page);
     const isUnavailableInImplement =
       mode === "implement" && page.workflow_status === "in_progress";
-    const pageNumber = numbering.get(page.id);
     const pageRollup = showRollups ? rollups?.perPage.get(page.id) : undefined;
     const isComplete =
       !!pageRollup &&
@@ -671,6 +733,11 @@ export function CourseShell({ mode }: CourseShellProps) {
       pageRollup.implemented_count === pageRollup.total_count;
     const pageType =
       showRollups && !isHome ? (pageTypes.get(page.id) ?? "page") : null;
+    const pageComments = commentCounts.get(page.id);
+    const openComments = pageComments?.open ?? 0;
+    const resolvedComments = pageComments?.resolved ?? 0;
+    const commentCount = openComments > 0 ? openComments : resolvedComments;
+    const commentTone = openComments > 0 ? "open" : "resolved";
     const workflowSwatchClass =
       page.workflow_status === "ready_for_implementation"
         ? "bg-emerald-400/40"
@@ -695,6 +762,13 @@ export function CourseShell({ mode }: CourseShellProps) {
         onClick={() => {
           if (!isUnavailableInImplement) selectPage(page.id);
         }}
+        onDoubleClick={(e) => {
+          if (!editable || isRenaming) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setOpenMenu(null);
+          setRenaming({ kind: "page", id: page.id });
+        }}
         aria-disabled={isUnavailableInImplement}
         title={
           isUnavailableInImplement
@@ -717,7 +791,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {editable && (
           <span
-            className={`shrink-0 w-2.5 h-2.5 rounded-sm ${workflowSwatchClass}`}
+            className={`shrink-0 w-2.5 h-2.5 rounded-full ${workflowSwatchClass}`}
             title={workflowLabel}
             aria-label={workflowLabel}
           />
@@ -732,28 +806,41 @@ export function CourseShell({ mode }: CourseShellProps) {
             }`}
           />
         )}
-        {pageNumber && (
-          <>
-            <span className="shrink-0">{pageNumber}</span>
-            <span
-              className={`shrink-0 ${
-                isSelected
-                  ? "text-white/70"
-                  : isComplete
-                    ? "text-emerald-700/50"
-                    : "text-surface-400"
-              }`}
-              aria-hidden
-            >
-              |
-            </span>
-          </>
-        )}
         {isRenaming ? (
           renderRenameInput("page", page.id, page.title)
         ) : (
           <span className={`truncate flex-1 ${isHome ? "font-semibold" : ""}`}>
             {page.title}
+          </span>
+        )}
+        {commentCount > 0 && (
+          <span
+            className={`inline-grid place-items-center shrink-0 size-3.5 rounded-full text-[9px] font-bold leading-none tabular-nums ${
+              commentCount > 9 ? "w-auto min-w-3.5 px-1" : ""
+            } ${
+              isSelected
+                ? commentTone === "open"
+                  ? "bg-white text-[#0F6CBF]"
+                  : "bg-white/85 text-surface-600"
+                : commentTone === "open"
+                  ? "bg-[#0F6CBF] text-white"
+                  : "bg-surface-300 text-white"
+            }`}
+            dir="ltr"
+            title={
+              commentTone === "open"
+                ? `${commentCount} הערות פתוחות על העמוד`
+                : `${commentCount} הערות שנפתרו על העמוד`
+            }
+            aria-label={
+              commentTone === "open"
+                ? `${commentCount} הערות פתוחות`
+                : `${commentCount} הערות שנפתרו`
+            }
+          >
+            <span className="block translate-y-[0.5px]">
+              {commentCount > 99 ? "99+" : commentCount}
+            </span>
           </span>
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}
@@ -772,19 +859,19 @@ export function CourseShell({ mode }: CourseShellProps) {
             onClose={() => setOpenMenu(null)}
             items={[
               {
-                label: "שנה שם",
+                label: "שינוי שם",
                 icon: <PencilIcon className="w-3.5 h-3.5 text-surface-500" />,
                 onClick: () => setRenaming({ kind: "page", id: page.id }),
               },
               ...(!isHome
                 ? [
                     {
-                      label: "שכפל עמוד",
+                      label: "שכפול עמוד",
                       icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
                       onClick: () => handleDuplicatePage(page),
                     },
                     {
-                      label: "מחק עמוד",
+                      label: "מחיקת עמוד",
                       icon: <TrashIcon className="w-3.5 h-3.5" />,
                       danger: true,
                       onClick: () => handleDeletePage(page),
@@ -808,6 +895,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     const isEffectivelyCollapsed = isCollapsed || isUnavailableInImplement;
     const hasOpenDate = !!section.opens_at?.trim();
     const hasFolderLink = !!section.files_folder_url?.trim();
+    const hasVideosFolderLink = !!section.videos_folder_url?.trim();
     const lessonWorkflow = sectionWorkflowStatus(pages);
     const lessonWorkflowSwatchClass =
       lessonWorkflow === "ready_for_implementation"
@@ -850,7 +938,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           )}
           {editable && (
             <span
-              className={`shrink-0 w-2.5 h-2.5 rounded-sm ${lessonWorkflowSwatchClass}`}
+              className={`shrink-0 w-2.5 h-2.5 rounded-full ${lessonWorkflowSwatchClass}`}
               title={lessonWorkflowLabel}
               aria-label={lessonWorkflowLabel}
             />
@@ -897,24 +985,47 @@ export function CourseShell({ mode }: CourseShellProps) {
               {section.title}
             </button>
           )}
-          {(hasOpenDate || hasFolderLink) && (
-            <span
-              className={`flex items-center gap-1 shrink-0 ${
-                isSelected ? "text-white/85" : "text-surface-500"
-              }`}
-            >
-              {hasOpenDate && (
-                <span title="יש תאריך פתיחה" aria-label="יש תאריך פתיחה">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                </span>
-              )}
-              {hasFolderLink && (
-                <span title="יש תיקיית קבצים" aria-label="יש תיקיית קבצים">
-                  <FolderIcon className="w-3.5 h-3.5" />
-                </span>
-              )}
-            </span>
-          )}
+          <span className="flex items-center gap-1 shrink-0">
+            {(
+              [
+                {
+                  set: hasOpenDate,
+                  labelSet: "יש תאריך פתיחה",
+                  labelMissing: "חסר תאריך פתיחה",
+                  icon: <CalendarIcon className="w-3.5 h-3.5" />,
+                },
+                {
+                  set: hasFolderLink,
+                  labelSet: "יש תיקיית קבצים",
+                  labelMissing: "חסרה תיקיית קבצים",
+                  icon: <FolderIcon className="w-3.5 h-3.5" />,
+                },
+                {
+                  set: hasVideosFolderLink,
+                  labelSet: "יש תיקיית סרטונים",
+                  labelMissing: "חסרה תיקיית סרטונים",
+                  icon: <FilmIcon className="w-3.5 h-3.5" />,
+                },
+              ] as const
+            ).map((meta) => (
+              <span
+                key={meta.labelSet}
+                className={
+                  meta.set
+                    ? isSelected
+                      ? "text-white/85"
+                      : "text-surface-500"
+                    : isSelected
+                      ? "text-[#FFB4B4]"
+                      : "text-danger opacity-50"
+                }
+                title={meta.set ? meta.labelSet : meta.labelMissing}
+                aria-label={meta.set ? meta.labelSet : meta.labelMissing}
+              >
+                {meta.icon}
+              </span>
+            ))}
+          </span>
           {showRollups && rollupLabel(rollups?.perSection.get(section.id), isSelected)}
           {editable && !isRenaming && (
             <SidebarRowMenu
@@ -999,7 +1110,7 @@ export function CourseShell({ mode }: CourseShellProps) {
     >
       <div dir="rtl" lang="he" className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden">
         {/* Sidebar — fixed pane; own scrollbar when nav overflows */}
-        <aside className="w-80 shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
+        <aside className="w-[22rem] shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
           <div className="p-4 border-b border-surface-200 flex flex-col gap-2">
             {/* Title (right) + mode toggle (top-left in RTL) */}
             <div className="flex items-start justify-between gap-2">
@@ -1044,16 +1155,30 @@ export function CourseShell({ mode }: CourseShellProps) {
               </span>
             )}
             {tree && (
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                disabled={exportingBackup}
-                className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
-                title="שמירת כל תוכן הקורס לקובץ במחשב"
-              >
-                <DownloadIcon className="w-4 h-4" />
-                {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 self-start">
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  disabled={exportingBackup || exportingMbz}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                  title="שמירת כל תוכן הקורס לקובץ JSON במחשב"
+                >
+                  <DownloadIcon className="w-4 h-4" />
+                  {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
+                </button>
+                {mbzSource && (
+                  <button
+                    type="button"
+                    onClick={handleExportMbz}
+                    disabled={exportingBackup || exportingMbz}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                    title={`הורדת MBZ מעודכן — יתבקש לבחור את הקובץ המקורי (${mbzSource.source_filename})`}
+                  >
+                    <DownloadIcon className="w-4 h-4" />
+                    {exportingMbz ? "מייצא MBZ..." : "הורד MBZ"}
+                  </button>
+                )}
+              </div>
             )}
             {backupError && (
               <p className="text-xs text-danger leading-snug">{backupError}</p>
@@ -1160,7 +1285,6 @@ export function CourseShell({ mode }: CourseShellProps) {
               mode={mode}
               pages={pagesBySection.get(selectedSection.id) ?? []}
               pageTypes={pageTypes}
-              numbering={numbering}
               onSelectPage={selectPage}
               onSectionChange={handleSectionFieldChange}
               onPagesWorkflowStatusChange={(status) =>
@@ -1176,16 +1300,16 @@ export function CourseShell({ mode }: CourseShellProps) {
             <PageContent
               key={selectedPage.id}
               page={selectedPage}
-              numbering={numbering.get(selectedPage.id) ?? ""}
+              courseId={courseId!}
               mode={mode}
-              lessonFilesFolderUrl={selectedPageLessonFilesUrl}
+              lessonFilesFolderUrl={selectedPageLessonFolderUrls.files}
+              lessonVideosFolderUrl={selectedPageLessonFolderUrls.videos}
               homeCourseStructure={
                 isHomePage(selectedPage) && tree
                   ? {
                       sections: tree.sections,
                       pagesBySection,
                       pageTypes,
-                      numbering,
                       onSelectPage: selectPage,
                       onSelectSection: selectSection,
                     }
@@ -1197,7 +1321,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                   ? {
                       id: adjacentPages.prev.id,
                       title: adjacentPages.prev.title,
-                      numbering: numbering.get(adjacentPages.prev.id) ?? "",
                     }
                   : null
               }
@@ -1206,7 +1329,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                   ? {
                       id: adjacentPages.next.id,
                       title: adjacentPages.next.title,
-                      numbering: numbering.get(adjacentPages.next.id) ?? "",
                     }
                   : null
               }
@@ -1219,7 +1341,9 @@ export function CourseShell({ mode }: CourseShellProps) {
               onContentChange={() => {
                 markCourseTouched();
                 refreshPageTypes();
+                refreshCommentCounts();
               }}
+              onCommentsChange={refreshCommentCounts}
             />
           )}
         </div>

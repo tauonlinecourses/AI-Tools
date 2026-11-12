@@ -1,5 +1,5 @@
 import type { CourseViewMode, VideoProps } from "../../lib/types";
-import { resolveVideoEmbedSrc } from "../../lib/videoEmbed";
+import { detectVideoProvider, resolveVideoEmbedSrc } from "../../lib/videoEmbed";
 import { PlayCircleIcon } from "../icons";
 
 interface Props {
@@ -57,41 +57,63 @@ function VideoPlaceholder({
   );
 }
 
-function VideoEmbed({ src, title }: { src: string; title: string }) {
+function VideoEmbed({
+  src,
+  title,
+  openHref,
+}: {
+  src: string;
+  title: string;
+  /** When set, show an "Open in SharePoint" link under the iframe. */
+  openHref?: string;
+}) {
   return (
-    <div className="relative aspect-video w-full overflow-hidden bg-black">
-      <iframe
-        src={src}
-        title={title}
-        className="absolute inset-0 w-full h-full border-0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-        referrerPolicy="strict-origin-when-cross-origin"
-      />
+    <div className="flex flex-col gap-2 w-full">
+      <div className="relative aspect-video w-full overflow-hidden bg-black">
+        <iframe
+          src={src}
+          title={title}
+          className="absolute inset-0 w-full h-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      </div>
+      {openHref && (
+        <a
+          href={openHref}
+          target="_blank"
+          rel="noreferrer"
+          className="self-start text-sm font-medium text-surface-600 hover:text-surface-900 underline-offset-2 hover:underline"
+          dir="rtl"
+        >
+          פתח ב-SharePoint
+        </a>
+      )}
     </div>
   );
 }
 
 export function VideoBlock({
   props,
-  mode,
   pageTitle,
   videoNumber,
 }: Props) {
   const defaultLabel = defaultVideoLabel(pageTitle, videoNumber);
   const label = props.title?.trim() || defaultLabel;
-  const editable = mode === "edit";
 
-  if (mode === "review") {
-    const embedSrc = resolveVideoEmbedSrc(props.url);
-    if (embedSrc) {
-      return <VideoEmbed src={embedSrc} title={label} />;
-    }
-    return <VideoPlaceholder label={label} url={props.url} />;
-  }
-
-  if (!editable) {
-    return <VideoPlaceholder label={label} url={props.url} />;
+  const embedSrc = resolveVideoEmbedSrc(props.url);
+  if (embedSrc) {
+    const isSharePoint =
+      detectVideoProvider(props.url) === "sharepoint" ||
+      props.provider === "sharepoint";
+    return (
+      <VideoEmbed
+        src={embedSrc}
+        title={label}
+        openHref={isSharePoint ? props.url?.trim() || undefined : undefined}
+      />
+    );
   }
 
   return <VideoPlaceholder label={label} url={props.url} />;

@@ -6,6 +6,13 @@ export interface MbzFileRef {
   originalFilename: string;
   mimetype: string;
   bucketPath: string;
+  /** Moodle file API fields — used to build pluginfile.php preview URLs. */
+  contextid?: string | null;
+  component?: string | null;
+  filearea?: string | null;
+  itemid?: string | null;
+  /** Moodle filepath, usually "/" */
+  filepath?: string | null;
 }
 
 export type MbzActivityContent =
@@ -54,6 +61,8 @@ export interface MbzManifest {
     shortname: string;
     format: string;
     moodleVersion: string;
+    /** Original Moodle site URL from the backup (e.g. https://moodle.tau.ac.il/2025). */
+    wwwroot: string | null;
     backupSettings: { includesUsers: boolean; anonymized: boolean };
   };
   sections: MbzSection[];

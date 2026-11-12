@@ -7,7 +7,6 @@ interface LessonPagesCardProps {
   title: string;
   pages: Page[];
   pageTypes: Map<string, PageType>;
-  numbering: Map<string, string>;
   mode: CourseViewMode;
   onSelectPage: (pageId: string) => void;
   /** Optional: click lesson title (header text) — e.g. open lesson overview. */
@@ -35,7 +34,6 @@ export function LessonPagesCard({
   title,
   pages,
   pageTypes,
-  numbering,
   mode,
   onSelectPage,
   onSelectLesson,
@@ -98,13 +96,9 @@ export function LessonPagesCard({
           ) : (
             pages.map((page, index) => {
               const pageType = pageTypes.get(page.id) ?? "page";
-              const pageNumber = numbering.get(page.id);
               const hiddenFromImplement =
                 page.workflow_status === "in_progress";
               const blocked = isImplement && hiddenFromImplement;
-              const titleLabel = pageNumber
-                ? `${pageNumber} | ${page.title}`
-                : page.title;
               return (
                 <li
                   key={page.id}
@@ -121,7 +115,7 @@ export function LessonPagesCard({
                   <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                     {blocked ? (
                       <span className="text-base text-surface-500 truncate">
-                        {titleLabel}
+                        {page.title}
                       </span>
                     ) : (
                       <button
@@ -129,7 +123,7 @@ export function LessonPagesCard({
                         className="text-start text-base text-[#0F6CBF] hover:underline truncate"
                         onClick={() => onSelectPage(page.id)}
                       >
-                        {titleLabel}
+                        {page.title}
                       </button>
                     )}
                     {hiddenFromImplement && (

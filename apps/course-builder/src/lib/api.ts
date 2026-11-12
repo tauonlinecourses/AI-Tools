@@ -9,6 +9,7 @@ import type {
   CourseTree,
   ImplementationStatus,
   Page,
+  PageComment,
   PageComponent,
   PageWorkflowStatus,
   PageType,
@@ -130,12 +131,26 @@ export async function createCourse(title: string): Promise<Course> {
 export async function updateCourse(
   id: string,
   fields: Partial<Pick<Course, "title" | "description">>
-): Promise<void> {
-  const { error } = await supabase.from("courses").update(fields).eq("id", id);
+): Promise<Course> {
+  const { data, error } = await supabase
+    .from("courses")
+    .update(fields)
+    .eq("id", id)
+    .select()
+    .single();
   if (error) fail("Updating course", error);
+  return data;
 }
 
 export async function deleteCourse(id: string): Promise<void> {
+  // Best-effort: remove original MBZ archive before cascading DB rows.
+  try {
+    const { getCourseMbzSource, deleteMbzArchiveForCourse } = await import("./mbzStorage");
+    const source = await getCourseMbzSource(id);
+    if (source) await deleteMbzArchiveForCourse(source);
+  } catch {
+    /* storage cleanup is best-effort */
+  }
   const { error } = await supabase.from("courses").delete().eq("id", id);
   if (error) fail("Deleting course", error);
 }
@@ -195,7 +210,10 @@ export async function addSection(
 export async function updateSection(
   id: string,
   fields: Partial<
-    Pick<Section, "title" | "opens_at" | "assignments_due_at" | "files_folder_url">
+    Pick<
+      Section,
+      "title" | "opens_at" | "assignments_due_at" | "files_folder_url" | "videos_folder_url"
+    >
   >
 ): Promise<void> {
   const courseId = await courseIdFromSection(id);
@@ -221,9 +239,10 @@ export async function reorderSections(orderedIds: string[]): Promise<void> {
 /**
  * Clone a lesson immediately after the source.
  * Title becomes `העתק של {source.title}`. Overview fields (`opens_at`,
- * `assignments_due_at`, `files_folder_url`) are copied. Each page is copied
- * with the same title/order; component types/order are copied with empty props
- * except banners (full props kept). Page notes are not copied.
+ * `assignments_due_at`, `files_folder_url`, `videos_folder_url`) are copied.
+ * Each page is copied with the same title/order; component types/order are
+ * copied with empty props except banners (full props kept). Page notes are
+ * not copied.
  */
 export async function duplicateSection(
   sourceId: string
@@ -259,6 +278,7 @@ export async function duplicateSection(
       opens_at: source.opens_at ?? null,
       assignments_due_at: source.assignments_due_at ?? null,
       files_folder_url: source.files_folder_url ?? null,
+      videos_folder_url: source.videos_folder_url ?? null,
     })
     .select()
     .single();
@@ -421,7 +441,7 @@ export async function deletePage(id: string): Promise<void> {
 /**
  * Clone a lesson page immediately after the source in its section.
  * Title becomes `העתק של {source.title}`. Component types/order are copied;
- * props are cleared except banners (full props kept). Page notes are not copied.
+ * props are cleared except banners (full props kept). Notes and comments are not copied.
  * Home page ("עמוד ראשי") cannot be duplicated.
  */
 export async function duplicatePage(sourceId: string): Promise<Page> {
@@ -525,33 +545,44 @@ function propsForDuplicatedComponent(c: PageComponent): BlockProps {
       return { ...c.props };
     case "video":
       return { url: "" };
-    case "interactive_video":
+    case "interactive_video": {
+      const options = Array.from({ length: 4 }, () => ({
+        id: crypto.randomUUID(),
+        text: "",
+      }));
       return {
         url: "",
         questions: [
           {
             questionType: "single_choice",
             prompt: "",
-            options: [
-              { id: crypto.randomUUID(), text: "" },
-              { id: crypto.randomUUID(), text: "" },
-            ],
+            options,
+            correctOptionId: options[0]?.id,
           },
         ],
       };
+    }
     case "text":
       return { html: "" };
-    case "question":
+    case "question": {
+      const options = Array.from({ length: 4 }, () => ({
+        id: crypto.randomUUID(),
+        text: "",
+      }));
       return {
         questionType: "single_choice",
         prompt: "",
-        options: [
-          { id: crypto.randomUUID(), text: "" },
-          { id: crypto.randomUUID(), text: "" },
-        ],
+        options,
+        correctOptionId: options[0]?.id,
       };
+    }
     case "image":
+      return { imageUrl: "" };
+    case "text_unit":
+    case "interactive_unit":
       return { imageUrl: "", fileUrl: "" };
+    case "button":
+      return { text: "", align: "center", url: "" };
     case "notes_board":
       return {
         description: "",
@@ -587,19 +618,43 @@ export async function listComponents(pageId: string): Promise<PageComponent[]> {
   return data ?? [];
 }
 
+/** All components for the given pages (one query), ordered by page then position. */
+export async function listComponentsForPages(
+  pageIds: string[]
+): Promise<PageComponent[]> {
+  if (pageIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("components")
+    .select("*")
+    .in("page_id", pageIds)
+    .order("page_id")
+    .order("position");
+  if (error) fail("Loading lesson components", error);
+  return data ?? [];
+}
+
 export async function addComponent(
   pageId: string,
   type: ComponentType,
   position: number,
-  props: BlockProps = {}
+  props: BlockProps = {},
+  options?: { id?: string; courseId?: string }
 ): Promise<PageComponent> {
-  const courseId = await courseIdFromPage(pageId);
+  // Insert first so the UI can paint with a client-generated id before
+  // the course lookup / timestamp bump finishes.
   const { data, error } = await supabase
     .from("components")
-    .insert({ page_id: pageId, type, position, props })
+    .insert({
+      ...(options?.id ? { id: options.id } : {}),
+      page_id: pageId,
+      type,
+      position,
+      props,
+    })
     .select()
     .single();
   if (error) fail("Adding component", error);
+  const courseId = options?.courseId ?? (await courseIdFromPage(pageId));
   await touchCourse(courseId);
   return data;
 }
@@ -644,65 +699,8 @@ export async function deleteComponent(id: string): Promise<void> {
   await touchCourse(courseId);
 }
 
-/**
- * Clone a component immediately after the source on the same page.
- * Copies type + props (question option ids are regenerated). Comments are not copied.
- */
-export async function duplicateComponent(sourceId: string): Promise<PageComponent> {
-  const { data: source, error: sourceErr } = await supabase
-    .from("components")
-    .select("*")
-    .eq("id", sourceId)
-    .single();
-  if (sourceErr) fail("Loading component to duplicate", sourceErr);
-
-  const pageId = source.page_id as string;
-  const courseId = await courseIdFromPage(pageId);
-
-  const { data: siblings, error: sibErr } = await supabase
-    .from("components")
-    .select("id, position")
-    .eq("page_id", pageId)
-    .order("position");
-  if (sibErr) fail("Loading page components", sibErr);
-
-  const siblingIds = (siblings ?? []).map((c) => c.id);
-  const sourceIndex = siblingIds.indexOf(sourceId);
-  if (sourceIndex < 0) {
-    fail("Duplicating component", { message: "source component not on page" });
-  }
-
-  const { data: created, error: createErr } = await supabase
-    .from("components")
-    .insert({
-      page_id: pageId,
-      type: source.type,
-      position: siblingIds.length,
-      props: propsForDuplicatedBlock(source as PageComponent),
-    })
-    .select()
-    .single();
-  if (createErr) fail("Duplicating component", createErr);
-
-  const orderedIds = [
-    ...siblingIds.slice(0, sourceIndex + 1),
-    created.id,
-    ...siblingIds.slice(sourceIndex + 1),
-  ];
-  await renumber("components", orderedIds);
-  await touchCourse(courseId);
-
-  const { data: finalComponent, error: finalErr } = await supabase
-    .from("components")
-    .select("*")
-    .eq("id", created.id)
-    .single();
-  if (finalErr) fail("Loading duplicated component", finalErr);
-  return finalComponent as PageComponent;
-}
-
 /** Full props copy for block duplicate; regenerate question option ids. */
-function propsForDuplicatedBlock(c: PageComponent): BlockProps {
+export function propsForDuplicatedBlock(c: PageComponent): BlockProps {
   if (c.type !== "question") return { ...c.props };
 
   const options = c.props.options ?? [];
@@ -721,6 +719,83 @@ function propsForDuplicatedBlock(c: PageComponent): BlockProps {
     options: nextOptions,
     correctOptionId,
   };
+}
+
+/**
+ * Clone a component immediately after the source on the same page.
+ * Copies type + props (question option ids are regenerated). Comments are not copied.
+ * Pass client-prepared fields to skip round-trips (optimistic UI).
+ */
+export async function duplicateComponent(
+  sourceId: string,
+  options?: {
+    id?: string;
+    courseId?: string;
+    pageId?: string;
+    type?: ComponentType;
+    props?: BlockProps;
+    /** Full ordered id list after insert (includes the new id). */
+    orderedIds?: string[];
+  }
+): Promise<PageComponent> {
+  let pageId = options?.pageId;
+  let type = options?.type;
+  let props = options?.props;
+  let courseId = options?.courseId;
+  let orderedIds = options?.orderedIds;
+
+  if (!pageId || !type || !props) {
+    const { data: source, error: sourceErr } = await supabase
+      .from("components")
+      .select("*")
+      .eq("id", sourceId)
+      .single();
+    if (sourceErr) fail("Loading component to duplicate", sourceErr);
+    pageId = source.page_id as string;
+    type = source.type as ComponentType;
+    props = propsForDuplicatedBlock(source as PageComponent);
+  }
+
+  if (!orderedIds) {
+    const { data: siblings, error: sibErr } = await supabase
+      .from("components")
+      .select("id")
+      .eq("page_id", pageId)
+      .order("position");
+    if (sibErr) fail("Loading page components", sibErr);
+    const siblingIds = (siblings ?? []).map((c) => c.id);
+    const sourceIndex = siblingIds.indexOf(sourceId);
+    if (sourceIndex < 0) {
+      fail("Duplicating component", { message: "source component not on page" });
+    }
+    // Placeholder id until insert returns; replaced below when no client id.
+    orderedIds = [
+      ...siblingIds.slice(0, sourceIndex + 1),
+      options?.id ?? "__new__",
+      ...siblingIds.slice(sourceIndex + 1),
+    ];
+  }
+
+  const insertPosition = orderedIds.indexOf(options?.id ?? "__new__");
+  const { data: created, error: createErr } = await supabase
+    .from("components")
+    .insert({
+      ...(options?.id ? { id: options.id } : {}),
+      page_id: pageId,
+      type,
+      position: insertPosition >= 0 ? insertPosition : orderedIds.length - 1,
+      props,
+    })
+    .select()
+    .single();
+  if (createErr) fail("Duplicating component", createErr);
+
+  const finalOrderedIds = orderedIds.map((id) =>
+    id === "__new__" ? created.id : id
+  );
+  await renumber("components", finalOrderedIds);
+  await touchCourse(courseId ?? (await courseIdFromPage(pageId)));
+  return created as PageComponent;
 }
 
 export async function reorderComponents(orderedIds: string[]): Promise<void> {
@@ -902,6 +977,53 @@ export async function getCourseOverviewData(
 
 // ─── Component comments ─────────────────────────────────────────────────────
 
+export interface PageCommentCounts {
+  /** Unresolved comments on the page. */
+  open: number;
+  /** Resolved comments on the page. */
+  resolved: number;
+}
+
+/**
+ * Open + resolved comment counts per page (block comments + page-header comments).
+ * Pages with zero comments of either kind are omitted from the map.
+ */
+export async function getCommentCountsByPage(
+  pageIds: string[]
+): Promise<Map<string, PageCommentCounts>> {
+  const counts = new Map<string, PageCommentCounts>();
+  if (pageIds.length === 0) return counts;
+
+  function bump(pageId: string, resolvedAt: string | null) {
+    const entry = counts.get(pageId) ?? { open: 0, resolved: 0 };
+    if (resolvedAt) entry.resolved += 1;
+    else entry.open += 1;
+    counts.set(pageId, entry);
+  }
+
+  const [blockResult, pageResult] = await Promise.all([
+    supabase
+      .from("component_comments")
+      .select("id, resolved_at, components!inner(page_id)")
+      .in("components.page_id", pageIds),
+    supabase
+      .from("page_comments")
+      .select("id, resolved_at, page_id")
+      .in("page_id", pageIds),
+  ]);
+  if (blockResult.error) fail("Loading comment counts", blockResult.error);
+  if (pageResult.error) fail("Loading page comment counts", pageResult.error);
+
+  for (const row of blockResult.data ?? []) {
+    const pageId = (row.components as unknown as { page_id: string }).page_id;
+    bump(pageId, row.resolved_at);
+  }
+  for (const row of pageResult.data ?? []) {
+    bump(row.page_id, row.resolved_at);
+  }
+  return counts;
+}
+
 /**
  * All comments for components on a page (one query via inner join on components).
  * Ordered oldest-first for Word-style thread display.
@@ -969,6 +1091,65 @@ export async function deleteComment(commentId: string): Promise<void> {
     .delete()
     .eq("id", commentId);
   if (error) fail("Deleting comment", error);
+}
+
+// ─── Page-header comments ───────────────────────────────────────────────────
+
+/**
+ * Word-style comments for a page header. Oldest-first.
+ * Does not bump pages.updated_at or course.updated_at.
+ */
+export async function listPageComments(pageId: string): Promise<PageComment[]> {
+  const { data, error } = await supabase
+    .from("page_comments")
+    .select("id, page_id, author_role, body, resolved_at, created_at")
+    .eq("page_id", pageId)
+    .order("created_at", { ascending: true });
+  if (error) fail("Loading page comments", error);
+  return (data ?? []) as PageComment[];
+}
+
+export async function addPageComment(
+  pageId: string,
+  authorRole: CommentAuthorRole,
+  body: string
+): Promise<PageComment> {
+  const trimmed = body.trim();
+  if (!trimmed) fail("Adding page comment", { message: "body is empty" });
+
+  const { data, error } = await supabase
+    .from("page_comments")
+    .insert({
+      page_id: pageId,
+      author_role: authorRole,
+      body: trimmed,
+    })
+    .select()
+    .single();
+  if (error) fail("Adding page comment", error);
+  return data as PageComment;
+}
+
+export async function setPageCommentResolved(
+  commentId: string,
+  resolved: boolean
+): Promise<PageComment> {
+  const { data, error } = await supabase
+    .from("page_comments")
+    .update({ resolved_at: resolved ? new Date().toISOString() : null })
+    .eq("id", commentId)
+    .select()
+    .single();
+  if (error) fail("Updating page comment resolve", error);
+  return data as PageComment;
+}
+
+export async function deletePageComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from("page_comments")
+    .delete()
+    .eq("id", commentId);
+  if (error) fail("Deleting page comment", error);
 }
 
 // ─── Shared ─────────────────────────────────────────────────────────────────

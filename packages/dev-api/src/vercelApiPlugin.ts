@@ -39,6 +39,7 @@ export type VercelApiPluginOptions = {
 const SOURCE_ENTRIES: ReadonlyArray<{ find: RegExp; pkg: string; file: string }> = [
   { find: /^@workspace\/auth\/server$/, pkg: "@workspace/auth", file: "src/server.ts" },
   { find: /^@workspace\/ai-client\/vercel$/, pkg: "@workspace/ai-client", file: "src/vercel.ts" },
+  { find: /^@workspace\/ai-client\/server$/, pkg: "@workspace/ai-client", file: "src/server.ts" },
 ];
 
 const API_PATH = /^\/api((?:\/[\w-]+)+)\/?$/;

@@ -8,6 +8,7 @@ import {
 } from "./components/CourseSidebar";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { EmailQuestionPage } from "./components/EmailQuestionPage";
+import { QuestionsDashboardLazy } from "./components/QuestionsDashboardLazy";
 import { InfoDocEditor } from "./components/InfoDocEditor";
 import { InfoDocsSidebar } from "./components/InfoDocsSidebar";
 import { InfoDocView } from "./components/InfoDocView";
@@ -178,6 +179,13 @@ function formatFetchError(err: unknown): string {
 const AUTH_REQUIRED_MESSAGE =
   "בדוק הכל דורש עוגיות דפדפן (csrftoken + JWT) בהגדרות, או כבו את ״Use browser cookies״ והגדירו LMS_USERNAME / LMS_PASSWORD בשרת (התחברות חד-פעמית לכל הריצה).";
 
+/** Shareable address of the questions dashboard; every other view lives at "/". */
+const DASHBOARD_PATH = "/dashboard";
+
+function isDashboardUrl(): boolean {
+  return window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH;
+}
+
 function courseDisplayName(courseId: string): string {
   const course = findCourseById(courseId);
   return course?.nameHe || course?.name || courseId;
@@ -245,6 +253,8 @@ export default function App() {
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [docsMode, setDocsMode] = useState(false);
   const [emailMode, setEmailMode] = useState(false);
+  // Opening a /dashboard link starts on the dashboard.
+  const [dashboardMode, setDashboardMode] = useState(isDashboardUrl);
   const [infoDocs, setInfoDocs] = useState<InfoDoc[]>([]);
   const [infoDocsLoading, setInfoDocsLoading] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -815,6 +825,7 @@ export default function App() {
   const handleSelectCourse = useCallback((courseId: string) => {
     // Selection only shows the local store — fetch via טען תגובות חדשות or בדוק הכל.
     setEmailMode(false);
+    setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(courseId);
@@ -822,6 +833,7 @@ export default function App() {
 
   const handleSelectHome = useCallback(() => {
     setEmailMode(false);
+    setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(null);
@@ -829,6 +841,7 @@ export default function App() {
 
   const handleSelectInbox = useCallback(() => {
     setEmailMode(false);
+    setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(INBOX_SELECTION);
@@ -1331,6 +1344,7 @@ export default function App() {
       if (next) {
         // Docs mode is entered from the homepage only.
         setEmailMode(false);
+        setDashboardMode(false);
         setSelectedId(null);
         setSelectedTopicId(null);
         setInfoDocEditMode(null);
@@ -1347,12 +1361,51 @@ export default function App() {
       const next = !prev;
       if (next) {
         setDocsMode(false);
+        setDashboardMode(false);
         setInfoDocEditMode(null);
         setInfoDocError(null);
         setSelectedId(null);
       }
       return next;
     });
+  }, []);
+
+  const handleToggleDashboardMode = useCallback(() => {
+    setDashboardMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setDocsMode(false);
+        setEmailMode(false);
+        setInfoDocEditMode(null);
+        setInfoDocError(null);
+        setSelectedId(null);
+      }
+      return next;
+    });
+  }, []);
+
+  // Keep the address bar in step with the dashboard, so it can be shared and
+  // the browser's back/forward buttons move in and out of it.
+  useEffect(() => {
+    if (dashboardMode !== isDashboardUrl()) {
+      window.history.pushState({}, "", dashboardMode ? DASHBOARD_PATH : "/");
+    }
+  }, [dashboardMode]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const onDashboard = isDashboardUrl();
+      setDashboardMode(onDashboard);
+      if (onDashboard) {
+        setDocsMode(false);
+        setEmailMode(false);
+        setInfoDocEditMode(null);
+        setInfoDocError(null);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   const handleSelectTopic = useCallback((id: string) => {
@@ -1610,7 +1663,7 @@ export default function App() {
       toolName="TAU Support"
       toolDescription="Check campus IL forum threads for new student comments across your courses"
       toolNameHe="תמיכה טכנית - קמפוס IL"
-      toolDescriptionHe="ריכוז כל השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
+      toolDescriptionHe="ריכוז השאלות הטכניות של התלמידים מכלל הקורסים של האוניברסיטה בקמפוס IL"
     >
       <div className="relative mx-auto flex w-full max-w-[90rem] flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-[0_4px_6px_-4px_rgba(0,0,0,0.28),4px_0_6px_-4px_rgba(0,0,0,0.28)]">
         <div
@@ -1623,7 +1676,7 @@ export default function App() {
                 type="button"
                 onClick={handleSelectHome}
                 className={`flex h-full min-h-full w-full items-center gap-2 px-3 py-2.5 text-right transition-colors ${
-                  showingHome && !docsMode && !emailMode
+                  showingHome && !docsMode && !emailMode && !dashboardMode
                     ? "bg-sky-100 text-sky-950"
                     : "text-surface-900 hover:bg-sky-50"
                 }`}
@@ -1651,7 +1704,7 @@ export default function App() {
             <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">
               <div
                 className={`min-w-0 flex-1 text-right ${
-                  showingHome && !docsMode && !emailMode
+                  showingHome && !docsMode && !emailMode && !dashboardMode
                     ? "flex h-full items-center"
                     : ""
                 }`}
@@ -1676,6 +1729,15 @@ export default function App() {
                         : selectedInfoDoc
                           ? ` · ${selectedInfoDoc.title}`
                           : ""}
+                    </p>
+                  </>
+                ) : dashboardMode ? (
+                  <>
+                    <p className="truncate text-sm font-semibold leading-5 text-surface-900">
+                      דשבורד שאלות
+                    </p>
+                    <p className="mt-0.5 truncate text-xs leading-4 text-surface-600">
+                      שאלות חוזרות, קטגוריות ומפת דמיון
                     </p>
                   </>
                 ) : emailMode ? (
@@ -1749,8 +1811,41 @@ export default function App() {
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {showingHome || docsMode || emailMode ? (
+                {showingHome || docsMode || emailMode || dashboardMode ? (
                   <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleToggleDashboardMode}
+                      title={dashboardMode ? "חזרה לדף הבית" : "דשבורד שאלות"}
+                      className={
+                        dashboardMode
+                          ? "!border-sky-400 !bg-sky-100 !font-semibold !text-sky-950"
+                          : undefined
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {/* Dashboard grid icon (four panels). */}
+                        <svg
+                          className="shrink-0"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <rect x="3" y="3" width="7" height="9" rx="1" />
+                          <rect x="14" y="3" width="7" height="5" rx="1" />
+                          <rect x="14" y="12" width="7" height="9" rx="1" />
+                          <rect x="3" y="16" width="7" height="5" rx="1" />
+                        </svg>
+                        דשבורד
+                      </span>
+                    </Button>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1787,7 +1882,7 @@ export default function App() {
                     </Button>
                   </>
                 ) : null}
-                {!docsMode && !emailMode && showingInbox ? (
+                {!docsMode && !emailMode && !dashboardMode &&showingInbox ? (
                   <div
                     className="flex items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
                     role="group"
@@ -1820,7 +1915,7 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-                {!docsMode && !emailMode && checkingAll ? (
+                {!docsMode && !emailMode && !dashboardMode &&checkingAll ? (
                   checkAllProgress?.phase === "stopping" ? (
                     <Button
                       variant="secondary"
@@ -1841,7 +1936,7 @@ export default function App() {
                     </Button>
                   )
                 ) : null}
-                {!docsMode && !emailMode && selectedCourseId ? (
+                {!docsMode && !emailMode && !dashboardMode &&selectedCourseId ? (
                   <LoadThreadsButton
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
@@ -1931,6 +2026,8 @@ export default function App() {
                       />
                     </>
                   )
+                ) : dashboardMode ? (
+                  <QuestionsDashboardLazy />
                 ) : emailMode ? (
                   <EmailQuestionPage />
                 ) : showingHome ? (

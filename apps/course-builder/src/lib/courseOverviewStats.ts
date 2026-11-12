@@ -15,6 +15,9 @@ export const COMPONENT_TYPE_LABEL: Record<ComponentType, string> = {
   text: "טקסט",
   question: "שאלה",
   image: "תמונה",
+  text_unit: "יחידת טקסט",
+  interactive_unit: "יחידה אינטראקטיבית",
+  button: "כפתור",
   notes_board: "לוח פתקים",
   word_cloud: "ענן מילים",
   forum: "פורום",
@@ -35,6 +38,9 @@ export const ALL_COMPONENT_TYPES: readonly ComponentType[] = [
   "text",
   "question",
   "image",
+  "text_unit",
+  "interactive_unit",
+  "button",
   "notes_board",
   "word_cloud",
   "forum",
@@ -52,7 +58,19 @@ export interface CourseOverviewStats {
   pageTypeCounts: Record<PageType, number>;
   componentTypeCounts: Record<ComponentType, number>;
   workflowCounts: Record<PageWorkflowStatus, number>;
+  /** Component-level implement tallies (all pages, including home). */
   implementRollup: StatusRollup;
+  /**
+   * Exclusive lesson-page progress for the dashboard bar chart:
+   * - `in_progress` — editor workflow is בעבודה
+   * - `ready_for_implementation` — editor מוכן להטמעה, but not fully implemented
+   * - `implemented` — every component on the page is הוטמע
+   */
+  progressCounts: {
+    in_progress: number;
+    ready_for_implementation: number;
+    implemented: number;
+  };
 }
 
 function emptyPageTypeCounts(): Record<PageType, number> {
@@ -73,6 +91,9 @@ function emptyComponentTypeCounts(): Record<ComponentType, number> {
     text: 0,
     question: 0,
     image: 0,
+    text_unit: 0,
+    interactive_unit: 0,
+    button: 0,
     notes_board: 0,
     word_cloud: 0,
     forum: 0,
@@ -160,6 +181,26 @@ export function computeCourseOverviewStats(input: {
     implementRollup.needs_update_count +
     implementRollup.not_implemented_count;
 
+  const progressCounts = {
+    in_progress: 0,
+    ready_for_implementation: 0,
+    implemented: 0,
+  };
+  for (const page of lessonPages) {
+    if (page.workflow_status === "in_progress") {
+      progressCounts.in_progress += 1;
+      continue;
+    }
+    const rollup = perPageRollups.get(page.id);
+    const total = rollup?.total_count ?? 0;
+    const implemented = rollup?.implemented_count ?? 0;
+    if (total > 0 && implemented === total) {
+      progressCounts.implemented += 1;
+    } else {
+      progressCounts.ready_for_implementation += 1;
+    }
+  }
+
   return {
     lessonCount,
     pageCount,
@@ -170,5 +211,6 @@ export function computeCourseOverviewStats(input: {
     componentTypeCounts,
     workflowCounts,
     implementRollup,
+    progressCounts,
   };
 }

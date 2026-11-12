@@ -11,7 +11,7 @@ const DEFAULT_EMAIL =
 
 export function LoginPage({ locale }: { locale: Locale }) {
   const t = ui[locale];
-  const { signIn, configured } = usePlatformAuth();
+  const { signIn, configured, sessionEnded } = usePlatformAuth();
   const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +61,17 @@ export function LoginPage({ locale }: { locale: Locale }) {
           <h1 className="mt-3 text-xl font-semibold text-surface-900">{t.title}</h1>
           <p className="mt-1 text-sm text-surface-600">{t.subtitle}</p>
         </div>
+
+        {sessionEnded ? (
+          <p
+            role="status"
+            className="mb-4 rounded-control border border-surface-900 bg-white px-3 py-2 text-center text-sm font-semibold text-surface-900"
+          >
+            {locale === "he"
+              ? "החיבור שלך הסתיים. יש להתחבר מחדש."
+              : "Your session has ended. Please sign in again."}
+          </p>
+        ) : null}
 
         <div className="flex flex-col gap-4">
           <Input

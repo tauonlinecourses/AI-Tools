@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Button, Input, Spinner } from "@workspace/ui";
 import {
+  isInvalidCredentialsError,
   updatePlatformPassword,
   verifyPlatformPassword,
 } from "@workspace/auth/client";
@@ -16,6 +17,7 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [currentError, setCurrentError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -31,6 +33,7 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
           mismatch: "הסיסמאות אינן תואמות",
           short: "הסיסמה חייבת להכיל לפחות 6 תווים",
           same: "הסיסמה החדשה חייבת להיות שונה מהנוכחית",
+          wrongCurrent: "הסיסמה הנוכחית שגויה",
           noEmail: "לא נמצאה כתובת אימייל לחשבון",
           success: "הסיסמה עודכנה בהצלחה.",
           continue: "חזרה לפלטפורמה",
@@ -46,6 +49,7 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
           mismatch: "Passwords do not match",
           short: "Password must be at least 6 characters",
           same: "New password must be different from the current one",
+          wrongCurrent: "Current password is incorrect",
           noEmail: "No email address found for this account",
           success: "Password updated successfully.",
           continue: "Back to platform",
@@ -62,6 +66,7 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
     e.preventDefault();
     if (submitting) return;
     setError(null);
+    setCurrentError(null);
     if (!user?.email) {
       setError(t.noEmail);
       return;
@@ -84,6 +89,10 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
       await updatePlatformPassword(password);
       setDone(true);
     } catch (err) {
+      if (isInvalidCredentialsError(err)) {
+        setCurrentError(t.wrongCurrent);
+        return;
+      }
       setError(
         err instanceof Error ? err.message : "Failed to change password"
       );
@@ -151,7 +160,11 @@ export function ChangePasswordPage({ locale }: { locale: Locale }) {
             type="password"
             autoComplete="current-password"
             value={current}
-            onChange={(e) => setCurrent(e.target.value)}
+            onChange={(e) => {
+              setCurrent(e.target.value);
+              setCurrentError(null);
+            }}
+            error={currentError ?? undefined}
             disabled={submitting}
             autoFocus
           />

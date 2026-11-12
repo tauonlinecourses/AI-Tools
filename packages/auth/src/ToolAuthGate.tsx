@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   exchangeHandoffCode,
+  getPlatformClient,
   getPlatformSession,
   hubHomeUrl,
   hubLoginUrl,
   isPlatformConfigured,
   setPlatformSession,
+  setPlatformSessionEndedListener,
   assertToolAccess,
   isToolAccessDeniedError,
 } from "./client.js";
@@ -48,6 +50,85 @@ function redirectToHub(): void {
 }
 
 /**
+ * Shown over the tool when its login has ended. It waits for a click so the
+ * user can copy unsaved work first. Inline styles: this package is not part of
+ * every tool's Tailwind content.
+ */
+function SessionEndedBanner() {
+  return (
+    <div
+      role="alert"
+      dir="rtl"
+      style={{
+        position: "fixed",
+        top: 60, // just below the 48px PageLayout header
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        width: 560,
+        maxWidth: "calc(100vw - 24px)",
+        boxSizing: "border-box",
+        padding: "12px 16px",
+        borderRadius: 6,
+        border: "1px solid #111827",
+        background: "#ffffff",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 280px" }}>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#f59e0b"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          style={{ flexShrink: 0 }}
+        >
+          <path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        </svg>
+        <div>
+          <div style={{ fontSize: 14, lineHeight: "20px", fontWeight: 600, color: "#111827" }}>
+            החיבור שלך הסתיים
+          </div>
+          <div style={{ fontSize: 12, lineHeight: "16px", color: "#4b5563" }}>
+            יש להתחבר מחדש כדי להמשיך. שינויים שלא נשמרו יאבדו.
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={redirectToLogin}
+        style={{
+          height: 36,
+          padding: "0 16px",
+          borderRadius: 6,
+          border: "1px solid #000000",
+          background: "#000000",
+          color: "#ffffff",
+          fontSize: 14,
+          fontWeight: 600,
+          fontFamily: "inherit",
+          cursor: "pointer",
+          flexShrink: 0,
+        }}
+      >
+        התחברות מחדש
+      </button>
+    </div>
+  );
+}
+
+/**
  * Ensures a Platform (Course-Builder Auth) session exists and the user may
  * use `toolId`. Handles `/auth/callback?code=` handoff.
  *
@@ -64,6 +145,24 @@ export function ToolAuthGate({
 }) {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("Checking session…");
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  useEffect(() => {
+    if (!isPlatformConfigured()) return;
+    setPlatformSessionEndedListener(() => setSessionEnded(true), {
+      holdRequests: true,
+    });
+    const { data: sub } = getPlatformClient().auth.onAuthStateChange(
+      (event, next) => {
+        if (event === "SIGNED_OUT") setSessionEnded(true);
+        else if (next) setSessionEnded(false);
+      }
+    );
+    return () => {
+      setPlatformSessionEndedListener(null);
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,16 +181,18 @@ export function ToolAuthGate({
 
       try {
         if (isCallback && code) {
-          setMessage("Checking user permissions to the tool…");
+          // Handoff mint already verified approved + tool access; skip a second
+          // entitlement RPC so entry feels instant after exchange.
+          setMessage("Signing in…");
           const tokens = await exchangeHandoffOnce(code, hubExchangeUrl());
           await setPlatformSession(tokens);
-          await assertToolAccess(toolId);
           if (cancelled) return;
           window.history.replaceState({}, "", "/");
           setReady(true);
           return;
         }
 
+        setMessage("Checking user permissions to the tool…");
         const session = await getPlatformSession();
         if (!session) {
           redirectToLogin();
@@ -113,7 +214,11 @@ export function ToolAuthGate({
         try {
           const session = await getPlatformSession();
           if (session) {
-            await assertToolAccess(toolId);
+            // Callback path already trusted the handoff; only re-check on
+            // direct visits where exchange did not run in this attempt.
+            if (!isCallback) {
+              await assertToolAccess(toolId);
+            }
             if (cancelled) return;
             if (isCallback) window.history.replaceState({}, "", "/");
             setReady(true);
@@ -152,5 +257,10 @@ export function ToolAuthGate({
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {sessionEnded ? <SessionEndedBanner /> : null}
+      {children}
+    </>
+  );
 }

@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
 import type { BannerProps, CourseViewMode } from "../../lib/types";
+import { MediaImage, type MediaImagePaint } from "./MediaImage";
 
 interface Props {
   props: BannerProps;
   mode: CourseViewMode;
   onChange: (props: BannerProps) => void;
-  /** Page title used for the default banner name (`באנר - {numbering} | {page}`). */
+  /** Page title used for the default banner name (`באנר - {page}`). */
   pageTitle: string;
-  /** Page numbering string (e.g. `1.1`) for the default banner name. */
-  pageNumbering: string;
 }
 
-function defaultBannerLabel(pageTitle: string, pageNumbering: string): string {
-  const num = pageNumbering.trim() || "?";
+function defaultBannerLabel(pageTitle: string): string {
   const title = pageTitle.trim() || "ללא כותרת";
-  return `באנר - ${num} | ${title}`;
+  return `באנר - ${title}`;
 }
 
 function BannerPlaceholder({
@@ -31,12 +29,17 @@ function BannerPlaceholder({
   const [imageStatus, setImageStatus] = useState<"none" | "loading" | "loaded" | "error">(
     src ? "loading" : "none"
   );
+  const [paintVia, setPaintVia] = useState<MediaImagePaint["via"] | null>(null);
 
   useEffect(() => {
     setImageStatus(src ? "loading" : "none");
+    setPaintVia(null);
   }, [src]);
 
-  const imageShowing = imageStatus === "loaded";
+  // Natural-size layout only for real <img> paints. Iframe / failed URLs keep 4:1.
+  const naturalImage = imageStatus === "loaded" && paintVia === "img";
+  const framedPaint = imageStatus === "loaded" && paintVia === "iframe";
+  const imageShowing = naturalImage || framedPaint;
   // Name + "ללא קובץ" only when there is no painted image.
   const showTitle = !imageShowing;
   const showNoFile = imageStatus === "none" || imageStatus === "error";
@@ -52,42 +55,69 @@ function BannerPlaceholder({
     </div>
   ) : null;
 
-  const bodyClass = "absolute inset-0 flex items-center justify-center px-6";
+  const image = src ? (
+    <MediaImage
+      url={src}
+      className={
+        naturalImage
+          ? "w-full h-auto block"
+          : `absolute inset-0 w-full h-full object-contain ${
+              framedPaint ? "" : "invisible"
+            }`
+      }
+      onStatus={(status, paint) => {
+        if (status === "loaded") {
+          setPaintVia(paint?.via ?? "img");
+          setImageStatus("loaded");
+        } else if (status === "error") {
+          setPaintVia(null);
+          setImageStatus("error");
+        } else {
+          setPaintVia(null);
+          setImageStatus("loading");
+        }
+      }}
+    />
+  ) : null;
+
+  // Natural img: height follows the image. Otherwise fixed 4:1 (grey when not painted).
+  // Always `block` so <a> gets aspect-ratio height (inline anchors collapse to 0).
+  const frameClass = naturalImage
+    ? "relative block w-full overflow-hidden select-none"
+    : `relative block aspect-[4/1] w-full overflow-hidden select-none ${
+        framedPaint ? "" : "bg-[#E8EAED]"
+      }`;
+
+  if (src && openOnClick) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        className={`${frameClass} ${
+          naturalImage
+            ? "cursor-pointer hover:opacity-90 transition-opacity duration-fast"
+            : "cursor-pointer hover:bg-black/10 transition-colors duration-fast"
+        }`}
+        title="פתח תמונת באנר"
+      >
+        {image}
+        {showTitle && (
+          <div className="absolute inset-0 flex items-center justify-center px-6">
+            {labelEl}
+          </div>
+        )}
+      </a>
+    );
+  }
 
   return (
-    <div className="relative aspect-[4/1] w-full overflow-hidden select-none bg-[#E8EAED]">
-      {src && (
-        <img
-          key={src}
-          src={src}
-          alt=""
-          className={`absolute inset-0 w-full h-full object-contain ${
-            imageShowing ? "" : "invisible"
-          }`}
-          onLoad={() => setImageStatus("loaded")}
-          onError={() => setImageStatus("error")}
-          ref={(img) => {
-            // Cached images may complete before onLoad is attached.
-            if (img?.complete) {
-              if (img.naturalWidth > 0) setImageStatus("loaded");
-              else setImageStatus("error");
-            }
-          }}
-        />
-      )}
-
-      {src && openOnClick ? (
-        <a
-          href={src}
-          target="_blank"
-          rel="noreferrer"
-          className={`${bodyClass} cursor-pointer hover:bg-black/10 transition-colors duration-fast`}
-          title="פתח תמונת באנר"
-        >
+    <div className={frameClass}>
+      {image}
+      {showTitle && (
+        <div className="absolute inset-0 flex items-center justify-center px-6">
           {labelEl}
-        </a>
-      ) : (
-        <div className={bodyClass}>{labelEl}</div>
+        </div>
       )}
     </div>
   );
@@ -97,10 +127,9 @@ export function BannerBlock({
   props,
   mode,
   pageTitle,
-  pageNumbering,
 }: Props) {
   // Always use the derived default name — no custom title field in the UI.
-  const label = defaultBannerLabel(pageTitle, pageNumbering);
+  const label = defaultBannerLabel(pageTitle);
   const editable = mode === "edit";
 
   if (!editable) {

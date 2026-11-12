@@ -52,9 +52,12 @@ export default async function vercelHandler(req: VercelRequest, res: VercelRespo
     const webRes = await handler(toWebRequest(req));
     await sendWebResponse(webRes, res);
   } catch (err) {
-    res.status(500).json({
-      error: 'Server error',
-      details: err instanceof Error ? err.message : String(err),
-    });
+    console.error(
+      JSON.stringify({
+        event: 'ai_chat_bridge_failed',
+        name: err instanceof Error ? err.name : typeof err,
+      })
+    );
+    res.status(500).json({ error: 'Server error' });
   }
 }

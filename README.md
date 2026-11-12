@@ -12,13 +12,17 @@ AI-Tools/
 │   ├── video-curator/    ← Tool for curating video transcripts and exporting clips
 │   ├── course-builder/   ← Course structure and page authoring
 │   ├── mbz-explorer/     ← Explore and work with MBZ packages (hub-hosted)
-│   └── dictionary-tool/  ← Excel glossary → Moodle XML (hub-hosted)
+│   ├── tau-support/      ← Forum inbox and grounded draft answers for support staff
+│   ├── dictionary-tool/  ← Excel glossary → Moodle XML (hub-hosted)
+│   └── virtual-support/  ← Staff knowledge base with cited Q&A
 │
 ├── packages/             ← Shared code
 │   ├── config/           ← Shared Tailwind, TypeScript, and ESLint configs
 │   ├── ui/               ← Shared React component library
 │   ├── auth/             ← Platform auth (session, handoff, entitlements)
-│   └── ai-client/        ← Shared AI client (useAI hook) + server handler (OpenAI SDK)
+│   ├── ai-client/        ← Shared AI client (useAI hook) + server handler (OpenAI SDK)
+│   ├── mbz-parser/       ← Reads and writes Moodle .mbz backups
+│   └── dev-api/          ← Dev-only: serves api/*.ts handlers under vite dev
 │
 ├── agents/               ← Build instructions for the Cursor agent
 │   └── workspace/        ← Split monorepo docs (start at workspace/README.md)
@@ -89,7 +93,7 @@ pnpm dev
 
 1. Copy `apps/tool-starter/` → `apps/tool-myname/`
 2. In the copy, set `"name": "tool-myname"` in `package.json`
-3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, course-builder `5176`, mbz-explorer `5177`, tau-support `5178`, dictionary-tool `5179`, next free…)
+3. Pick a free Vite port in `vite.config.ts` (hub `5173`, video-curator `5174`, tool-starter `5175`, course-builder `5176`, mbz-explorer `5177`, tau-support `5178`, dictionary-tool `5179`, virtual-support `5180`, next free…)
 4. Build the tool in `src/App.tsx` (keep `PageLayout`)
 5. Register it in `apps/hub/src/tools.config.ts` with `devUrl` (`http://localhost:<port>`) and a placeholder `url`
 6. Deploy on Vercel (one project per app):

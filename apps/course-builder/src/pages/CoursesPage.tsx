@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageLayout, Card, Button, Input, Spinner } from "@workspace/ui";
-import { listCourses, createCourse, deleteCourse } from "../lib/api";
+import { listCourses, createCourse, deleteCourse, updateCourse } from "../lib/api";
 import type { CourseListItem } from "../lib/types";
-import { PlusIcon, TrashIcon, UploadIcon } from "../components/icons";
+import { PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "../components/icons";
 import { SaveStatusIndicator, useSaveStatus } from "../lib/saveStatus";
 import {
   importCourseBackup,
   parseCourseBackupFile,
 } from "../lib/courseBackup";
+import { importCourseFromMbz, isMbzUploadFile } from "../lib/mbzImport";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", {
@@ -16,6 +17,11 @@ function formatDate(iso: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function looksLikeJsonBackup(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return name.endsWith(".json") || name.endsWith(".coursebuilder.json");
 }
 
 export function CoursesPage() {
@@ -26,8 +32,11 @@ export function CoursesPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
 
   useEffect(() => {
     listCourses()
@@ -48,8 +57,49 @@ export function CoursesPage() {
     }
   }
 
+  function startRename(course: CourseListItem) {
+    setCreating(false);
+    setNewTitle("");
+    setRenamingId(course.id);
+    setRenameTitle(course.title);
+    setError(null);
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameTitle("");
+  }
+
+  async function handleRename() {
+    if (!renamingId || !renameTitle.trim() || saving) return;
+    const title = renameTitle.trim();
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await trackSave(updateCourse(renamingId, { title }));
+      setCourses(
+        (prev) =>
+          prev?.map((course) =>
+            course.id === renamingId
+              ? {
+                  ...course,
+                  title: updated.title,
+                  updated_at: updated.updated_at,
+                }
+              : course
+          ) ?? null
+      );
+      cancelRename();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDelete(id: string, title: string) {
     if (!window.confirm(`למחוק את הקורס "${title}"? פעולה זו תמחק את כל התוכן שלו.`)) return;
+    if (renamingId === id) cancelRename();
     setError(null);
     try {
       await trackSave(deleteCourse(id));
@@ -62,14 +112,37 @@ export function CoursesPage() {
   async function handleImportFile(file: File | undefined) {
     if (!file || importing) return;
     setImporting(true);
+    setImportProgress(null);
     setError(null);
     try {
-      const backup = await parseCourseBackupFile(file);
-      const courseId = await trackSave(importCourseBackup(backup));
-      navigate(`/courses/${courseId}/edit`);
+      if (isMbzUploadFile(file) && !looksLikeJsonBackup(file)) {
+        const { courseId } = await trackSave(
+          importCourseFromMbz(file, (msg) => setImportProgress(msg))
+        );
+        navigate(`/courses/${courseId}/edit`);
+        return;
+      }
+      if (looksLikeJsonBackup(file) || file.type.includes("json")) {
+        const backup = await parseCourseBackupFile(file);
+        const courseId = await trackSave(importCourseBackup(backup));
+        navigate(`/courses/${courseId}/edit`);
+        return;
+      }
+      // Extension ambiguous — try MBZ magic via extract path first, then JSON
+      try {
+        const { courseId } = await trackSave(
+          importCourseFromMbz(file, (msg) => setImportProgress(msg))
+        );
+        navigate(`/courses/${courseId}/edit`);
+      } catch {
+        const backup = await parseCourseBackupFile(file);
+        const courseId = await trackSave(importCourseBackup(backup));
+        navigate(`/courses/${courseId}/edit`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setImporting(false);
+      setImportProgress(null);
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -94,7 +167,7 @@ export function CoursesPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,.coursebuilder.json,application/json"
+                accept=".json,.coursebuilder.json,.mbz,.zip,.tgz,application/json,application/zip,application/x-gzip"
                 className="hidden"
                 onChange={(e) => handleImportFile(e.target.files?.[0])}
               />
@@ -105,14 +178,18 @@ export function CoursesPage() {
                 loading={importing}
                 disabled={importing || saving}
                 onClick={() => fileInputRef.current?.click()}
+                title="ייבוא גיבוי JSON או קובץ MBZ של Moodle"
               >
-                ייבא גיבוי
+                {importing ? importProgress || "מייבא..." : "ייבא גיבוי"}
               </Button>
               <Button
                 size="md"
                 leftIcon={<PlusIcon />}
                 disabled={importing}
-                onClick={() => setCreating(true)}
+                onClick={() => {
+                  cancelRename();
+                  setCreating(true);
+                }}
               >
                 קורס חדש
               </Button>
@@ -159,52 +236,123 @@ export function CoursesPage() {
         {courses !== null && courses.length === 0 && !creating && (
           <Card>
             <p className="text-sm text-surface-600">
-              אין עדיין קורסים. לחצו על "קורס חדש" או "ייבא גיבוי" כדי להתחיל.
+              אין עדיין קורסים. לחצו על "קורס חדש" או "ייבא גיבוי" (JSON / MBZ) כדי להתחיל.
             </p>
           </Card>
         )}
 
         {courses !== null && courses.length > 0 && (
           <div className="flex flex-col gap-3">
-            {courses.map((course) => (
-              <Card key={course.id} hover onClick={() => navigate(`/courses/${course.id}/edit`)}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-sm font-semibold text-surface-900 truncate">
-                      {course.title}
-                    </span>
-                    <span className="text-xs text-surface-500">
-                      {course.sectionCount} שיעורים · {course.pageCount} עמודים · עודכן {formatDate(course.updated_at)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
-                      title="תצוגה"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/courses/${course.id}/review`);
-                      }}
+            {courses.map((course) => {
+              const isRenaming = renamingId === course.id;
+              return (
+                <Card
+                  key={course.id}
+                  hover={!isRenaming}
+                  onClick={
+                    isRenaming
+                      ? undefined
+                      : () => navigate(`/courses/${course.id}/edit`)
+                  }
+                >
+                  {isRenaming ? (
+                    <div
+                      className="flex flex-col gap-3"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </button>
-                    <button
-                      className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast"
-                      title="מחק קורס"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(course.id, course.title);
-                      }}
-                    >
-                      <TrashIcon />
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                      <Input
+                        label="שם הקורס"
+                        placeholder="לדוגמה: מבוא לסטטיסטיקה"
+                        value={renameTitle}
+                        autoFocus
+                        onChange={(e) => setRenameTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRename();
+                          if (e.key === "Escape") cancelRename();
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleRename}
+                          loading={saving}
+                          disabled={!renameTitle.trim()}
+                        >
+                          שמור
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          disabled={saving}
+                          onClick={cancelRename}
+                        >
+                          ביטול
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-sm font-semibold text-surface-900 truncate">
+                          {course.title}
+                        </span>
+                        <span className="text-xs text-surface-500">
+                          {course.sectionCount} שיעורים · {course.pageCount}{" "}
+                          עמודים · עודכן {formatDate(course.updated_at)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+                          title="שנה שם"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRename(course);
+                          }}
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+                          title="תצוגה"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/courses/${course.id}/review`);
+                          }}
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          className="p-1.5 text-surface-400 hover:text-danger transition-colors duration-fast"
+                          title="מחק קורס"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(course.id, course.title);
+                          }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

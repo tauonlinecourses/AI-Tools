@@ -136,7 +136,7 @@ Hub depends on `react-router-dom` (`^6`) for `/` (Hebrew, default) and `/en` (En
 
 This is the single file you edit to add or remove tools from the hub. Add a new entry here whenever you create a new tool.
 
-Standalone tools need a production `url` (Vercel) and a `devUrl` (local Vite). Hub-hosted tools (no separate Vercel project) use `hubPath` instead — e.g. MBZ Explorer at `/mbz-explorer`. `toolIsOpenable()` / card click: `hubPath` navigates in-app; otherwise hub DEV uses `devUrl` and production uses `url` via auth handoff. `findToolForReturnUrl(returnUrl)` maps a tool deep-link back to a catalog entry (origin match for `url`/`devUrl`, or path match for `hubPath`) so hub `?returnUrl=` handling never open-redirects.
+Standalone tools need a production `url` (Vercel) and a `devUrl` (local Vite). Hub-hosted tools (no separate Vercel project) use `hubPath` instead — e.g. MBZ Explorer at `/mbz-explorer`, Dictionary Tool at `/dictionary-tool`, Video Transcriber at `/video-transcriber`. `toolIsOpenable()` / card click: `hubPath` navigates in-app; otherwise hub DEV uses `devUrl` and production uses `url` via auth handoff. `findToolForReturnUrl(returnUrl)` maps a tool deep-link back to a catalog entry (origin match for `url`/`devUrl`, or path match for `hubPath`) so hub `?returnUrl=` handling never open-redirects.
 
 ```typescript
 export interface Tool {
@@ -179,6 +179,15 @@ export const tools: Tool[] = [
     icon:        "book",
     status:      "beta",
     category:    "Education",
+  },
+  {
+    id:          "video-transcriber",
+    name:        "Video Transcriber",
+    description: "Download and install the desktop Video Transcriber from SharePoint.",
+    hubPath:     "/video-transcriber",
+    icon:        "film",
+    status:      "live",
+    category:    "Video",
   },
 ];
 ```

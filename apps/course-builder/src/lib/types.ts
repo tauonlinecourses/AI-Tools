@@ -17,6 +17,8 @@ export interface Section {
   assignments_due_at: string | null;
   /** לינק לתיקיית קבצים של השיעור */
   files_folder_url: string | null;
+  /** לינק לתיקיית סרטונים של השיעור */
+  videos_folder_url: string | null;
 }
 
 export interface Page {
@@ -46,13 +48,29 @@ export type ComponentType =
   | "text"
   | "question"
   | "image"
+  | "text_unit"
+  | "interactive_unit"
+  | "button"
   | "notes_board"
   | "word_cloud"
   | "forum";
 
-/** Activity component types — only one kind allowed per page. */
+/** Visual horizontal alignment for the button block (physical L/C/R). */
+export type ButtonAlign = "left" | "center" | "right";
+
+/**
+ * Activity component types — only one kind allowed per page.
+ * `question` may repeat; `notes_board` / `word_cloud` / `forum` are singletons.
+ */
 export const ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
   "question",
+  "notes_board",
+  "word_cloud",
+  "forum",
+]);
+
+/** Non-question activities — at most one instance per page. */
+export const SINGLETON_ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
   "notes_board",
   "word_cloud",
   "forum",
@@ -120,7 +138,7 @@ export interface VideoProps extends NotesProps {
    * Derived from `url` on edit (`detectVideoProvider`); not shown in the UI.
    * Kept for stored jsonb / older rows.
    */
-  provider?: "youtube" | "panopto" | "other";
+  provider?: "youtube" | "panopto" | "sharepoint" | "other";
 }
 
 export interface InteractiveVideoProps extends VideoProps {
@@ -129,7 +147,7 @@ export interface InteractiveVideoProps extends VideoProps {
 }
 
 export interface TextProps {
-  /** Sanitized rich-text HTML from the TipTap editor. */
+  /** Sanitized rich-text HTML from the TipTap editor (marks, lists, align, color; size via H1/H2 only). */
   html?: string;
   /** Legacy plain-text body; migrated to `html` on next edit/save. */
   markdown?: string;
@@ -178,10 +196,28 @@ export interface ForumProps extends NotesProps {
 }
 
 export interface ImageProps extends NotesProps {
-  /** URL of the image to display in the placeholder. */
+  /** URL of the image to display (and open on click in edit/implement). */
   imageUrl?: string;
-  /** URL opened when the thumbnail image is clicked. */
+}
+
+/**
+ * Thumbnail-style link unit (`text_unit` / `interactive_unit`):
+ * shows `imageUrl`, click opens `fileUrl`.
+ */
+export interface TextUnitProps extends NotesProps {
+  /** Preview image shown in the block. */
+  imageUrl?: string;
+  /** File / document opened when the image is clicked. */
   fileUrl?: string;
+}
+
+export interface ButtonBlockProps {
+  /** Visible button label. */
+  text?: string;
+  /** Physical left / center / right alignment of the button in the row. */
+  align?: ButtonAlign;
+  /** When set, clicking the button opens this URL in a new tab. */
+  url?: string;
 }
 
 export type BlockProps = BannerProps &
@@ -190,6 +226,8 @@ export type BlockProps = BannerProps &
   TextProps &
   QuestionProps &
   ImageProps &
+  TextUnitProps &
+  ButtonBlockProps &
   NotesBoardProps &
   WordCloudProps &
   ForumProps;
@@ -235,16 +273,24 @@ export interface CourseListItem extends Course {
   pageCount: number;
 }
 
-/** View role that authored a block comment (no personal names — MVP has no auth). */
+/** View role that authored a comment (no personal names — MVP has no auth). */
 export type CommentAuthorRole = CourseViewMode;
 
-export interface ComponentComment {
+/** Shared fields for block / page Word-style comment threads. */
+export interface ThreadComment {
   id: string;
-  component_id: string;
   author_role: CommentAuthorRole;
   body: string;
   resolved_at: string | null;
   created_at: string;
+}
+
+export interface ComponentComment extends ThreadComment {
+  component_id: string;
+}
+
+export interface PageComment extends ThreadComment {
+  page_id: string;
 }
 
 export const COMMENT_AUTHOR_LABEL: Record<CommentAuthorRole, string> = {

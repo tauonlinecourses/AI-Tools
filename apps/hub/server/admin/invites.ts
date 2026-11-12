@@ -177,8 +177,22 @@ export async function sendInviteEmail(input: {
     throw new AuthError("User not found — create the user first", 404);
   }
 
+  // Re-inviting deletes and recreates the account, so only allow it for an
+  // approved user who has not started using that account yet.
+  if (existing.status !== "approved") {
+    throw new AuthError("Invite email is only for approved users", 409);
+  }
+
   const groupIds = existing.groups.map((g) => g.id);
   const admin = serviceClient();
+  const { data: authUser, error: getErr } = await admin.auth.admin.getUserById(
+    existing.id
+  );
+  if (getErr) throw getErr;
+  if (authUser.user?.last_sign_in_at) {
+    throw new AuthError("This user has already signed in", 409);
+  }
+
   const redirectTo = resolveInviteRedirectTo(input.redirectTo);
 
   const { error: delErr } = await admin.auth.admin.deleteUser(existing.id);
@@ -191,16 +205,17 @@ export async function sendInviteEmail(input: {
     data: { status: "approved" },
   });
   if (invite.error || !invite.data.user) {
-    // Best-effort recreate so the admin is not left without the user.
+    const message = invite.error?.message || "Invite email failed";
+    // The account was already deleted, so try to put it back.
     try {
       await inviteUser({ email, groupIds, redirectTo });
     } catch {
-      /* ignore secondary failure */
+      throw new AuthError(
+        `${message}. The user could not be restored and must be created again.`,
+        500
+      );
     }
-    throw new AuthError(
-      invite.error?.message || "Invite email failed",
-      400
-    );
+    throw new AuthError(message, 400);
   }
 
   const userId = invite.data.user.id;

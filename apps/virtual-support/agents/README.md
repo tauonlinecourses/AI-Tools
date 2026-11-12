@@ -11,7 +11,7 @@ Single screen with three columns (RTL):
 | Column | Width | Purpose |
 |--------|-------|---------|
 | **מקורות (right)** | ~26% | Floating rounded white panel (`bg-white`), RTL. Header **Virtual TAU מסמכים**, then OneNote-style split: **נושאים** (folders, right, colored tabs) + **עמודים** (documents in the selected topic, left). |
-| **צ׳אט (middle)** | `flex-1` (~50% with both side panels) | Page-grey Ask canvas (`#f8f9fa`, NotebookLM-style messages): user turns in a `#e8eaed` pill (`rounded-[2rem]`, `text-sm`, `px-5 py-3.5`); assistant answers flush on the canvas with larger type (`~1.05rem`), no card/blob. Inline numbered citation chips + source chips under the answer. |
+| **צ׳אט (middle)** | `flex-1` (~50% with both side panels) | Page-grey Ask canvas (`#f8f9fa`, NotebookLM-style messages): user turns in a `#e8eaed` pill (`rounded-[2rem]`, `text-sm`, `px-5 py-3.5`); assistant answers flush on the canvas with larger type (`~1.05rem`), no card/blob. Inline numbered citation chips + source chips under the answer. Footer under the composer notes that Q&A is retained for quality improvement, plus an AI-may-err / verify-against-source disclaimer. |
 | **מסמך (left)** | ~25%, hidden until open | Floating rounded panel matching sources height. Viewer / editor from sidebar or chat citations. Delete lives on the edit form (not the read-only viewer). |
 
 Workspace height is locked to `calc(100vh - header)`; side panels share that height via the padded flex row (`px-5` / `md:px-6`, `py-3`, `gap-3`) so left/right read as floating cards inset from the screen edges.
@@ -20,7 +20,7 @@ Workspace height is locked to `calc(100vh - header)`; side panels share that hei
 
 ### מקורות interaction
 
-- Click a topic → shows its pages in the pages column.
+- Click a topic → shows its pages in the pages column. Each topic row shows its page count.
 - Click a page → opens it in the left document viewer.
 - Opening a doc from chat citations selects its topic automatically.
 - While the editor is open (edit or new page), opening another page from מקורות, a citation, or `+ הוספת עמוד` asks to confirm discarding unsaved changes.
@@ -34,7 +34,7 @@ Out of scope for v1: nested folders, PDF/Word uploads, saved notebooks, durable 
 
 ```
 Browser (ToolAuthGate toolId=virtual-support)
-  → POST /api/data   { action, payload }   → service_role CRUD + reindex
+  → POST /api/data   { action, payload }   → service_role CRUD; indexDocument re-indexes after save
   → POST /api/ask    { question, history } → rewrite → embed → match_doc_chunks_hybrid → gpt-4o
   → POST /api/chat   (standard ai-client; Ask does not call this from the browser)
 ```
@@ -54,7 +54,9 @@ Tables (see `supabase/migrations/001_init.sql`, `002_hybrid_search.sql`, `003_as
 
 Deleting a folder moves its documents to unfiled, then deletes the folder. Deleting a document cascades chunks.
 
-## Indexing (on save)
+## Indexing (after save, in the background)
+
+`createDocument` / `updateDocument` only write the page, so saving returns fast. The browser then calls `indexDocument {id}` without waiting (one run per page at a time; a save during a run queues one more). The page header shows "✓ נשמר", then "מעדכן את המערכת…" until it finishes, or "נשמר, אבל העדכון לחיפוש נכשל. נסו שוב" on failure. While indexing runs, closing the tab asks for confirmation. If a run never happens (tab closed anyway), the page stays saved but search keeps the old version until the next save. `indexDocument` reads the saved page from the DB and runs `reindexDocument`:
 
 1. Hash `title + body` (`sha256`).
 2. Strip HTML → plain text; chunk ~1200 chars with ~200 overlap on paragraph boundaries.
@@ -127,7 +129,7 @@ pnpm --filter virtual-support eval    # re-test set from ask_eval_cases (see Ask
 
 ## BFF actions (`/api/data`)
 
-`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `deleteDocument`, `uploadImage`, `rateAnswer`.
+`listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `listDocuments`, `getDocument`, `createDocument`, `updateDocument`, `indexDocument`, `deleteDocument`, `uploadImage`, `rateAnswer`.
 
 ## Env
 
@@ -151,7 +153,7 @@ Vite middleware proxies `/api/data`, `/api/ask`, `/api/chat` with the same Platf
 ## Deploy
 
 1. Create Supabase project; apply `supabase/migrations/001_init.sql`, then `002_hybrid_search.sql`, then `003_ask_log.sql`.
-2. Apply Course-Builder migration `012_virtual_support_tool.sql` (tool allowlist + group grants).
+2. Apply Course-Builder migrations `012_add_dictionary_tool.sql` (tool allowlist, including `virtual-support`) and `014_seed_virtual_support_groups.sql` (group grants).
 3. Vercel project root `apps/virtual-support`; include source outside root; link shared `OPENAI_API_KEY` + Platform env + `VS_*`.
 4. Set hub `tools.config.ts` `url` to the live hostname if it differs from the placeholder.
 

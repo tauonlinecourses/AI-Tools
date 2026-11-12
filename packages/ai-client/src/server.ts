@@ -87,6 +87,7 @@ function logChatMetric(fields: {
   model: string;
   messageCount: number;
   latencyMs: number;
+  code?: unknown;
 }): void {
   // Vercel captures stdout. Never log prompt contents.
   console.log(
@@ -96,6 +97,7 @@ function logChatMetric(fields: {
       model: fields.model,
       messageCount: fields.messageCount,
       latencyMs: fields.latencyMs,
+      ...(fields.code ? { code: fields.code } : {}),
     })
   );
 }
@@ -191,16 +193,17 @@ export async function handler(request: Request): Promise<Response> {
       typeof (err as { status?: unknown })?.status === 'number'
         ? (err as { status: number }).status
         : 500;
-    const details = err instanceof Error ? err.message : String(err);
     logChatMetric({
       status,
       model,
       messageCount,
       latencyMs: Date.now() - started,
+      code: (err as { code?: unknown })?.code,
     });
+    // OpenAI's message can quote the API key, so it never leaves the server.
     return Response.json(
-      { error: `OpenAI API error: ${status}`, details },
-      { status }
+      { error: "AI service is temporarily unavailable" },
+      { status: status === 429 ? 429 : 502 }
     );
   }
 }

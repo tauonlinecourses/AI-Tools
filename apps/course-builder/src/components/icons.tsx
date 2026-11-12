@@ -118,16 +118,29 @@ export const CopyIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
-/** Page/document with a plus — duplicate (distinct from clipboard copy). */
+/**
+ * Two overlapping dog-eared documents — duplicate (distinct from clipboard copy).
+ * Front page is filled so it covers the back page.
+ */
 export const DuplicateIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
-  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    {/* Back page (up-right), dog-ear bottom-right */}
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
-      d="M8 3.5h5.5L18 8v10.5A1.5 1.5 0 0116.5 20h-8A1.5 1.5 0 017 18.5v-13A1.5 1.5 0 018 3.5z"
+      d="M9 3.5h6a1.5 1.5 0 011.5 1.5v8.5L14 16H9a1.5 1.5 0 01-1.5-1.5v-9A1.5 1.5 0 019 3.5z"
     />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.5V8H18" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11.5v5M9.5 14h5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14 16v-2.5h2.5" />
+    {/* Front page (filled) + dog-ear + text lines */}
+    <path
+      fill="white"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5 8h6a1.5 1.5 0 011.5 1.5v8.5L10 20.5H5A1.5 1.5 0 013.5 19v-9A1.5 1.5 0 015 8z"
+    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10 20.5V18h2.5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 11.5h3.5M6.25 14h3.5M6.25 16.5h3.5" />
   </svg>
 );
 
@@ -181,6 +194,16 @@ export const VideoIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Clapperboard + play — used for lesson videos-folder links (distinct from VideoIcon). */
+export const FilmIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="3" y="3" width="18" height="18" rx="3" strokeLinejoin="round" />
+    <path strokeLinecap="round" d="M3 8.5h18" />
+    <path strokeLinecap="round" d="M7 3.5l2.2 5M11.5 3.5l2.2 5M16 3.5l2.2 5" />
+    <path fill="currentColor" stroke="none" d="M10 11.25v6.5l5.75-3.25L10 11.25z" />
+  </svg>
+);
+
 export const TextIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" d="M4 6h16M4 10h16M4 14h10M4 18h7" />
@@ -204,6 +227,108 @@ export const ThumbnailIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =>
       strokeLinejoin="round"
       d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
     />
+  </svg>
+);
+
+/** Rounded rectangle — content button block. */
+export const ButtonIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <rect x="3" y="7" width="18" height="10" rx="2.5" strokeLinejoin="round" />
+    <path strokeLinecap="round" d="M8 12h8" />
+  </svg>
+);
+
+/** Document with image corner — text unit (יחידת טקסט) block. */
+export const TextUnitIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+    />
+  </svg>
+);
+
+/** Cursor / click target — interactive unit (יחידה אינטראקטיבית) block. */
+export const InteractiveUnitIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.172zm0 0L21.75 7.5M15.75 3.75H7.5A2.25 2.25 0 005.25 6v12A2.25 2.25 0 007.5 20.25h4.5"
+    />
+  </svg>
+);
+
+/** Three horizontal lines of different lengths — text/button alignment. */
+export const AlignIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" d="M4 7h16M7 12h10M5 17h14" />
+  </svg>
+);
+
+/** Align left — long/short/long/short bars flush start. */
+export const AlignLeftIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="3" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="3" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Align center — long/short/long/short bars centered. */
+export const AlignCenterIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="6.5" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="6.5" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Align right — long/short/long/short bars flush end. */
+export const AlignRightIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="3" y="4" width="18" height="2.25" rx="0.25" />
+    <rect x="10" y="9.25" width="11" height="2.25" rx="0.25" />
+    <rect x="3" y="14.5" width="18" height="2.25" rx="0.25" />
+    <rect x="10" y="19.75" width="11" height="2.25" rx="0.25" />
+  </svg>
+);
+
+/** Numbered list — bars on the left, small stroke-drawn 1/2/3 on the right (RTL). */
+export const OrderedListIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="2" y="4.5" width="12.5" height="2.5" rx="0.75" />
+    <rect x="2" y="10.75" width="12.5" height="2.5" rx="0.75" />
+    <rect x="2" y="17" width="12.5" height="2.5" rx="0.75" />
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* 1 — centered on top bar */}
+      <path d="M18.9 4.85L19.6 4.25V7.15" />
+      {/* 2 — centered on middle bar */}
+      <path d="M18.15 10.7c0-.6.5-1.05 1.15-1.05s1.15.45 1.15 1c0 .85-2.25 1.25-2.25 2.35h2.35" />
+      {/* 3 — centered on bottom bar */}
+      <path d="M18.15 16.85c.15-.55.55-.9 1.15-.9.6 0 1.05.35 1.05.85s-.35.8-.85.9c.55.1.9.45.9 1 0 .6-.55 1-1.2 1-.6 0-1.1-.35-1.2-.9" />
+    </g>
+  </svg>
+);
+
+/** Bulleted list — bars on the left, diamond markers on the right (RTL). */
+export const BulletListIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+    <rect x="2" y="4.75" width="12" height="2.25" rx="0.75" />
+    <rect x="2" y="11" width="12" height="2.25" rx="0.75" />
+    <rect x="2" y="17.25" width="12" height="2.25" rx="0.75" />
+    <path d="M17.5 5.25 L19.25 3.5 L21 5.25 L19.25 7 Z" />
+    <path d="M17.5 11.5 L19.25 9.75 L21 11.5 L19.25 13.25 Z" />
+    <path d="M17.5 17.75 L19.25 16 L21 17.75 L19.25 19.5 Z" />
   </svg>
 );
 

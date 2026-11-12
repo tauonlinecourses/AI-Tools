@@ -14,12 +14,13 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] Course home page ("עמוד ראשי") — ensure on create/load, rename only
 - [x] Course overview (`?view=overview`) — sidebar סקירת קורס; structure counts/averages + page-type / workflow / implement charts (home stays default landing)
 - [x] Component types — banner, video, text, question
-- [x] Implementation status — derived timestamps, rollups, mark / cycle status
+- [x] Implementation status — derived timestamps, rollups, mark / cycle status (manual cycle: לא הוטמע ↔ הוטמע only; עבר שינוי is automatic)
 - [x] Preview embeds — YouTube / Panopto / other via `videoEmbed.ts`
 - [x] Save status indicator (שומר / נשמרו)
 - [x] Page notes for implementers (hidden in preview)
 - [x] Per-component notes (הערות) — legacy `props.notes` still display under banner/video/question in implement; edit-mode inputs removed (use page notes / block comments)
 - [x] Block comments (Word-style) — per-component thread in all three views; role authors; resolve/reopen; delete only by same author role
+- [x] Sidebar page comment counts — blue circle badge with unresolved messages per page (all modes)
 - [x] New lesson pages start with an empty banner component
 
 ---
@@ -34,7 +35,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 
 ## Content & blocks
 
-- [x] Rich text for text blocks (TipTap: bold / H1 / H2 / link icons; sanitized HTML in implement/preview; rich clipboard copy)
+- [x] Rich text for text blocks (TipTap Moodle-like formatting: undo/redo, bold/italic/underline, color, H1/H2, link, align, RTL/LTR, lists; body size normal or heading only; sanitized HTML in implement/preview; rich clipboard copy — no media-in-text)
 - [ ] Image / file upload for banners (today: URL only)
 - [ ] Richer question types beyond `single_choice`
 - [ ] Additional component types (as needed)
@@ -46,9 +47,12 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [ ] Add teachers and course developer fields to course data (schema + edit UI)
 - [x] Lesson overview page per section — open/due dates, files-folder link (schema + edit UI)
 - [ ] Apply pending migrations on live DB if missing (`001_course_home_page`, `002_fix_empty_page_rollup`, `003_component_comments`, `004_section_lesson_info`, `mark_component_implemented`)
+- [x] No auto page numbers — titles are free-form (include a number in the title if needed)
 - [x] Bump course `updated_at` when nested content changes (today only title/description)
 - [x] Local course backup — שמור גיבוי (`.coursebuilder.json` download) + ייבא גיבוי (new course); URLs only, no media binaries (`src/lib/courseBackup.ts`)
+- [x] MBZ preserve-and-patch roundtrip — ייבא `.mbz` as new course + הורד MBZ; editable `page`/`label`/`resource`/`url`/`hvp`/`board` + section structure; page HTML split into banner/video/image/text_unit/button/text (`mbzHtmlSplit.ts`, works without binaries); `@workspace/mbz-parser` + `016`–`018` (see `mbz-roundtrip.md`)
 - [ ] Soft-delete / undo for destructive actions (today: `window.confirm` only)
+- [ ] Apply `016`–`018` MBZ migrations on live Supabase (`course_mbz_*` tables; `storage_backend` includes `reupload` — archive not stored)
 
 ---
 
@@ -67,6 +71,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 
 ## UX polish
 
+- [x] Optimistic add/duplicate component — show block immediately, persist client UUID in background (`PageContent.handleAdd` / `handleDuplicate` + api options)
 - [ ] Course description editing in the UI (column exists; surface if needed)
 - [ ] Empty states / onboarding for a brand-new course
 - [ ] Keyboard / a11y pass on DnD and status controls

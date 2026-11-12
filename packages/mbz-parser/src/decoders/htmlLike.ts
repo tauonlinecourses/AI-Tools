@@ -7,7 +7,7 @@ import { asArray, xmlParser } from "../xml";
 const HTML_TYPES = new Set(["page", "resource", "label", "book", "url"]);
 
 /** Field preference per module type (first non-empty wins). */
-const FIELD_PREFERENCE: Record<string, string[]> = {
+export const HTML_FIELD_PREFERENCE: Record<string, string[]> = {
   page: ["content", "intro"],
   label: ["intro", "content"],
   resource: ["intro", "content"],
@@ -104,7 +104,7 @@ function findHtmlPayload(
   type: string
 ): string | null {
   const typed = getTypedRoot(doc, type);
-  const fields = FIELD_PREFERENCE[type] ?? ["content", "intro", "summary", "externalurl"];
+  const fields = HTML_FIELD_PREFERENCE[type] ?? ["content", "intro", "summary", "externalurl"];
 
   for (const key of fields) {
     const v = fieldText(typed[key]).trim();
@@ -151,6 +151,38 @@ export function decodeHtmlLike(
     resolveBlobUrl
   );
   return { kind: "html", html, referencedFiles, unresolvedTokens };
+}
+
+/**
+ * Extract the preferred HTML/text field for an activity without resolving
+ * @@PLUGINFILE@@ — used by course-builder import so Moodle tokens stay intact.
+ */
+export function extractHtmlLikeRaw(
+  vfs: MbzVfs,
+  activity: MbzActivity
+): { field: string; value: string } | null {
+  const raw = vfsText(vfs, activity.rawXmlPath);
+  if (!raw) return null;
+  const doc = xmlParser.parse(raw) as Record<string, unknown>;
+  const typed = getTypedRoot(doc, activity.type);
+  const fields =
+    HTML_FIELD_PREFERENCE[activity.type] ?? ["content", "intro", "summary", "externalurl"];
+
+  for (const key of fields) {
+    const v = fieldText(typed[key]).trim();
+    if (v && v !== "$@NULL@$") {
+      // Prefer raw XML body when available (entity-escaped Moodle HTML)
+      const rawBody = extractTagRaw(raw, key);
+      return { field: key, value: rawBody ?? v };
+    }
+  }
+
+  for (const key of fields) {
+    const rawBody = extractTagRaw(raw, key);
+    if (rawBody) return { field: key, value: rawBody };
+  }
+
+  return null;
 }
 
 export function supportsHtmlLike(type: string): boolean {

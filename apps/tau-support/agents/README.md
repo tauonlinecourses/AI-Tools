@@ -179,6 +179,28 @@ platform.
   `info_docs.common_questions text[]` for question-shaped RAG retrieval.
 - `../supabase/migrations/009_info_doc_pinned.sql` — `info_docs.pinned`
   (at most one); seeds **הקדמה - חשוב לקרוא!**.
+- `../supabase/migrations/010_question_dashboard.sql` — `question_embeddings`
+  (one question-only vector per student thread, 256 dims) and
+  `question_dashboard_snapshot` (saved dashboard result).
+- `../supabase/migrations/011_question_categories.sql` — saved per-question
+  `category` + `category_key` on `question_embeddings`.
+- `../server/questionDashboard.ts` — Dashboard pipeline, run by the dashboard's **מיון שאלות חדשות** button
+  in three steps: embed new questions → sort each new or edited question into
+  the closed category list (`src/lib/categoryColors.ts`, which also sets each
+  category's color) with `gpt-4o-mini`, saved so it runs once per question
+  (bump `CATEGORY_PROMPT_VERSION` after editing the prompt to re-sort all) →
+  save every question with its category + a UMAP 3D position as the snapshot.
+  No similar-question groups. Rule-based posts (אין בעיות / no content /
+  self-intro → אחר) skip the AI. Snapshots carry `formatVersion`; an older
+  one shows a "refresh" message. Separate from `kb_chunks`; RAG retrieval
+  does not use it.
+- `../scripts/category-test.smoke.ts` — read-only sorting test on a seeded
+  sample (`pnpm --filter tau-support category-test`); label the CSV in
+  `category-test-results/` and score with `category-test:score`.
+- `../src/components/QuestionsDashboard.tsx` / `QuestionMap3D.tsx` — **דשבורד**
+  header toggle: stat tiles, categories chart, per-category question lists
+  (newest first) and a lazy-loaded 3D map colored by category (a click opens
+  that category). Filters by course, category and date.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -461,9 +483,10 @@ RAG columns on `qa_pairs` / `info_docs` / `kb_chunks`:
 - `kb_chunks.metadata` — for Q↔A: `thread_id`, `answer_message_id`, …; for info docs: `title`, `kind: 'info_doc'`, `body`
 - Storage bucket `info-doc-images` — public; paste-to-upload from the SPA
 
-RLS is on for all tables with open `anon`/`authenticated` CRUD policies
-(internal staff tool). The **service_role / secret key must never ship to the
-browser**. Tighten policies when adding staff login.
+RLS is on for all tables and the open `anon`/`authenticated` policies were removed
+(`008_lock_anon_access.sql`); the browser reaches this data only through the
+`/api/tau-data` BFF. The **service_role / secret key must never ship to the
+browser**.
 
 #### Phase 2 embeddings (built)
 
@@ -650,7 +673,8 @@ Apply `supabase/migrations/001_init.sql` (or `schema.sql`) on a fresh project
 before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
 `004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`,
-`007_info_doc_common_questions.sql`, and/or `009_info_doc_pinned.sql`.
+`007_info_doc_common_questions.sql`, `009_info_doc_pinned.sql`,
+`010_question_dashboard.sql`, and/or `011_question_categories.sql`.
 
 ### Load behavior
 

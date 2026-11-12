@@ -25,35 +25,37 @@ interface CourseOverviewProps {
   tree: CourseTree;
 }
 
+/** Soft but lively chart accents — clearer chroma without harsh primaries. */
 const PAGE_TYPE_COLORS: Record<string, string> = {
-  page: "#3B82F6",
-  h5p: "#8B5CF6",
-  notes_board: "#F59E0B",
-  word_cloud: "#06B6D4",
-  forum: "#EC4899",
+  page: "#5B9FD4",
+  h5p: "#9B7BC8",
+  notes_board: "#E8B84A",
+  word_cloud: "#3DB8C4",
+  forum: "#E07A9E",
 };
 
 const WORKFLOW_COLORS: Record<string, string> = {
-  in_progress: "#F59E0B",
-  ready_for_implementation: "#10B981",
+  in_progress: "#E8B84A",
+  ready_for_implementation: "#5B9FD4",
 };
 
-const IMPLEMENT_COLORS: Record<string, string> = {
-  implemented: "#10B981",
-  needs_update: "#F59E0B",
-  not_implemented: "#EF4444",
-};
+/** Progress bar segments (lesson-page counts). */
+const PROGRESS_COLORS = {
+  in_progress: "#E8B84A",
+  ready_for_implementation: "#5B9FD4",
+  implemented: "#4CB888",
+} as const;
 
 const COMPONENT_COLORS = [
-  "#EF4444",
-  "#3B82F6",
-  "#8B5CF6",
-  "#10B981",
-  "#F59E0B",
-  "#EC4899",
-  "#06B6D4",
-  "#F97316",
-  "#6366F1",
+  "#E07A7A",
+  "#5B9FD4",
+  "#9B7BC8",
+  "#4CB888",
+  "#E8B84A",
+  "#E07A9E",
+  "#3DB8C4",
+  "#E8955A",
+  "#7B8AD4",
 ];
 
 interface StatTileProps {
@@ -83,23 +85,29 @@ function ChartCard({
   children,
   legend,
   empty,
+  height = 200,
 }: {
   title: string;
   children: React.ReactNode;
   legend?: React.ReactNode;
   empty?: boolean;
+  /** Chart plot area height in px. */
+  height?: number;
 }) {
   return (
-    <div className="border border-surface-200 bg-white p-4 flex flex-col">
+    <div className="w-full border border-surface-200 bg-white p-4">
       <h3 className="text-sm font-semibold text-surface-800 mb-3">{title}</h3>
       {empty ? (
-        <p className="flex items-center justify-center text-sm text-surface-400 h-[200px]">
+        <p
+          className="flex items-center justify-center text-sm text-surface-400"
+          style={{ height }}
+        >
           אין נתונים להצגה עדיין
         </p>
       ) : (
         <>
-          {/* LTR chart geometry — Recharts axes/legends break under dir=rtl */}
-          <div dir="ltr" className="h-[200px] w-full">
+          {/* Explicit px height — ResponsiveContainer collapses if parent height is indefinite */}
+          <div dir="ltr" className="w-full" style={{ width: "100%", height }}>
             {children}
           </div>
           {legend ? <div className="mt-3" dir="rtl">{legend}</div> : null}
@@ -138,7 +146,7 @@ function ColorLegend({
 function PageTypeLegend({
   items,
 }: {
-  items: Array<{ key: string; name: string; value: number }>;
+  items: Array<{ key: string; name: string; color: string; value: number }>;
 }) {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-2 justify-center">
@@ -147,6 +155,11 @@ function PageTypeLegend({
           key={item.key}
           className="inline-flex items-center gap-1.5 text-xs text-surface-700"
         >
+          <span
+            className="w-2.5 h-2.5 rounded-sm shrink-0"
+            style={{ backgroundColor: item.color }}
+            aria-hidden
+          />
           <img
             src={PAGE_TYPE_LOGO[item.key as PageType]}
             alt=""
@@ -158,6 +171,44 @@ function PageTypeLegend({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Single horizontal bar with exclusive progress segments (RTL: בעבודה → … → הוטמע). */
+function ProgressStackBar({
+  segments,
+}: {
+  segments: Array<{ key: string; name: string; color: string; value: number }>;
+}) {
+  const visible = segments.filter((s) => s.value > 0);
+  const total = visible.reduce((sum, s) => sum + s.value, 0);
+  if (total === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="flex h-11 w-full overflow-hidden rounded-md bg-surface-100"
+        dir="rtl"
+        role="img"
+        aria-label={visible
+          .map((s) => `${s.name}: ${s.value}`)
+          .join(", ")}
+      >
+        {visible.map((segment) => (
+          <div
+            key={segment.key}
+            className="h-full min-w-0"
+            style={{
+              flexGrow: segment.value,
+              flexBasis: 0,
+              backgroundColor: segment.color,
+            }}
+            title={`${segment.name}: ${segment.value}`}
+          />
+        ))}
+      </div>
+      <ColorLegend items={visible} />
+    </div>
   );
 }
 
@@ -228,26 +279,29 @@ export function CourseOverview({ tree }: CourseOverviewProps) {
     return rows.filter((r) => r.value > 0);
   }, [stats]);
 
-  const implementData = useMemo(() => {
+  const progressSegments = useMemo(() => {
     if (!stats) return [];
-    const r = stats.implementRollup;
+    const p = stats.progressCounts;
     return [
       {
+        key: "in_progress",
+        name: "בעבודה",
+        value: p.in_progress,
+        color: PROGRESS_COLORS.in_progress,
+      },
+      {
+        key: "ready_for_implementation",
+        name: "מוכן להטמעה",
+        value: p.ready_for_implementation,
+        color: PROGRESS_COLORS.ready_for_implementation,
+      },
+      {
+        key: "implemented",
         name: "הוטמע",
-        value: r.implemented_count,
-        fill: IMPLEMENT_COLORS.implemented,
+        value: p.implemented,
+        color: PROGRESS_COLORS.implemented,
       },
-      {
-        name: "עבר שינוי",
-        value: r.needs_update_count,
-        fill: IMPLEMENT_COLORS.needs_update,
-      },
-      {
-        name: "לא הוטמע",
-        value: r.not_implemented_count,
-        fill: IMPLEMENT_COLORS.not_implemented,
-      },
-    ].filter((row) => row.value > 0);
+    ];
   }, [stats]);
 
   const componentData = useMemo(() => {
@@ -291,27 +345,27 @@ export function CourseOverview({ tree }: CourseOverviewProps) {
             <StatTile
               label="שיעורים"
               value={stats.lessonCount}
-              accent="#3B82F6"
+              accent="#5B9FD4"
             />
             <StatTile
               label="עמודים"
               value={stats.pageCount}
-              accent="#8B5CF6"
+              accent="#9B7BC8"
             />
             <StatTile
               label="רכיבים"
               value={stats.componentCount}
-              accent="#10B981"
+              accent="#4CB888"
             />
             <StatTile
               label="ממוצע עמודים לשיעור"
               value={stats.avgPagesPerLesson}
-              accent="#F59E0B"
+              accent="#E8B84A"
             />
             <StatTile
               label="ממוצע רכיבים לעמוד"
               value={stats.avgComponentsPerPage}
-              accent="#EC4899"
+              accent="#E07A9E"
             />
           </div>
 
@@ -379,80 +433,57 @@ export function CourseOverview({ tree }: CourseOverviewProps) {
             </ChartCard>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ChartCard
-              title="התקדמות הטמעה"
-              empty={implementData.length === 0}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={implementData}
-                  margin={{ top: 12, right: 12, left: 4, bottom: 28 }}
-                >
-                  <XAxis
-                    dataKey="name"
-                    interval={0}
-                    tick={{ fontSize: 12, fill: "#4b5563" }}
-                    axisLine={{ stroke: "#e5e7eb" }}
-                    tickLine={false}
-                    height={28}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 12, fill: "#4b5563" }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={28}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle()}
-                    cursor={{ fill: "rgba(15, 108, 191, 0.06)" }}
-                  />
-                  <Bar dataKey="value" name="רכיבים" radius={[4, 4, 0, 0]}>
-                    {implementData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            <ChartCard title="סוגי רכיבים" empty={componentData.length === 0}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  layout="vertical"
-                  data={componentData}
-                  margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
-                >
-                  <XAxis
-                    type="number"
-                    allowDecimals={false}
-                    tick={{ fontSize: 12, fill: "#4b5563" }}
-                    axisLine={{ stroke: "#e5e7eb" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={108}
-                    tick={{ fontSize: 11, fill: "#4b5563", textAnchor: "end" }}
-                    axisLine={false}
-                    tickLine={false}
-                    interval={0}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle()}
-                    cursor={{ fill: "rgba(15, 108, 191, 0.06)" }}
-                  />
-                  <Bar dataKey="value" name="כמות" radius={[0, 4, 4, 0]}>
-                    {componentData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
+          <div className="border border-surface-200 bg-white p-4 mb-4">
+            <h3 className="text-sm font-semibold text-surface-800 mb-3">
+              התקדמות הטמעה
+            </h3>
+            {progressSegments.every((s) => s.value === 0) ? (
+              <p className="text-sm text-surface-400 py-2">
+                אין נתונים להצגה עדיין
+              </p>
+            ) : (
+              <ProgressStackBar segments={progressSegments} />
+            )}
           </div>
+
+          <ChartCard
+            title="סוגי רכיבים"
+            empty={componentData.length === 0}
+            height={420}
+          >
+            <ResponsiveContainer width="100%" height={420}>
+              <BarChart
+                data={componentData}
+                margin={{ top: 16, right: 8, left: 0, bottom: 48 }}
+                barCategoryGap="12%"
+              >
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  tick={{ fontSize: 11, fill: "#4b5563" }}
+                  axisLine={{ stroke: "#e5e7eb" }}
+                  tickLine={false}
+                  height={48}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 12, fill: "#4b5563" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={28}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle()}
+                  cursor={{ fill: "rgba(15, 108, 191, 0.06)" }}
+                />
+                <Bar dataKey="value" name="כמות" radius={[4, 4, 0, 0]}>
+                  {componentData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
         </>
       )}
     </div>

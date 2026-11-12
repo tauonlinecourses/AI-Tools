@@ -114,6 +114,16 @@ export const tools: Tool[] = [
     status:      "beta",
     category:    "Education",
   },
+  {
+    id:          "video-transcriber",
+    name:        "Video Transcriber",
+    description: "Download and install the desktop Video Transcriber from SharePoint.",
+    // Hosted inside the hub Vercel project (not a separate app deploy).
+    hubPath:     "/video-transcriber",
+    icon:        "film",
+    status:      "live",
+    category:    "Video",
+  },
 ];
 
 /**

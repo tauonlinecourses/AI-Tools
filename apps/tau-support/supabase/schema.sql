@@ -266,3 +266,29 @@ create policy "info_doc_images_public_read"
   using (bucket_id = 'info-doc-images');
 
 -- Writes only via service_role BFF (no anon insert/update/delete policies).
+
+-- Question dashboard (migrations/010_question_dashboard.sql).
+create table if not exists public.question_embeddings (
+  thread_id     text primary key references public.threads(campus_thread_id) on delete cascade,
+  course_id     text not null references public.courses(id) on delete cascade,
+  question_text text not null,
+  content_hash  text not null,
+  -- text-embedding-3-small shortened to 256 dims and re-normalized.
+  embedding     extensions.vector(256) not null,
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists idx_question_embeddings_course
+  on public.question_embeddings(course_id);
+
+create table if not exists public.question_dashboard_snapshot (
+  id          text primary key default 'singleton' check (id = 'singleton'),
+  computed_at timestamptz not null default now(),
+  payload     jsonb not null
+);
+
+-- Same model as 008: no anon/authenticated policies, BFF uses service_role.
+alter table public.question_embeddings enable row level security;
+alter table public.question_dashboard_snapshot enable row level security;
+grant all on table public.question_embeddings to service_role;
+grant all on table public.question_dashboard_snapshot to service_role;

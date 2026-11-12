@@ -14,14 +14,57 @@ function parseFilesXml(vfs: MbzVfs): MbzFileRef[] {
     const mimetype = textOf(f.mimetype) || "application/octet-stream";
     if (!hash || !originalFilename || originalFilename === ".") continue;
     const prefix = hash.slice(0, 2);
+    const contextid = textOf(f.contextid).trim() || null;
+    const component = textOf(f.component).trim() || null;
+    const filearea = textOf(f.filearea).trim() || null;
+    const itemid = textOf(f.itemid).trim() || null;
+    const filepath = textOf(f.filepath).trim() || "/";
     refs.push({
       hash,
       originalFilename,
       mimetype,
       bucketPath: `files/${prefix}/${hash}`,
+      contextid,
+      component,
+      filearea,
+      itemid,
+      filepath,
     });
   }
   return refs;
+}
+
+/**
+ * Build a Moodle pluginfile.php URL for preview (requires login on many sites).
+ * Shape: {wwwroot}/pluginfile.php/{contextid}/{component}/{filearea}/{itemid}{filepath}{filename}
+ */
+export function buildMoodlePluginfileUrl(
+  wwwroot: string | null | undefined,
+  ref: Pick<
+    MbzFileRef,
+    "originalFilename" | "contextid" | "component" | "filearea" | "itemid" | "filepath"
+  >
+): string | null {
+  const root = (wwwroot ?? "").trim().replace(/\/+$/, "");
+  if (!root) return null;
+  const contextid = (ref.contextid ?? "").trim();
+  const component = (ref.component ?? "").trim();
+  const filearea = (ref.filearea ?? "").trim();
+  const itemid = (ref.itemid ?? "").trim();
+  const filename = (ref.originalFilename ?? "").trim();
+  if (!contextid || !component || !filearea || !filename) return null;
+  if (itemid === "") return null;
+
+  let filepath = (ref.filepath ?? "/").trim() || "/";
+  if (!filepath.startsWith("/")) filepath = `/${filepath}`;
+  if (!filepath.endsWith("/")) filepath = `${filepath}/`;
+
+  const encodedName = filename
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+
+  return `${root}/pluginfile.php/${contextid}/${component}/${filearea}/${itemid}${filepath}${encodedName}`;
 }
 
 function findBackupXml(vfs: MbzVfs): string | null {
@@ -46,6 +89,14 @@ export function buildManifest(
   const format = textOf(detail.original_course_format || detail.format) || "";
   const moodleVersion =
     textOf(detail.moodle_release || detail.moodle_version || info.moodle_release) || "";
+  const wwwrootRaw =
+    textOf(
+      detail.original_wwwroot ||
+        detail.wwwroot ||
+        info.original_wwwroot ||
+        info.wwwroot
+    ).trim() || "";
+  const wwwroot = wwwrootRaw || null;
 
   const settingsNodes = asArray(
     info.settings?.setting ?? backup?.moodle_backup?.information?.settings?.setting
@@ -219,6 +270,7 @@ export function buildManifest(
       shortname,
       format,
       moodleVersion,
+      wwwroot,
       backupSettings: { includesUsers, anonymized },
     },
     sections,

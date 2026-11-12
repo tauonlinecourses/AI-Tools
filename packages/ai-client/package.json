@@ -14,6 +14,7 @@
     },
     "./server": {
       "types": "./src/server.ts",
+      "node": "./dist/server.js",
       "default": "./src/server.ts"
     },
     "./vercel": {

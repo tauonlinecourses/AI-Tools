@@ -13,6 +13,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "tau-support": { he: "תמיכה טכנית", en: "TAU Support" },
   "virtual-support": { he: "מדריכים - Virtual TAU", en: "Virtual Support" },
   "dictionary-tool": { he: "מילון מונחים", en: "Dictionary Tool" },
+  "video-transcriber": { he: "מתמלל וידאו", en: "Video Transcriber" },
 };
 
 export function toolLabel(locale: Locale, toolId: string): string {
