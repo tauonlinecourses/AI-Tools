@@ -28,6 +28,7 @@ create table sections (
   assignments_due_at date,          -- תאריך אחרון להגשת מטלות/תרגילים
   files_folder_url text,            -- לינק לתיקיית קבצים של השיעור
   videos_folder_url text,           -- לינק לתיקיית סרטונים של השיעור
+  banner_image_url text,            -- באנר משותף לכל עמודי השיעור
   created_at timestamptz default now()
 );
 

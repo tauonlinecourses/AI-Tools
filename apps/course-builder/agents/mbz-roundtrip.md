@@ -14,7 +14,7 @@ A single Moodle backup can be 200MB+. Storing it per course would burn the proje
 
 Migrations: `016` (tables), `017` (`storage_backend` column), `018` (allow `reupload` default).
 
-JSON **שמור גיבוי** / `.coursebuilder.json` remains a separate path.
+JSON **שמירת גיבוי** / `.coursebuilder.json` remains a separate path.
 
 ## Editable Moodle types (MVP)
 

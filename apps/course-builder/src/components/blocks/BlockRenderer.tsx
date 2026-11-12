@@ -26,6 +26,8 @@ interface Props {
   unitNumber?: number;
   /** Implement mode: copy an answer option and mark the component implemented. */
   onCopyOption?: (text: string) => void;
+  /** Edit mode: add another question component after this question block. */
+  onAddQuestion?: () => void;
 }
 
 /** Single renderer per block type, shared by edit / implement / review views. */
@@ -39,6 +41,7 @@ export function BlockRenderer({
   imageNumber,
   unitNumber,
   onCopyOption,
+  onAddQuestion,
 }: Props) {
   switch (type) {
     case "banner":
@@ -80,6 +83,7 @@ export function BlockRenderer({
           mode={mode}
           onChange={onChange}
           onCopyOption={onCopyOption}
+          onAddQuestion={onAddQuestion}
         />
       );
     case "image":

@@ -1,5 +1,6 @@
 import type { BlockProps, CourseViewMode, NotesBoardColumn } from "../../lib/types";
 import { PlusIcon } from "../icons";
+import { AutoGrowTextField } from "./fields";
 
 const COLUMN_COLORS = ["#C8A2D4", "#F28B82", "#F6BF73"];
 
@@ -39,16 +40,19 @@ export function NotesBoardBlock({ props, mode, onChange }: Props) {
           />
           <div className="p-2 flex flex-col gap-2">
             {editable ? (
-              <input
-                className="text-sm font-semibold text-surface-700 bg-transparent outline-none border-b border-transparent focus:border-surface-300 w-full"
+              <AutoGrowTextField
                 placeholder="כותרת"
                 value={col.title}
                 onChange={(e) => handleColumnTitle(colIdx, e.target.value)}
+                className="min-h-0 px-0 py-0.5 text-sm font-semibold text-surface-700 bg-transparent border-transparent border-b focus:border-surface-300"
               />
             ) : (
-              <span className="text-sm font-semibold text-surface-700">
-                {col.title || "כותרת"}
-              </span>
+              <AutoGrowTextField
+                readOnly
+                placeholder="כותרת"
+                value={col.title}
+                className="min-h-0 px-0 py-0.5 text-sm font-semibold text-surface-700 border-transparent"
+              />
             )}
 
             <button

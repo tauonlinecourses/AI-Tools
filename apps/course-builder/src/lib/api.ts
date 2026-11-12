@@ -212,7 +212,12 @@ export async function updateSection(
   fields: Partial<
     Pick<
       Section,
-      "title" | "opens_at" | "assignments_due_at" | "files_folder_url" | "videos_folder_url"
+      | "title"
+      | "opens_at"
+      | "assignments_due_at"
+      | "files_folder_url"
+      | "videos_folder_url"
+      | "banner_image_url"
     >
   >
 ): Promise<void> {
@@ -239,7 +244,8 @@ export async function reorderSections(orderedIds: string[]): Promise<void> {
 /**
  * Clone a lesson immediately after the source.
  * Title becomes `העתק של {source.title}`. Overview fields (`opens_at`,
- * `assignments_due_at`, `files_folder_url`, `videos_folder_url`) are copied.
+ * `assignments_due_at`, `files_folder_url`, `videos_folder_url`,
+ * `banner_image_url`) are copied.
  * Each page is copied with the same title/order; component types/order are
  * copied with empty props except banners (full props kept). Page notes are
  * not copied.
@@ -279,6 +285,7 @@ export async function duplicateSection(
       assignments_due_at: source.assignments_due_at ?? null,
       files_folder_url: source.files_folder_url ?? null,
       videos_folder_url: source.videos_folder_url ?? null,
+      banner_image_url: source.banner_image_url ?? null,
     })
     .select()
     .single();
@@ -375,6 +382,18 @@ export async function addPage(
   position: number
 ): Promise<Page> {
   const courseId = await courseIdFromSection(sectionId);
+
+  const { data: sectionRow, error: sectionErr } = await supabase
+    .from("sections")
+    .select("banner_image_url")
+    .eq("id", sectionId)
+    .single();
+  if (sectionErr) fail("Loading section for new page", sectionErr);
+  const lessonBannerUrl =
+    typeof sectionRow?.banner_image_url === "string"
+      ? sectionRow.banner_image_url.trim() || undefined
+      : undefined;
+
   const { data, error } = await supabase
     .from("pages")
     .insert({
@@ -388,14 +407,16 @@ export async function addPage(
     .single();
   if (error) fail("Adding page", error);
 
-  // Every new lesson starts with one empty banner at position 0.
-  // Insert directly so the course timestamp is touched only once for the
-  // page-and-default-component operation.
+  // Every new lesson page starts with one banner at position 0.
+  // Inherit the lesson-wide banner URL when set.
   const { error: bannerError } = await supabase.from("components").insert({
     page_id: data.id,
     type: "banner",
     position: 0,
-    props: { title: "" },
+    props: {
+      title: "",
+      ...(lessonBannerUrl ? { imageUrl: lessonBannerUrl } : {}),
+    },
   });
   if (bannerError) {
     // Avoid leaving a partially-created empty page when the default fails.
@@ -405,6 +426,83 @@ export async function addPage(
 
   await touchCourse(courseId);
   return data;
+}
+
+/**
+ * Push a lesson-wide banner URL into each page's first banner component.
+ * Creates a position-0 banner when a page has none. Clears imageUrl when null/empty.
+ */
+export async function syncSectionBannerToPages(
+  sectionId: string,
+  imageUrl: string | null
+): Promise<void> {
+  const courseId = await courseIdFromSection(sectionId);
+  const trimmed = imageUrl?.trim() || null;
+
+  const { data: pages, error: pagesErr } = await supabase
+    .from("pages")
+    .select("id")
+    .eq("section_id", sectionId)
+    .order("position");
+  if (pagesErr) fail("Loading section pages for banner sync", pagesErr);
+
+  const pageIds = (pages ?? []).map((p) => p.id as string);
+  if (pageIds.length === 0) {
+    await touchCourse(courseId);
+    return;
+  }
+
+  const components = await listComponentsForPages(pageIds);
+  const byPage = new Map<string, PageComponent[]>();
+  for (const component of components) {
+    const list = byPage.get(component.page_id) ?? [];
+    list.push(component);
+    byPage.set(component.page_id, list);
+  }
+
+  const updates: { id: string; props: BlockProps }[] = [];
+  const inserts: {
+    page_id: string;
+    type: "banner";
+    position: number;
+    props: BlockProps;
+  }[] = [];
+
+  for (const pageId of pageIds) {
+    const list = byPage.get(pageId) ?? [];
+    const firstBanner = list
+      .filter((c) => c.type === "banner")
+      .sort((a, b) => a.position - b.position)[0];
+
+    if (firstBanner) {
+      const nextProps: BlockProps = { ...firstBanner.props };
+      if (trimmed) nextProps.imageUrl = trimmed;
+      else delete nextProps.imageUrl;
+      updates.push({ id: firstBanner.id, props: nextProps });
+    } else {
+      inserts.push({
+        page_id: pageId,
+        type: "banner",
+        position: 0,
+        props: trimmed ? { title: "", imageUrl: trimmed } : { title: "" },
+      });
+    }
+  }
+
+  for (const row of updates) {
+    const { error } = await supabase
+      .from("components")
+      .update({ props: row.props })
+      .eq("id", row.id);
+    if (error) fail("Syncing lesson banner to page", error);
+  }
+
+  if (inserts.length > 0) {
+    const { error } = await supabase.from("components").insert(inserts);
+    if (error) fail("Creating missing page banners for lesson sync", error);
+  }
+
+  await touchCourse(courseId);
 }
 
 export async function updatePage(

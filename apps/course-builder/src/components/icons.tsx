@@ -78,6 +78,18 @@ export const CheckIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+/** Home / course main page — simple house outline with door cutout. */
+export const HomeIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      transform="translate(12 0) scale(0.92 1) translate(-12 0)"
+      d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-9.5z"
+    />
+  </svg>
+);
+
 /** Arrow into tray — download / save backup. */
 export const DownloadIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

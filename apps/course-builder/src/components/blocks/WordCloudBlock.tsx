@@ -1,4 +1,5 @@
 import type { BlockProps, CourseViewMode } from "../../lib/types";
+import { AutoGrowTextField } from "./fields";
 
 const SAMPLE_WORDS = [
   { text: "מחט", size: "text-5xl", color: "text-[#2196F3]", weight: "font-black" },
@@ -70,12 +71,12 @@ export function WordCloudBlock({ props, mode, onChange }: Props) {
 
       {editable && (
         <div className="px-2">
-          <label className="text-xs text-surface-500 block mb-1">מילה מרכזית</label>
-          <input
-            className="w-full text-sm border border-surface-200 rounded px-2 py-1 outline-none focus:border-surface-400"
+          <AutoGrowTextField
             placeholder="מחט"
+            aria-label="מילה מרכזית"
             value={centerWord}
             onChange={(e) => onChange({ ...props, centerWord: e.target.value })}
+            className="text-sm rounded"
           />
         </div>
       )}

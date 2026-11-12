@@ -19,6 +19,8 @@ export interface Section {
   files_folder_url: string | null;
   /** לינק לתיקיית סרטונים של השיעור */
   videos_folder_url: string | null;
+  /** באנר משותף לכל עמודי השיעור (synced into each page's first banner) */
+  banner_image_url: string | null;
 }
 
 export interface Page {
@@ -78,10 +80,25 @@ export const SINGLETON_ACTIVITY_TYPES: ReadonlySet<ComponentType> = new Set([
 
 /** Component types that are always pinned to the bottom of the page. */
 export const PINNED_BOTTOM_TYPES: ReadonlySet<ComponentType> = new Set([
+  "question",
   "notes_board",
   "word_cloud",
   "forum",
 ]);
+
+/** Keep רכיבי תוכן above pinned activities (questions / board / cloud / forum). */
+export function partitionPinnedBottom(list: PageComponent[]): {
+  content: PageComponent[];
+  pinned: PageComponent[];
+  ordered: PageComponent[];
+  needsReorder: boolean;
+} {
+  const content = list.filter((c) => !PINNED_BOTTOM_TYPES.has(c.type));
+  const pinned = list.filter((c) => PINNED_BOTTOM_TYPES.has(c.type));
+  const ordered = [...content, ...pinned].map((c, position) => ({ ...c, position }));
+  const needsReorder = list.some((c, i) => c.id !== ordered[i]?.id);
+  return { content, pinned, ordered, needsReorder };
+}
 
 /**
  * Moodle/edX activity shape implied by a page's blocks.
@@ -171,6 +188,8 @@ export interface QuestionProps extends NotesProps {
   prompt?: string;
   options?: QuestionOption[];
   correctOptionId?: string;
+  /** Optional explanation shown for the correct answer(s). */
+  explanation?: string;
   /** Timestamp (MM:SS) when this question appears in an interactive video. */
   timestamp?: string;
 }

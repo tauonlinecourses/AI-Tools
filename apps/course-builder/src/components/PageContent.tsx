@@ -26,6 +26,7 @@ import {
   PAGE_TYPE_LABEL,
   PAGE_TYPE_LOGO,
   QUESTION_TYPE_LABEL,
+  partitionPinnedBottom,
 } from "../lib/types";
 import type { QuestionType } from "../lib/types";
 import * as api from "../lib/api";
@@ -35,7 +36,7 @@ import { htmlToPlainText, resolveTextHtml, sanitizeTextHtml } from "../lib/textH
 import { SortableList } from "./SortableList";
 import { BlockComments } from "./BlockComments";
 import { BlockRenderer } from "./blocks/BlockRenderer";
-import { NotesDisplay, TextField } from "./blocks/fields";
+import { AutoGrowTextField, NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
 import { validatePageQuestions } from "../lib/questionValidation";
 import {
@@ -55,6 +56,7 @@ import {
   CopyIcon,
   DuplicateIcon,
   GripIcon,
+  HomeIcon,
   LinkIcon,
   LockIcon,
   PencilIcon,
@@ -92,6 +94,9 @@ const BUTTON_ALIGN_OPTIONS: { value: ButtonAlign; label: string }[] = [
   { value: "center", label: "מרכז" },
   { value: "left", label: "שמאל" },
 ];
+
+/** Shared max length for video title and button label. */
+const SHORT_LABEL_MAX_LENGTH = 38;
 
 function HeaderFieldPopover({
   open,
@@ -453,6 +458,10 @@ export interface HomeCourseStructure {
   pageTypes: Map<string, PageType>;
   onSelectPage: (pageId: string) => void;
   onSelectSection: (sectionId: string) => void;
+  /** Edit mode: add a page under a lesson from the home-page lesson cards. */
+  onAddPage?: (sectionId: string) => void;
+  /** Edit mode: add a lesson from the home-page structure list. */
+  onAddSection?: () => void;
 }
 
 interface PageContentProps {
@@ -516,12 +525,16 @@ export function PageContent({
   const [openHeaderField, setOpenHeaderField] = useState<string | null>(null);
   /** Implement header copy feedback — which component just copied. */
   const [copiedComponentId, setCopiedComponentId] = useState<string | null>(null);
+  /** Edit mode: page header title is display text until double-clicked. */
+  const [editingTitle, setEditingTitle] = useState(false);
 
   // Debounced persistence for block props and page fields.
   const timers = useRef(new Map<string, number>());
   const pendingProps = useRef(new Map<string, BlockProps>());
   /** In-flight optimistic inserts — later mutations wait so the row exists first. */
   const pendingInserts = useRef(new Map<string, Promise<void>>());
+  /** After add/duplicate, scroll the main pane to this component id once it paints. */
+  const scrollToComponentId = useRef<string | null>(null);
   const copiedTimer = useRef<number | null>(null);
 
   // The shell re-creates these callbacks on every render (including the ones
@@ -536,6 +549,19 @@ export function PageContent({
   }
 
   useEffect(() => {
+    const id = scrollToComponentId.current;
+    if (!id || !components?.some((c) => c.id === id)) return;
+    scrollToComponentId.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.querySelector(
+        `[data-component-id="${CSS.escape(id)}"]`
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [components]);
+
+  useEffect(() => {
     setComponents(null);
     setCommentsByComponent(new Map());
     setPageComments([]);
@@ -543,13 +569,25 @@ export function PageContent({
     setError(null);
     setOpenHeaderField(null);
     setCopiedComponentId(null);
+    setEditingTitle(false);
+    scrollToComponentId.current = null;
     if (copiedTimer.current) {
       window.clearTimeout(copiedTimer.current);
       copiedTimer.current = null;
     }
     api
       .listComponents(page.id)
-      .then(setComponents)
+      .then((list) => {
+        const { ordered, needsReorder } = partitionPinnedBottom(list);
+        setComponents(ordered);
+        if (!needsReorder) return;
+        const { trackSave: track, onContentChange: notify } = flushDeps.current;
+        void track(
+          api.reorderComponents(ordered.map((c) => c.id)).then(() => {
+            notify();
+          })
+        ).catch((e: Error) => setError(e.message));
+      })
       .catch((e: Error) => setError(e.message));
     api
       .listCommentsForPage(page.id)
@@ -657,6 +695,14 @@ export function PageContent({
     });
   }
 
+  function commitTitleEdit(raw: string) {
+    setEditingTitle(false);
+    if (isHome) return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === page.title) return;
+    handleTitleChange(trimmed);
+  }
+
   async function handleSetWorkflowStatus(workflow_status: PageWorkflowStatus) {
     if (workflow_status === page.workflow_status) return;
 
@@ -720,6 +766,69 @@ export function PageContent({
     return map;
   })();
 
+  async function insertComponentAt(
+    type: ComponentType,
+    insertIdx: number,
+    list: PageComponent[]
+  ) {
+    const props = defaultProps(type);
+    const now = new Date().toISOString();
+    const optimistic: PageComponent = {
+      id: crypto.randomUUID(),
+      page_id: page.id,
+      type,
+      position: insertIdx,
+      props,
+      implemented_at: null,
+      updated_at: now,
+    };
+    const next = [
+      ...list.slice(0, insertIdx),
+      optimistic,
+      ...list.slice(insertIdx),
+    ].map((c, position) => ({ ...c, position }));
+    // Paint immediately; persist in the background with the same client id.
+    scrollToComponentId.current = optimistic.id;
+    setComponents(next);
+
+    let resolveInsert!: () => void;
+    let rejectInsert!: (reason: unknown) => void;
+    const insertReady = new Promise<void>((resolve, reject) => {
+      resolveInsert = resolve;
+      rejectInsert = reject;
+    });
+    pendingInserts.current.set(optimistic.id, insertReady);
+
+    let inserted = false;
+    try {
+      await trackSave(
+        (async () => {
+          try {
+            await api.addComponent(page.id, type, insertIdx, props, {
+              id: optimistic.id,
+              courseId,
+            });
+            inserted = true;
+            resolveInsert();
+          } catch (err) {
+            rejectInsert(err);
+            throw err;
+          }
+          if (insertIdx < list.length) {
+            await api.reorderComponents(next.map((c) => c.id));
+          }
+        })()
+      );
+      pendingInserts.current.delete(optimistic.id);
+      onContentChange();
+      onStatusChange();
+    } catch (e) {
+      pendingInserts.current.delete(optimistic.id);
+      if (!inserted) setComponents(list);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleAdd(type: ComponentType) {
     setError(null);
     const list = components ?? [];
@@ -760,61 +869,33 @@ export function PageContent({
       insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
     }
 
-    const props = defaultProps(type);
-    const now = new Date().toISOString();
-    const optimistic: PageComponent = {
-      id: crypto.randomUUID(),
-      page_id: page.id,
-      type,
-      position: insertIdx,
-      props,
-      implemented_at: null,
-      updated_at: now,
-    };
-    const next = [
-      ...list.slice(0, insertIdx),
-      optimistic,
-      ...list.slice(insertIdx),
-    ].map((c, position) => ({ ...c, position }));
-    // Paint immediately; persist in the background with the same client id.
-    setComponents(next);
+    await insertComponentAt(type, insertIdx, list);
+  }
 
-    let resolveInsert!: () => void;
-    let rejectInsert!: (reason: unknown) => void;
-    const insertReady = new Promise<void>((resolve, reject) => {
-      resolveInsert = resolve;
-      rejectInsert = reject;
-    });
-    pendingInserts.current.set(optimistic.id, insertReady);
+  /** Insert a fresh question component immediately after an existing question. */
+  async function handleAddQuestionAfter(afterId: string) {
+    setError(null);
+    const list = components ?? [];
+    const idx = list.findIndex((c) => c.id === afterId);
+    if (idx < 0) return;
 
-    let inserted = false;
-    try {
-      await trackSave(
-        (async () => {
-          try {
-            await api.addComponent(page.id, type, insertIdx, props, {
-              id: optimistic.id,
-              courseId,
-            });
-            inserted = true;
-            resolveInsert();
-          } catch (err) {
-            rejectInsert(err);
-            throw err;
-          }
-          if (insertIdx < list.length) {
-            await api.reorderComponents(next.map((c) => c.id));
-          }
-        })()
-      );
-      pendingInserts.current.delete(optimistic.id);
-      onContentChange();
-      onStatusChange();
-    } catch (e) {
-      pendingInserts.current.delete(optimistic.id);
-      if (!inserted) setComponents(list);
-      setError(e instanceof Error ? e.message : String(e));
+    if (isHome) {
+      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבי תוכן.");
+      return;
     }
+
+    const otherKind = list.find(
+      (c) => ACTIVITY_TYPES.has(c.type) && c.type !== "question"
+    );
+    if (otherKind) {
+      const existingLabel = typeMeta[otherKind.type]?.label ?? otherKind.type;
+      window.alert(
+        `לא ניתן להוסיף "שאלה" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
+      );
+      return;
+    }
+
+    await insertComponentAt("question", idx + 1, list);
   }
 
   async function handleDelete(id: string) {
@@ -877,6 +958,7 @@ export function PageContent({
       optimistic,
       ...list.slice(idx + 1),
     ].map((c, position) => ({ ...c, position }));
+    scrollToComponentId.current = optimistic.id;
     setComponents(next);
 
     let resolveInsert!: () => void;
@@ -1145,6 +1227,11 @@ export function PageContent({
             ? (text) => handleCopy(text)
             : undefined
         }
+        onAddQuestion={
+          editable && component.type === "question"
+            ? () => handleAddQuestionAfter(component.id)
+            : undefined
+        }
       />
     );
   }
@@ -1179,15 +1266,17 @@ export function PageContent({
       openHeaderField === `${component.id}:${field}`;
     const closeHeaderField = () => setOpenHeaderField(null);
 
-    return wrapWithComments(
-      component.id,
-      <Card
-        padding="none"
-        border={false}
-        className={`border-2 transition-colors duration-fast ${
-          isImplement ? statusBorderClass(status) : "border-surface-200"
-        }`}
-      >
+    return (
+      <div data-component-id={component.id}>
+        {wrapWithComments(
+          component.id,
+          <Card
+            padding="none"
+            border={false}
+            className={`border-2 transition-colors duration-fast ${
+              isImplement ? statusBorderClass(status) : "border-surface-200"
+            }`}
+          >
         <div
           className={`flex items-center gap-2 px-3 h-10 border-b-2 transition-colors duration-fast ${
             editable
@@ -1195,7 +1284,7 @@ export function PageContent({
               : statusHeaderClass(status)
           }`}
         >
-          {editable && handle && !isPinned && (
+          {editable && handle && (
             <button
               {...handle}
               className="p-1 text-surface-400 hover:text-surface-900 cursor-grab active:cursor-grabbing touch-none"
@@ -1296,14 +1385,15 @@ export function PageContent({
                 onToggle={() => toggleHeaderField(component.id, "video-title")}
                 onClose={closeHeaderField}
               >
-                <TextField
+                <AutoGrowTextField
                   autoFocus
+                  maxLength={SHORT_LABEL_MAX_LENGTH}
                   value={component.props.title ?? ""}
                   placeholder={`${page.title.trim() || "ללא כותרת"} | סרטון`}
                   onChange={(event) =>
                     handlePropsChange(component.id, {
                       ...component.props,
-                      title: event.target.value,
+                      title: event.target.value.slice(0, SHORT_LABEL_MAX_LENGTH),
                     })
                   }
                 />
@@ -1416,14 +1506,15 @@ export function PageContent({
                 onToggle={() => toggleHeaderField(component.id, "button-text")}
                 onClose={closeHeaderField}
               >
-                <TextField
+                <AutoGrowTextField
                   autoFocus
+                  maxLength={SHORT_LABEL_MAX_LENGTH}
                   value={component.props.text ?? ""}
                   placeholder="כפתור"
                   onChange={(event) =>
                     handlePropsChange(component.id, {
                       ...component.props,
-                      text: event.target.value,
+                      text: event.target.value.slice(0, SHORT_LABEL_MAX_LENGTH),
                     })
                   }
                 />
@@ -1583,7 +1674,7 @@ export function PageContent({
             )}
             {editable && (
               <>
-                {!isPinned && (
+                {!SINGLETON_ACTIVITY_TYPES.has(component.type) && (
                   <button
                     type="button"
                     className="p-1.5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
@@ -1624,31 +1715,62 @@ export function PageContent({
           )}
         </div>
       </Card>
+        )}
+      </div>
     );
   }
 
   const pageHeader = (
     <div className="flex flex-col gap-1 min-w-0 w-full">
       <div className="flex items-center gap-1.5 min-w-0 w-full">
-        {isImplement && components !== null && (
+        {isHome && (
+          <HomeIcon className="w-7 h-7 shrink-0 text-surface-700" />
+        )}
+        {isImplement && !isHome && components !== null && (
           <img
             src={PAGE_TYPE_LOGO[derivePageType(components.map((c) => c.type))]}
             alt=""
             className="w-7 h-7 shrink-0"
           />
         )}
-        {editable ? (
+        {editable && !isHome && editingTitle ? (
           <input
-            value={page.title}
+            autoFocus
+            defaultValue={page.title}
             title={page.title}
             placeholder="כותרת העמוד"
-            onChange={(e) => handleTitleChange(e.target.value)}
-            className="min-w-0 flex-1 truncate text-3xl font-semibold tracking-tight text-surface-900 bg-transparent outline-none border-b border-transparent transition-colors duration-fast"
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={(e) => commitTitleEdit(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTitleEdit(e.currentTarget.value);
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditingTitle(false);
+              }
+            }}
+            className="min-w-0 flex-1 truncate text-3xl font-semibold leading-none tracking-tight text-surface-900 bg-transparent outline-none border-b border-surface-200 transition-colors duration-fast"
           />
         ) : (
           <h1
-            className="min-w-0 flex-1 truncate text-3xl font-semibold tracking-tight text-surface-900"
-            title={page.title}
+            className={`min-w-0 flex-1 truncate text-3xl font-semibold leading-none tracking-tight text-surface-900 ${
+              editable && !isHome ? "cursor-text" : ""
+            }`}
+            title={
+              editable && !isHome
+                ? `${page.title} — לחצו פעמיים לשינוי שם`
+                : page.title
+            }
+            onDoubleClick={
+              editable && !isHome
+                ? (e) => {
+                    e.preventDefault();
+                    setEditingTitle(true);
+                  }
+                : undefined
+            }
           >
             {page.title}
           </h1>
@@ -1742,28 +1864,40 @@ export function PageContent({
         <>
           {components.length === 0 && (
             <p className="text-base text-surface-400 mb-4">
-              {editable
-                ? "אין עדיין רכיבים בעמוד. הוסיפו רכיב ראשון למטה."
-                : "אין רכיבים בעמוד."}
+              {isHome
+                ? "זהו העמוד הראשי של הקורס, עמוד זה יכלול את הרכיבים הכלליים של הקורס ואת רשימת השיעורים והעמודים הקיימים בקורס. ניתן להוסיף שיעור חדש באמצעות הכפתור בתחתית העמוד או בתפריט הצד."
+                : editable
+                  ? "אין עדיין רכיבים בעמוד. הוסיפו רכיב ראשון למטה."
+                  : "אין רכיבים בעמוד."}
             </p>
           )}
 
           {editable ? (
-            <>
-              <SortableList
-                items={components.filter((c) => !PINNED_BOTTOM_TYPES.has(c.type))}
-                onReorder={(reordered) => {
-                  const pinned = components.filter((c) => PINNED_BOTTOM_TYPES.has(c.type));
-                  handleReorder([...reordered, ...pinned]);
-                }}
-                renderItem={(component, handle) => renderComponentCard(component, handle)}
-              />
-              {components
-                .filter((c) => PINNED_BOTTOM_TYPES.has(c.type))
-                .map((component) => (
-                  <div key={component.id}>{renderComponentCard(component)}</div>
-                ))}
-            </>
+            (() => {
+              const { content, pinned } = partitionPinnedBottom(components);
+              return (
+                <>
+                  <SortableList
+                    items={content}
+                    onReorder={(reordered) => {
+                      handleReorder([...reordered, ...pinned]);
+                    }}
+                    renderItem={(component, handle) =>
+                      renderComponentCard(component, handle)
+                    }
+                  />
+                  <SortableList
+                    items={pinned}
+                    onReorder={(reordered) => {
+                      handleReorder([...content, ...reordered]);
+                    }}
+                    renderItem={(component, handle) =>
+                      renderComponentCard(component, handle)
+                    }
+                  />
+                </>
+              );
+            })()
           ) : isReview ? (
             components.map((component) => (
               <div key={component.id}>{renderPreviewBlock(component)}</div>
@@ -1840,10 +1974,27 @@ export function PageContent({
                 onSelectLesson={() =>
                   homeCourseStructure.onSelectSection(section.id)
                 }
+                onAddPage={
+                  homeCourseStructure.onAddPage
+                    ? () => homeCourseStructure.onAddPage!(section.id)
+                    : undefined
+                }
                 opensAt={section.opens_at}
+                filesFolderUrl={section.files_folder_url}
+                videosFolderUrl={section.videos_folder_url}
                 resetKey={section.id}
               />
             ))
+          )}
+          {homeCourseStructure.onAddSection && (
+            <button
+              type="button"
+              className="flex items-center gap-1.5 self-start h-10 text-base font-semibold text-surface-500 hover:text-surface-900 transition-colors duration-fast"
+              onClick={homeCourseStructure.onAddSection}
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
+              הוספת שיעור חדש
+            </button>
           )}
         </div>
       )}

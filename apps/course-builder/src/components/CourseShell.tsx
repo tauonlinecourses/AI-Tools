@@ -25,6 +25,7 @@ import {
   FilmIcon,
   FolderIcon,
   GripIcon,
+  HomeIcon,
   MoreVerticalIcon,
   PencilIcon,
   PlusIcon,
@@ -452,8 +453,9 @@ export function CourseShell({ mode }: CourseShellProps) {
 
   // ─── Section mutations ────────────────────────────────────────────────────
 
-  async function handleAddSection() {
+  async function handleAddSection(options?: { open?: boolean }) {
     if (!tree || !courseId) return;
+    const open = options?.open ?? true;
     try {
       const section = await trackSave(
         api.addSection(courseId, "שיעור חדש", tree.sections.length)
@@ -461,6 +463,8 @@ export function CourseShell({ mode }: CourseShellProps) {
       setTree((prev) => (prev ? { ...prev, sections: [...prev.sections, section] } : prev));
       markCourseTouched();
       setRenaming({ kind: "section", id: section.id });
+      // Sidebar create opens the new lesson; main-pane create stays on the current view.
+      if (open) selectSection(section.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -470,6 +474,10 @@ export function CourseShell({ mode }: CourseShellProps) {
     setRenaming(null);
     const trimmed = title.trim();
     if (!trimmed) return;
+    // Course home page title is fixed ("עמוד ראשי") and cannot be renamed.
+    if (kind === "page" && tree?.pages.some((p) => p.id === id && isHomePage(p))) {
+      return;
+    }
     setTree((prev) => {
       if (!prev) return prev;
       return kind === "section"
@@ -560,14 +568,19 @@ export function CourseShell({ mode }: CourseShellProps) {
 
   // ─── Page mutations ───────────────────────────────────────────────────────
 
-  async function handleAddPage(sectionId: string) {
+  async function handleAddPage(
+    sectionId: string,
+    options?: { open?: boolean }
+  ) {
     const siblings = pagesBySection.get(sectionId) ?? [];
+    const open = options?.open ?? true;
     try {
       const page = await trackSave(api.addPage(sectionId, "עמוד חדש", siblings.length));
       setTree((prev) => (prev ? { ...prev, pages: [...prev.pages, page] } : prev));
       markCourseTouched();
       setRenaming({ kind: "page", id: page.id });
-      selectPage(page.id);
+      // Sidebar create opens the new page; main-pane create stays on the current view.
+      if (open) selectPage(page.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -628,6 +641,12 @@ export function CourseShell({ mode }: CourseShellProps) {
     fields: Partial<Pick<Page, "title" | "notes" | "workflow_status">>
   ) {
     if (!selectedPage) return;
+    // Home page title is fixed; ignore title patches for it.
+    if (isHomePage(selectedPage) && "title" in fields) {
+      const { title: _ignored, ...rest } = fields;
+      fields = rest;
+      if (Object.keys(fields).length === 0) return;
+    }
     setTree((prev) =>
       prev
         ? {
@@ -649,6 +668,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         | "assignments_due_at"
         | "files_folder_url"
         | "videos_folder_url"
+        | "banner_image_url"
       >
     >
   ) {
@@ -763,7 +783,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           if (!isUnavailableInImplement) selectPage(page.id);
         }}
         onDoubleClick={(e) => {
-          if (!editable || isRenaming) return;
+          if (!editable || isRenaming || isHome) return;
           e.preventDefault();
           e.stopPropagation();
           setOpenMenu(null);
@@ -806,6 +826,13 @@ export function CourseShell({ mode }: CourseShellProps) {
             }`}
           />
         )}
+        {isHome && (
+          <HomeIcon
+            className={`w-4 h-4 shrink-0 ${
+              isSelected ? "text-white" : "text-surface-500"
+            }`}
+          />
+        )}
         {isRenaming ? (
           renderRenameInput("page", page.id, page.title)
         ) : (
@@ -844,7 +871,7 @@ export function CourseShell({ mode }: CourseShellProps) {
           </span>
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}
-        {editable && !isRenaming && (
+        {editable && !isRenaming && !isHome && (
           <SidebarRowMenu
             open={openMenu?.kind === "page" && openMenu.id === page.id}
             selectedTone={isSelected}
@@ -863,21 +890,17 @@ export function CourseShell({ mode }: CourseShellProps) {
                 icon: <PencilIcon className="w-3.5 h-3.5 text-surface-500" />,
                 onClick: () => setRenaming({ kind: "page", id: page.id }),
               },
-              ...(!isHome
-                ? [
-                    {
-                      label: "שכפול עמוד",
-                      icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
-                      onClick: () => handleDuplicatePage(page),
-                    },
-                    {
-                      label: "מחיקת עמוד",
-                      icon: <TrashIcon className="w-3.5 h-3.5" />,
-                      danger: true,
-                      onClick: () => handleDeletePage(page),
-                    },
-                  ]
-                : []),
+              {
+                label: "שכפול עמוד",
+                icon: <DuplicateIcon className="w-4 h-4 text-surface-500" />,
+                onClick: () => handleDuplicatePage(page),
+              },
+              {
+                label: "מחיקת עמוד",
+                icon: <TrashIcon className="w-3.5 h-3.5" />,
+                danger: true,
+                onClick: () => handleDeletePage(page),
+              },
             ]}
           />
         )}
@@ -1075,13 +1098,13 @@ export function CourseShell({ mode }: CourseShellProps) {
             )}
             {editable && (
               <button
-                className="flex items-center gap-1.5 mx-2 ps-5 pe-2 h-8 text-sm text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+                className="flex items-center gap-1.5 mx-2 ps-5 pe-2 h-9 text-base text-surface-500 hover:text-surface-900 transition-colors duration-fast"
                 onClick={() => handleAddPage(section.id)}
               >
                 {/* Match page-row grip slot so + aligns with page numbers */}
                 <span className="w-4 shrink-0" aria-hidden />
-                <PlusIcon className="w-3 h-3" />
-                עמוד חדש
+                <PlusIcon className="w-3.5 h-3.5" />
+                הוספת עמוד חדש
               </button>
             )}
           </div>
@@ -1155,29 +1178,48 @@ export function CourseShell({ mode }: CourseShellProps) {
               </span>
             )}
             {tree && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 self-start">
+              <div className="flex w-full items-center justify-between gap-2">
                 <button
                   type="button"
-                  onClick={handleExportBackup}
-                  disabled={exportingBackup || exportingMbz}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
-                  title="שמירת כל תוכן הקורס לקובץ JSON במחשב"
+                  onClick={selectOverview}
+                  title="סקירת מבנה והתקדמות הקורס"
+                  className={`flex items-center gap-1.5 min-w-0 px-2 h-9 rounded-lg text-base transition-colors duration-fast ${
+                    showOverview
+                      ? "bg-[#0F6CBF] text-white font-medium"
+                      : "text-surface-600 hover:bg-white hover:text-surface-900"
+                  }`}
                 >
-                  <DownloadIcon className="w-4 h-4" />
-                  {exportingBackup ? "שומר גיבוי..." : "שמור גיבוי"}
+                  <ChartPieIcon
+                    className={`w-4 h-4 shrink-0 ${
+                      showOverview ? "text-white" : "text-surface-500"
+                    }`}
+                  />
+                  <span className="truncate">סקירת קורס</span>
                 </button>
-                {mbzSource && (
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0">
                   <button
                     type="button"
-                    onClick={handleExportMbz}
+                    onClick={handleExportBackup}
                     disabled={exportingBackup || exportingMbz}
                     className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
-                    title={`הורדת MBZ מעודכן — יתבקש לבחור את הקובץ המקורי (${mbzSource.source_filename})`}
+                    title="שמירת כל תוכן הקורס לקובץ JSON במחשב"
                   >
                     <DownloadIcon className="w-4 h-4" />
-                    {exportingMbz ? "מייצא MBZ..." : "הורד MBZ"}
+                    {exportingBackup ? "שומר גיבוי..." : "שמירת גיבוי"}
                   </button>
-                )}
+                  {mbzSource && (
+                    <button
+                      type="button"
+                      onClick={handleExportMbz}
+                      disabled={exportingBackup || exportingMbz}
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-surface-700 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast"
+                      title={`הורדת MBZ מעודכן — יתבקש לבחור את הקובץ המקורי (${mbzSource.source_filename})`}
+                    >
+                      <DownloadIcon className="w-4 h-4" />
+                      {exportingMbz ? "מייצא MBZ..." : "הורד MBZ"}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             {backupError && (
@@ -1190,24 +1232,6 @@ export function CourseShell({ mode }: CourseShellProps) {
               <div className="flex items-center gap-2 px-4 py-2 text-base text-surface-600">
                 <Spinner size="sm" />
                 טוען...
-              </div>
-            )}
-            {tree !== null && (
-              <div
-                className={`group flex items-center gap-1.5 mx-2 ps-2 pe-2 h-9 rounded-lg text-base transition-colors duration-fast cursor-pointer mb-1 ${
-                  showOverview
-                    ? "bg-[#0F6CBF] text-white font-medium"
-                    : "text-surface-600 hover:bg-white hover:text-surface-900"
-                }`}
-                onClick={selectOverview}
-                title="סקירת מבנה והתקדמות הקורס"
-              >
-                <ChartPieIcon
-                  className={`w-4 h-4 shrink-0 ${
-                    showOverview ? "text-white" : "text-surface-500"
-                  }`}
-                />
-                <span className="truncate">סקירת קורס</span>
               </div>
             )}
             {tree !== null && homePage && (
@@ -1233,12 +1257,12 @@ export function CourseShell({ mode }: CourseShellProps) {
             {editable && tree !== null && (
               <button
                 className="flex items-center gap-1.5 px-2 h-10 mt-1 text-base font-semibold text-surface-500 hover:text-surface-900 transition-colors duration-fast w-full"
-                onClick={handleAddSection}
+                onClick={() => handleAddSection()}
               >
                 {/* Match section-row grip slot (chevron not reserved — sits slightly right of titles) */}
                 <span className="w-4 shrink-0" aria-hidden />
                 <PlusIcon className="w-3.5 h-3.5" />
-                שיעור חדש
+                הוספת שיעור חדש
               </button>
             )}
           </nav>
@@ -1261,7 +1285,7 @@ export function CourseShell({ mode }: CourseShellProps) {
             selectedSection === null &&
             !showOverview &&
             selectedPage === null && (
-            <div className="max-w-3xl mx-auto px-6 py-10 text-center">
+            <div className="max-w-3xl mx-auto px-6 py-10 text-center flex flex-col items-center gap-4">
               <p className="text-sm text-surface-500">
                 {blockedRequestedSection
                   ? `השיעור "${blockedRequestedSection.title}" עדיין בעבודה ואינו זמין בתצוגת ההטמעה.`
@@ -1273,6 +1297,18 @@ export function CourseShell({ mode }: CourseShellProps) {
                         ? "אין עדיין עמודים שמוכנים להטמעה."
                         : "אין עמודים בקורס הזה."}
               </p>
+              {editable &&
+                !blockedRequestedSection &&
+                !blockedRequestedPage && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 h-10 text-base font-semibold text-surface-500 hover:text-surface-900 transition-colors duration-fast"
+                    onClick={() => handleAddSection({ open: false })}
+                  >
+                    <PlusIcon className="w-3.5 h-3.5" />
+                    הוספת שיעור חדש
+                  </button>
+                )}
             </div>
           )}
           {!error && tree !== null && showOverview && (
@@ -1286,6 +1322,11 @@ export function CourseShell({ mode }: CourseShellProps) {
               pages={pagesBySection.get(selectedSection.id) ?? []}
               pageTypes={pageTypes}
               onSelectPage={selectPage}
+              onAddPage={
+                editable
+                  ? () => handleAddPage(selectedSection.id, { open: false })
+                  : undefined
+              }
               onSectionChange={handleSectionFieldChange}
               onPagesWorkflowStatusChange={(status) =>
                 handleSectionPagesWorkflowStatusChange(
@@ -1312,6 +1353,13 @@ export function CourseShell({ mode }: CourseShellProps) {
                       pageTypes,
                       onSelectPage: selectPage,
                       onSelectSection: selectSection,
+                      onAddPage: editable
+                        ? (sectionId) =>
+                            handleAddPage(sectionId, { open: false })
+                        : undefined,
+                      onAddSection: editable
+                        ? () => handleAddSection({ open: false })
+                        : undefined,
                     }
                   : null
               }

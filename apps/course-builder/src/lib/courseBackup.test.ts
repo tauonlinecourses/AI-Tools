@@ -25,6 +25,7 @@ function validBackup() {
         assignments_due_at: null,
         files_folder_url: null,
         videos_folder_url: null,
+        banner_image_url: null,
       },
     ],
     pages: [

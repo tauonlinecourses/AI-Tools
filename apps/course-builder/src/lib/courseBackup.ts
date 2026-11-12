@@ -50,6 +50,7 @@ export interface BackupSection {
   assignments_due_at: string | null;
   files_folder_url: string | null;
   videos_folder_url: string | null;
+  banner_image_url: string | null;
 }
 
 export interface BackupPage {
@@ -154,6 +155,7 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
     assignments_due_at: s.assignments_due_at,
     files_folder_url: s.files_folder_url,
     videos_folder_url: s.videos_folder_url,
+    banner_image_url: s.banner_image_url,
   }));
 
   const pages: BackupPage[] = tree.pages.map((p) => ({
@@ -261,6 +263,7 @@ export function parseCourseBackup(raw: unknown): CourseBackup {
       assignments_due_at: asNullableString(item.assignments_due_at),
       files_folder_url: asNullableString(item.files_folder_url),
       videos_folder_url: asNullableString(item.videos_folder_url),
+      banner_image_url: asNullableString(item.banner_image_url),
     };
   });
 
@@ -471,6 +474,7 @@ export async function importCourseBackup(backup: CourseBackup): Promise<string> 
         assignments_due_at: s.assignments_due_at,
         files_folder_url: s.files_folder_url,
         videos_folder_url: s.videos_folder_url,
+        banner_image_url: s.banner_image_url,
       }));
       const { error } = await supabase.from("sections").insert(sectionRows);
       if (error) fail(`ייבוא שיעורים נכשל: ${error.message}`);

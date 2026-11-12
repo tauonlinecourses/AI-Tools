@@ -134,11 +134,11 @@ export function InteractiveVideoBlock({
         {editable && (
           <button
             type="button"
-            className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-surface-600 hover:text-surface-900 transition-colors duration-fast py-1"
+            className="self-center inline-flex items-center gap-1.5 text-sm font-semibold text-surface-600 hover:text-surface-900 transition-colors duration-fast py-1"
             onClick={addQuestion}
           >
             <PlusIcon className="w-3.5 h-3.5" />
-            הוסף שאלה
+            הוספת שאלה
           </button>
         )}
         </div>}

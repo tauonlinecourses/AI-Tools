@@ -15,6 +15,7 @@ function section(id: string, position = 0): Section {
     assignments_due_at: null,
     files_folder_url: null,
     videos_folder_url: null,
+    banner_image_url: null,
   };
 }
 
