@@ -133,7 +133,7 @@ apps/course-builder/
     components/
       CourseShell.tsx            â†’ shared layout (sidebar + main) for all three modes; שמירת גיבוי in sidebar header; `?view=overview` course analytics
       CourseOverview.tsx         â†’ course-level stats + recharts (page types, workflow, implement progress, component types)
-      PageContent.tsx            â†’ page header + page-header comments, component list, add picker, comment loading; home page also lists all lessons via LessonPagesCard
+      PageContent.tsx            → page header + page-header comments, component list, add picker, sticky **מפת רכיבים** (`PageComponentMap`: icon-only outline on the visual-right / RTL start; click scrolls to `data-component-id`; highlights the in-view block), comment loading; home page also lists all lessons via LessonPagesCard
       SectionOverview.tsx        → lesson overview (הגדרות השיעור panel + באנר השיעור sync + LessonPagesCard)
       LessonPagesCard.tsx        → shared Moodle-style collapsible lesson → pages list; lesson title `text-xl` link-blue; expand/collapse chevron on visual left (RTL end); optional `opensAt` tag ("זמין לסטודנטים החל מ") under title on home page; files/videos folder buttons when URLs are set
       BlockComments.tsx          â†’ gutter comment icon + Word-style thread panel (blocks + page header, all modes)
