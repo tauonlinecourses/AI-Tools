@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
@@ -58,7 +58,6 @@ import {
   GripIcon,
   HomeIcon,
   LinkIcon,
-  LockIcon,
   PencilIcon,
   PlusIcon,
   QuestionIcon,
@@ -72,6 +71,8 @@ import {
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 import { PageComponentMap } from "./PageComponentMap";
+import { ComponentPicker } from "./ComponentPicker";
+import { lockReason, pushRecent } from "../lib/componentCatalog";
 
 /** Sentinel for the open page-header comment thread (mutually exclusive with block threads). */
 const PAGE_COMMENTS_OPEN_ID = "__page_comments__";
@@ -292,22 +293,6 @@ function activityPickerPageType(
   return type === "question" ? "h5p" : type;
 }
 
-const MAIN_COMPONENT_TYPES: ComponentType[] = [
-  "banner",
-  "video",
-  "text",
-  "image",
-  "text_unit",
-  "interactive_unit",
-  "button",
-];
-const ACTIVITY_COMPONENT_TYPES: ComponentType[] = [
-  "question",
-  "notes_board",
-  "word_cloud",
-  "forum",
-];
-
 /** Larger icons for the add-component picker tiles. */
 function pickerTileIcon(type: ComponentType): React.ReactNode {
   const cls = "w-5 h-5";
@@ -336,59 +321,6 @@ function pickerTileIcon(type: ComponentType): React.ReactNode {
         "w-5 h-5 object-contain shrink-0"
       );
   }
-}
-
-function canAddActivityType(
-  type: ComponentType,
-  list: PageComponent[],
-  isHome: boolean
-): boolean {
-  if (isHome || !ACTIVITY_TYPES.has(type)) return false;
-  const otherKind = list.find((c) => ACTIVITY_TYPES.has(c.type) && c.type !== type);
-  if (otherKind) return false;
-  if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
-    return false;
-  }
-  return true;
-}
-
-function AddComponentTile({
-  type,
-  disabled,
-  onAdd,
-}: {
-  type: ComponentType;
-  disabled?: boolean;
-  onAdd: (type: ComponentType) => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onAdd(type)}
-      className={`flex flex-col items-center justify-center gap-2 rounded-[12px] bg-white px-2 py-3.5 transition-colors duration-fast ${
-        disabled
-          ? "cursor-not-allowed opacity-40 shadow-none"
-          : "shadow-[0_1px_3px_rgba(15,108,191,0.1)] hover:bg-[#F8FBFE] hover:shadow-[0_2px_6px_rgba(15,108,191,0.14)]"
-      }`}
-    >
-      <span
-        className={`flex h-9 w-9 items-center justify-center rounded-[8px] ${
-          disabled ? "bg-[#E8EEF4] text-surface-400" : "bg-[#E8F2FB] text-[#0F6CBF]"
-        }`}
-        aria-hidden
-      >
-        {pickerTileIcon(type)}
-      </span>
-      <span
-        className={`text-sm font-medium ${
-          disabled ? "text-surface-400" : "text-[#1B3A5C]"
-        }`}
-      >
-        {typeMeta[type].label}
-      </span>
-    </button>
-  );
 }
 
 function emptyChoiceOptions(count: number) {
@@ -521,6 +453,9 @@ export function PageContent({
   const [pageComments, setPageComments] = useState<PageComment[]>([]);
   /** At most one open comment thread at a time. */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
+  /** Where an inline "+" picker is open (before index `at`). The bottom bar is always shown. */
+  const [pickerAt, setPickerAt] = useState<{ at: number } | null>(null);
+  const closePicker = useCallback(() => setPickerAt(null), []);
   const [error, setError] = useState<string | null>(null);
   /** At most one field popover in a block header is open. */
   const [openHeaderField, setOpenHeaderField] = useState<string | null>(null);
@@ -911,47 +846,83 @@ export function PageContent({
     }
   }
 
-  async function handleAdd(type: ComponentType) {
+  /**
+   * Insert from the component picker. Content types go at `at` (never below
+   * pinned activities); activities always go to the bottom of the page.
+   */
+  async function handleInsertAt(type: ComponentType, at: number) {
     setError(null);
     const list = components ?? [];
-
-    if (isHome && ACTIVITY_TYPES.has(type)) {
-      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבי תוכן.");
+    const reason = lockReason(type, list, isHome);
+    if (reason) {
+      window.alert(reason);
       return;
     }
-
-    if (ACTIVITY_TYPES.has(type)) {
-      const otherKind = list.find(
-        (c) => ACTIVITY_TYPES.has(c.type) && c.type !== type
-      );
-      if (otherKind) {
-        const existingLabel = typeMeta[otherKind.type]?.label ?? otherKind.type;
-        const newLabel = typeMeta[type]?.label ?? type;
-        window.alert(
-          `לא ניתן להוסיף "${newLabel}" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
-        );
-        return;
-      }
-      // notes_board / word_cloud / forum: only one instance; question may repeat.
-      if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
-        const label = typeMeta[type]?.label ?? type;
-        window.alert(
-          `לא ניתן להוסיף עוד "${label}" — ניתן להוסיף פעילות זו פעם אחת בלבד בכל עמוד (רק שאלה ניתנת להוספה יותר מפעם אחת).`
-        );
-        return;
-      }
-    }
-
-    const isPinned = PINNED_BOTTOM_TYPES.has(type);
-    let insertIdx: number;
-    if (isPinned) {
-      insertIdx = list.length;
-    } else {
-      const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
-      insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
-    }
-
+    setPickerAt(null);
+    pushRecent(type);
+    const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+    const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+    const insertIdx = PINNED_BOTTOM_TYPES.has(type)
+      ? list.length
+      : Math.min(at, contentEnd);
     await insertComponentAt(type, insertIdx, list);
+  }
+
+  /** Inline "+" between blocks plus, when open, the picker for that spot. */
+  function renderInserter(at: number, list: PageComponent[]) {
+    const open = pickerAt?.at === at;
+    return (
+      <>
+        <div className="group/ins relative h-0">
+          <div className="absolute inset-x-0 -top-3 flex h-3 items-center justify-center">
+            <span
+              aria-hidden
+              className={`absolute inset-x-2 top-1/2 border-t-2 border-[#0F6CBF] transition-opacity duration-fast ${
+                open ? "opacity-45" : "opacity-0 group-hover/ins:opacity-45 group-focus-within/ins:opacity-45"
+              }`}
+            />
+            <button
+              type="button"
+              data-picker-trigger
+              aria-label="הוספת רכיב כאן"
+              aria-expanded={open}
+              onClick={() => setPickerAt(open ? null : { at })}
+              className={`relative z-10 flex h-[22px] w-[22px] items-center justify-center rounded-full border-[1.5px] border-[#0F6CBF] transition-opacity duration-fast focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F6CBF] [@media(hover:none)]:opacity-100 ${
+                open
+                  ? "bg-[#0F6CBF] text-white opacity-100"
+                  : "bg-white text-[#0F6CBF] opacity-0 group-hover/ins:opacity-100"
+              }`}
+            >
+              <PlusIcon className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+        {open && renderPicker(at, false, list)}
+      </>
+    );
+  }
+
+  function renderPicker(at: number, end: boolean, list: PageComponent[]) {
+    const prev = at > 0 ? list[at - 1] : null;
+    return (
+      <ComponentPicker
+        key={`${at}:${end}`}
+        prevType={prev?.type ?? null}
+        contextLabel={
+          end
+            ? "הוספה בסוף העמוד"
+            : prev
+              ? `הוספה אחרי: ${typeMeta[prev.type]?.label ?? prev.type}`
+              : "הוספה בראש העמוד"
+        }
+        components={list}
+        isHome={isHome}
+        iconFor={pickerTileIcon}
+        onPick={(type) => void handleInsertAt(type, at)}
+        onClose={closePicker}
+        persistent={end}
+      />
+    );
   }
 
   /** Insert a fresh question component immediately after an existing question. */
@@ -1986,10 +1957,14 @@ export function PageContent({
                     onReorder={(reordered) => {
                       handleReorder([...reordered, ...pinned]);
                     }}
-                    renderItem={(component, handle) =>
-                      renderComponentCard(component, handle)
-                    }
+                    renderItem={(component, handle) => (
+                      <>
+                        {renderInserter(content.indexOf(component), components)}
+                        {renderComponentCard(component, handle)}
+                      </>
+                    )}
                   />
+                  {pinned.length > 0 && renderInserter(content.length, components)}
                   <SortableList
                     items={pinned}
                     onReorder={(reordered) => {
@@ -2013,50 +1988,8 @@ export function PageContent({
           )}
 
           {editable && (
-            <div className="relative z-0 mt-3 rounded-[16px] border border-dashed border-[#B7D0E8] bg-[#F0F5FA] px-4 pb-5 pt-7">
-              <div
-                className="pointer-events-none absolute left-1/2 top-0 z-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D4E5F5] text-[#0F6CBF]"
-                aria-hidden
-              >
-                <PlusIcon className="w-4 h-4" />
-              </div>
-
-              <div className="flex flex-col gap-5">
-                <div>
-                  <span className="mb-3 block text-center text-sm font-semibold text-[#1B3A5C]">
-                    רכיבי תוכן
-                  </span>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    {MAIN_COMPONENT_TYPES.map((type) => (
-                      <AddComponentTile key={type} type={type} onAdd={handleAdd} />
-                    ))}
-                  </div>
-                </div>
-
-                {!isHome && (
-                  <div>
-                    <div className="mb-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                      <span className="text-sm font-semibold text-[#1B3A5C]">פעילויות</span>
-                      {components.some((c) => ACTIVITY_TYPES.has(c.type)) && (
-                        <span className="inline-flex items-center gap-1 text-xs text-surface-500">
-                          <LockIcon className="w-3.5 h-3.5 shrink-0" />
-                          כבר יש פעילות בעמוד. ניתן להוסיף רק סוג פעילות אחד בעמוד
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                      {ACTIVITY_COMPONENT_TYPES.map((type) => (
-                        <AddComponentTile
-                          key={type}
-                          type={type}
-                          disabled={!canAddActivityType(type, components, isHome)}
-                          onAdd={handleAdd}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="mt-3">
+              {renderPicker(components.length, true, components)}
             </div>
           )}
         </>
