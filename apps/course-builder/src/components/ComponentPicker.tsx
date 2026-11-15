@@ -308,7 +308,7 @@ export function ComponentPicker({
   const sectionHeader = (id: CategoryId) => {
     const c = CATEGORIES.find((x) => x.id === id)!;
     return (
-      <div className="mx-1 mb-1 mt-3 flex items-center gap-1.5 text-xs font-semibold text-surface-500 first:mt-0.5">
+      <div className="mx-1 mb-1 mt-3 flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-surface-500 first:mt-0.5">
         <span className="h-2 w-2 rounded-[2px]" style={{ background: c.color }} />
         {c.label}
         {id === "social" || id === "quiz" ? (
@@ -531,6 +531,18 @@ export function ComponentPicker({
                   כל תבנית מוסיפה כמה רכיבים יחד. שאלות ופעילויות נוספות לתחתית העמוד.
                 </p>
                 {templateGrid}
+              </div>
+            ) : view === "all" ? (
+              // Categories flow inline and wrap only once a row is full.
+              <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                {shownCats.map((id) => (
+                  <div key={id} className="min-w-0">
+                    {sectionHeader(id)}
+                    <div className="grid grid-flow-col auto-cols-[84px] gap-0.5">
+                      {CATALOG.filter((i) => i.category === id).map((i) => tile(i.type))}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               shownCats.map((id) => (
