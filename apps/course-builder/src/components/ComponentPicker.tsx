@@ -4,18 +4,24 @@ import {
   CATALOG,
   CATEGORIES,
   POPULAR,
+  TEMPLATES,
   catalogItem,
+  componentLabel,
+  componentOf,
   lockReason,
   readRecent,
   searchCatalog,
   suggestionsAfter,
+  suggestTemplates,
+  templateLockReason,
   type CatalogItem,
+  type ComponentTemplate,
   type CategoryId,
   type PickerType,
 } from "../lib/componentCatalog";
 import { ChevronDownIcon, LockIcon } from "./icons";
 
-type View = "home" | "all" | CategoryId;
+type View = "home" | "all" | "templates" | CategoryId;
 
 const SearchIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={`shrink-0 ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -25,6 +31,11 @@ const SearchIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 const SparkIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   <svg className={`shrink-0 ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
     <path strokeLinecap="round" d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" />
+  </svg>
+);
+const LayersIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
+  <svg className={`shrink-0 ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5" />
   </svg>
 );
 const ClockIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -41,7 +52,7 @@ const TILE_GAP = 2; // gap-0.5
 const SEPARATOR = 1 + 12 * 2; // 1px line + gap-x-3 on each side
 
 /**
- * Quick bar layout: how many "most used" tiles fit next to the suggestions,
+ * Quick bar layout: how many "most used" tiles fit next to the recommended templates,
  * and one shared tile width that makes the row end flush (no leftover gap).
  */
 function fitQuickBar(
@@ -60,7 +71,7 @@ function fitQuickBar(
 }
 
 /**
- * Add-component menu: opens as a quick bar (suggestions for this spot + most
+ * Add-component menu: opens as a quick bar (recommended templates for this spot + most
  * used types) that expands into search, a category rail and the full catalog.
  */
 export function ComponentPicker({
@@ -70,6 +81,7 @@ export function ComponentPicker({
   isHome,
   iconFor,
   onPick,
+  onPickTemplate,
   onClose,
   persistent = false,
 }: {
@@ -79,8 +91,10 @@ export function ComponentPicker({
   contextLabel: string;
   components: PageComponent[];
   isHome: boolean;
-  iconFor: (type: PickerType) => React.ReactNode;
+  iconFor: (type: ComponentType) => React.ReactNode;
   onPick: (type: PickerType) => void;
+  /** Insert several components at once. */
+  onPickTemplate: (template: ComponentTemplate) => void;
   onClose: () => void;
   /**
    * Always-visible bar (bottom of the page): no focus grab on mount, no
@@ -112,7 +126,8 @@ export function ComponentPicker({
   }, [expanded]);
 
   const suggestions = suggestionsAfter(prevType);
-  const reason = (t: PickerType) => lockReason(t, components, isHome);
+  const quickTemplates = suggestTemplates(prevType, components, isHome);
+  const reason = (t: PickerType) => lockReason(componentOf(t), components, isHome);
   const results = useMemo(() => searchCatalog(query), [query]);
 
   // Focus: first open tile in the quick bar, search box once expanded.
@@ -214,27 +229,49 @@ export function ComponentPicker({
     );
   };
 
-  const chip = (t: PickerType) => {
-    const item = catalogItem(t);
-    const r = reason(t);
+  /** Fixed-width tile, same look as the quick bar. */
+  const tileSlot = (t: PickerType) => (
+    <div key={t} className="w-[84px] shrink-0">
+      {tile(t)}
+    </div>
+  );
+
+  const templateCard = (template: ComponentTemplate) => {
+    const r = templateLockReason(template, components, isHome);
     return (
       <button
-        key={t}
+        key={template.id}
         type="button"
-        data-pick={t}
         aria-disabled={r ? true : undefined}
-        title={r ?? item.description}
-        onClick={() => pick(t)}
-        className={`inline-flex items-center gap-1.5 rounded-full border border-[#D6E0EA] bg-white py-1 pe-3 ps-1.5 text-[13px] text-[#1B3A5C] transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
+        title={r ?? undefined}
+        onClick={() => (r ? setMessage(r) : onPickTemplate(template))}
+        className={`flex min-w-0 flex-col gap-2 rounded-[12px] border border-[#D6E0EA] bg-white p-2.5 text-start transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
           r ? "cursor-not-allowed opacity-45" : "hover:border-[#0F6CBF]"
         }`}
       >
-        <TypeIcon item={item} iconFor={iconFor} small />
-        {item.label}
-        {r && <LockIcon className="h-3 w-3 text-surface-500" />}
+        <span className="flex flex-col gap-[3px] rounded-[8px] bg-[#EEF3F8] p-1.5" aria-hidden>
+          {template.types.map((t, i) => (
+            <i
+              key={i}
+              className="block h-[9px] rounded-[3px]"
+              style={{ background: `color-mix(in srgb, ${catColor(catalogItem(t).category)} 45%, white)` }}
+            />
+          ))}
+        </span>
+        <span className="flex items-center gap-1 text-[13px] font-semibold text-[#14263A]">
+          {template.label}
+          {r && <LockIcon className="h-3 w-3 text-surface-500" />}
+        </span>
+        <small className="text-[11.5px] leading-snug text-surface-500">{r ?? template.description}</small>
       </button>
     );
   };
+
+  const templateGrid = (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+      {TEMPLATES.map(templateCard)}
+    </div>
+  );
 
   const row = (item: CatalogItem, index: number) => {
     const r = reason(item.type);
@@ -287,10 +324,45 @@ export function ComponentPicker({
     "my-2 overflow-hidden rounded-[14px] border border-[#D6E0EA] bg-white shadow-[0_10px_30px_-12px_rgba(20,38,58,0.28)]";
 
   if (!expanded) {
-    const common = POPULAR.filter((t) => !suggestions.includes(t));
+    const common = POPULAR;
     const fit = quickWidth
-      ? fitQuickBar(quickWidth, suggestions.length, common.length)
+      ? fitQuickBar(quickWidth, quickTemplates.length, common.length)
       : { common: 0, tileWidth: 84 };
+    // Template tile: same box as a component tile, with a mini block stack as its icon.
+    const templateSlot = (template: ComponentTemplate) => {
+      const r = templateLockReason(template, components, isHome);
+      return (
+        <div key={template.id} className="shrink-0" style={{ width: fit.tileWidth }}>
+          <button
+            type="button"
+            data-pick={template.id}
+            aria-disabled={r ? true : undefined}
+            title={r ?? template.description}
+            onClick={() => (r ? setMessage(r) : onPickTemplate(template))}
+            className={`relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-[10px] border border-transparent px-1.5 py-2.5 text-center text-[13px] leading-tight transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
+              r
+                ? "cursor-not-allowed opacity-45"
+                : "hover:border-[#D6E0EA] hover:bg-[#EEF3F8] focus-visible:bg-[#EEF3F8]"
+            }`}
+          >
+            {r && <LockIcon className="absolute end-1.5 top-1.5 h-3 w-3 text-surface-500" />}
+            <span
+              aria-hidden
+              className="flex h-[34px] w-[42px] shrink-0 flex-col gap-[2px] rounded-[9px] bg-[#EEF3F8] p-[4px]"
+            >
+              {template.types.map((t, i) => (
+                <i
+                  key={i}
+                  className="block flex-1 rounded-[2px]"
+                  style={{ background: `color-mix(in srgb, ${catColor(catalogItem(t).category)} 55%, white)` }}
+                />
+              ))}
+            </span>
+            <span className="w-full truncate text-[#1B3A5C]">{template.label}</span>
+          </button>
+        </div>
+      );
+    };
     const slot = (t: PickerType) => (
       <div key={t} className="shrink-0" style={{ width: fit.tileWidth }}>
         {tile(t)}
@@ -298,13 +370,13 @@ export function ComponentPicker({
     );
     return (
       <div ref={rootRef} dir="rtl" role="dialog" aria-label="הוספה מהירה" onKeyDown={onKeyDown} className={shell}>
-        <div ref={quickRowRef} className="flex gap-x-3 overflow-hidden px-2 pt-2">
+        <div ref={quickRowRef} className="flex justify-center gap-x-3 overflow-hidden px-2 pb-1 pt-2">
           <div className="flex shrink-0 flex-col gap-0.5">
             <span className="flex items-center gap-1 px-1.5 text-[11.5px] text-surface-500">
-              <SparkIcon />
-              {prevType ? `מומלץ אחרי ${typeLabel(prevType)}` : "מומלץ לפתיחת עמוד"}
+              <LayersIcon />
+              {prevType ? `תבניות מומלצות אחרי ${typeLabel(prevType)}` : "תבניות לפתיחת עמוד"}
             </span>
-            <div className="flex gap-0.5">{suggestions.map(slot)}</div>
+            <div className="flex gap-0.5">{quickTemplates.map(templateSlot)}</div>
           </div>
           {fit.common > 0 && (
             <>
@@ -319,7 +391,7 @@ export function ComponentPicker({
             </>
           )}
         </div>
-        <p aria-live="polite" className="min-h-[18px] px-3 pb-1 text-xs text-[#B7791F]">
+        <p aria-live="polite" className={message ? "px-3 pb-1.5 text-xs text-[#B7791F]" : "sr-only"}>
           {message}
         </p>
         <button
@@ -340,6 +412,7 @@ export function ComponentPicker({
   const views: { id: View; label: string; count?: number }[] = [
     { id: "home", label: "בשבילך" },
     { id: "all", label: "הכל", count: CATALOG.length },
+    { id: "templates", label: "תבניות", count: TEMPLATES.length },
     ...CATEGORIES.map((c) => ({
       id: c.id,
       label: c.label,
@@ -426,7 +499,7 @@ export function ComponentPicker({
                     <SparkIcon />
                     {prevType ? `מומלץ אחרי ${typeLabel(prevType)}` : "מומלץ לפתיחת עמוד"}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">{suggestions.map(chip)}</div>
+                  <div className="flex flex-wrap gap-0.5">{suggestions.map(tileSlot)}</div>
                 </div>
                 {recent.length > 0 && (
                   <div>
@@ -434,9 +507,16 @@ export function ComponentPicker({
                       <ClockIcon />
                       בשימוש לאחרונה
                     </div>
-                    <div className="flex flex-wrap gap-1.5">{recent.map(chip)}</div>
+                    <div className="flex flex-wrap gap-0.5">{recent.map(tileSlot)}</div>
                   </div>
                 )}
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-surface-500">
+                    <LayersIcon />
+                    תבניות (כמה רכיבים יחד)
+                  </div>
+                  {templateGrid}
+                </div>
                 <button
                   type="button"
                   onClick={() => setView("all")}
@@ -444,6 +524,13 @@ export function ComponentPicker({
                 >
                   כל הרכיבים ({CATALOG.length}) ←
                 </button>
+              </div>
+            ) : view === "templates" ? (
+              <div className="px-0.5 py-1">
+                <p className="mb-2 text-xs text-surface-500">
+                  כל תבנית מוסיפה כמה רכיבים יחד. שאלות ופעילויות נוספות לתחתית העמוד.
+                </p>
+                {templateGrid}
               </div>
             ) : (
               shownCats.map((id) => (
@@ -463,7 +550,7 @@ export function ComponentPicker({
 }
 
 function typeLabel(t: ComponentType): string {
-  return t === "interactive_video" ? "וידאו אינטרקטיבי" : catalogItem(t).label;
+  return componentLabel(t);
 }
 
 function TypeIcon({
@@ -472,7 +559,7 @@ function TypeIcon({
   small,
 }: {
   item: CatalogItem;
-  iconFor: (type: PickerType) => React.ReactNode;
+  iconFor: (type: ComponentType) => React.ReactNode;
   small?: boolean;
 }) {
   const color = catColor(item.category);
@@ -482,7 +569,7 @@ function TypeIcon({
       className={`flex shrink-0 items-center justify-center ${small ? "h-6 w-6 rounded-[7px]" : "h-[34px] w-[34px] rounded-[9px]"}`}
       style={{ color, background: `color-mix(in srgb, ${color} 14%, white)` }}
     >
-      {iconFor(item.type)}
+      {iconFor(componentOf(item.type))}
     </span>
   );
 }

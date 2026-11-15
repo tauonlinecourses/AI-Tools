@@ -896,6 +896,23 @@ export async function duplicateComponent(
   return created as PageComponent;
 }
 
+/** Insert several components in one request (used by picker templates). */
+export async function addComponents(
+  pageId: string,
+  rows: { id: string; type: ComponentType; position: number; props: BlockProps }[],
+  options?: { courseId?: string }
+): Promise<PageComponent[]> {
+  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from("components")
+    .insert(rows.map((r) => ({ ...r, page_id: pageId })))
+    .select();
+  if (error) fail("Adding components", error);
+  const courseId = options?.courseId ?? (await courseIdFromPage(pageId));
+  await touchCourse(courseId);
+  return data ?? [];
+}
+
 export async function reorderComponents(orderedIds: string[]): Promise<void> {
   if (orderedIds.length === 0) return;
   const courseId = await courseIdFromComponent(orderedIds[0]);

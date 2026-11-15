@@ -72,7 +72,16 @@ import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 import { PageComponentMap } from "./PageComponentMap";
 import { ComponentPicker } from "./ComponentPicker";
-import { lockReason, pushRecent } from "../lib/componentCatalog";
+import {
+  categoryColorFor,
+  componentOf,
+  lockReason,
+  pushRecent,
+  questionTypeOf,
+  type PickerType,
+  templateLockReason,
+  type ComponentTemplate,
+} from "../lib/componentCatalog";
 
 /** Sentinel for the open page-header comment thread (mutually exclusive with block threads). */
 const PAGE_COMMENTS_OPEN_ID = "__page_comments__";
@@ -339,6 +348,20 @@ function defaultChoiceQuestionProps(): QuestionProps {
     options,
     correctOptionId: options[0]?.id,
   };
+}
+
+/** New question preset to a kind. True/false uses the block's fixed נכון / לא נכון options. */
+function defaultQuestionProps(questionType: QuestionType): QuestionProps {
+  if (questionType === "yes_no") {
+    return { questionType, prompt: "", correctOptionId: "__correct" };
+  }
+  return { ...defaultChoiceQuestionProps(), questionType };
+}
+
+/** Default props for a picker item (question items preset their kind). */
+function pickerProps(pick: PickerType): BlockProps {
+  const questionType = questionTypeOf(pick);
+  return questionType ? defaultQuestionProps(questionType) : defaultProps(componentOf(pick));
 }
 
 function defaultProps(type: ComponentType): BlockProps {
@@ -786,9 +809,9 @@ export function PageContent({
   async function insertComponentAt(
     type: ComponentType,
     insertIdx: number,
-    list: PageComponent[]
+    list: PageComponent[],
+    props: BlockProps = defaultProps(type)
   ) {
-    const props = defaultProps(type);
     const now = new Date().toISOString();
     const optimistic: PageComponent = {
       id: crypto.randomUUID(),
@@ -850,8 +873,9 @@ export function PageContent({
    * Insert from the component picker. Content types go at `at` (never below
    * pinned activities); activities always go to the bottom of the page.
    */
-  async function handleInsertAt(type: ComponentType, at: number) {
+  async function handleInsertAt(pick: PickerType, at: number) {
     setError(null);
+    const type = componentOf(pick);
     const list = components ?? [];
     const reason = lockReason(type, list, isHome);
     if (reason) {
@@ -859,13 +883,103 @@ export function PageContent({
       return;
     }
     setPickerAt(null);
-    pushRecent(type);
+    pushRecent(pick);
     const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
     const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
     const insertIdx = PINNED_BOTTOM_TYPES.has(type)
       ? list.length
       : Math.min(at, contentEnd);
-    await insertComponentAt(type, insertIdx, list);
+    await insertComponentAt(type, insertIdx, list, pickerProps(pick));
+  }
+
+  /**
+   * Insert a picker template: its content blocks go in order at `at`, its
+   * activities go to the bottom. Saved in one request.
+   */
+  async function handleInsertTemplate(template: ComponentTemplate, at: number) {
+    setError(null);
+    const list = components ?? [];
+    const reason = templateLockReason(template, list, isHome);
+    if (reason) {
+      window.alert(reason);
+      return;
+    }
+    setPickerAt(null);
+
+    const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+    const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+    let pos = Math.min(at, contentEnd);
+    const now = new Date().toISOString();
+    const added: PageComponent[] = [];
+    const draft = [...list];
+    for (const pick of template.types) {
+      const type = componentOf(pick);
+      const component: PageComponent = {
+        id: crypto.randomUUID(),
+        page_id: page.id,
+        type,
+        position: 0,
+        props: pickerProps(pick),
+        implemented_at: null,
+        updated_at: now,
+      };
+      added.push(component);
+      if (PINNED_BOTTOM_TYPES.has(type)) {
+        draft.push(component);
+      } else {
+        draft.splice(pos, 0, component);
+        pos += 1;
+      }
+    }
+    const next = draft.map((c, position) => ({ ...c, position }));
+    const addedIds = new Set(added.map((c) => c.id));
+    const shiftsExisting = next.some((c, i) => !addedIds.has(c.id) && list[i]?.id !== c.id);
+
+    // Paint immediately; persist in the background with the same client ids.
+    scrollToComponentId.current = added[0].id;
+    setComponents(next);
+
+    let resolveInsert!: () => void;
+    let rejectInsert!: (reason: unknown) => void;
+    const insertReady = new Promise<void>((resolve, reject) => {
+      resolveInsert = resolve;
+      rejectInsert = reject;
+    });
+    insertReady.catch(() => {});
+    for (const id of addedIds) pendingInserts.current.set(id, insertReady);
+
+    let inserted = false;
+    try {
+      await trackSave(
+        (async () => {
+          try {
+            await api.addComponents(
+              page.id,
+              next
+                .filter((c) => addedIds.has(c.id))
+                .map(({ id, type, position, props }) => ({ id, type, position, props })),
+              { courseId }
+            );
+            inserted = true;
+            resolveInsert();
+          } catch (err) {
+            rejectInsert(err);
+            throw err;
+          }
+          if (shiftsExisting) {
+            await api.reorderComponents(next.map((c) => c.id));
+          }
+        })()
+      );
+      template.types.forEach(pushRecent);
+      onContentChange();
+      onStatusChange();
+    } catch (e) {
+      if (!inserted) setComponents(list);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      for (const id of addedIds) pendingInserts.current.delete(id);
+    }
   }
 
   /** Inline "+" between blocks plus, when open, the picker for that spot. */
@@ -919,6 +1033,7 @@ export function PageContent({
         isHome={isHome}
         iconFor={pickerTileIcon}
         onPick={(type) => void handleInsertAt(type, at)}
+        onPickTemplate={(template) => void handleInsertTemplate(template, at)}
         onClose={closePicker}
         persistent={end}
       />
@@ -1356,7 +1471,13 @@ export function PageContent({
               editable ? "text-surface-700" : "text-inherit"
             }`}
           >
-            {meta.icon}
+            {/* Icon in the component's category color (same as the picker and page map). */}
+            <span
+              className="flex shrink-0 items-center"
+              style={{ color: categoryColorFor(component.type) }}
+            >
+              {meta.icon}
+            </span>
             {editable && component.type === "question" ? (
               <select
                 className="bg-transparent outline-none cursor-pointer text-sm font-semibold text-surface-700"
@@ -1878,16 +1999,25 @@ export function PageContent({
   return (
     <div className="flex flex-col w-full max-w-4xl mx-auto pe-3 py-6">
       {/* Same column geometry as the components row so the title stays centered above cards */}
-      <div className="flex w-full gap-2">
+      {/*
+        Sticky title + status in edit/implement only (not תצוגה). The whole row is
+        sticky: a sticky element only sticks inside its parent, and this row's
+        parent is the full page column. The row itself is transparent and lets
+        clicks through so the page map beside it stays usable.
+      */}
+      <div
+        className={`flex w-full gap-2 ${
+          isReview ? "" : "pointer-events-none sticky top-0 z-30 -mt-6"
+        }`}
+      >
         {showPageMap && <div className="w-9 shrink-0" aria-hidden />}
-        <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
-          {/* Sticky title + status in edit/implement only (not תצוגה) */}
+        <div className="pointer-events-auto flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
           <div
             className={
               isReview
                 ? "mb-3"
                 : // Bleed into the start gutter (ps-12) so comment icons scroll under the header.
-                  "sticky top-0 z-30 -mt-6 -ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
+                  "-ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
             }
           >
             <BlockComments
@@ -1908,12 +2038,6 @@ export function PageContent({
               {pageHeader}
             </BlockComments>
           </div>
-
-          {error && (
-            <Card className="border-danger bg-red-50 mb-4">
-              <p className="text-base text-danger">{error}</p>
-            </Card>
-          )}
         </div>
       </div>
 
@@ -1927,6 +2051,13 @@ export function PageContent({
           />
         )}
         <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
+      {/* Outside the sticky header row so errors scroll with the page. */}
+      {error && (
+        <Card className="border-danger bg-red-50 mb-4">
+          <p className="text-base text-danger">{error}</p>
+        </Card>
+      )}
+
       {/* Components */}
       {components === null && !error && (
         <div className="flex items-center gap-2 text-base text-surface-600">

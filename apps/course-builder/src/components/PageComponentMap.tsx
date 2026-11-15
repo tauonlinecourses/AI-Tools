@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ComponentType, PageComponent } from "../lib/types";
 import { PAGE_TYPE_LABEL, PAGE_TYPE_LOGO } from "../lib/types";
+import { categoryColorFor } from "../lib/componentCatalog";
 import {
   BannerIcon,
   ButtonIcon,
@@ -138,10 +139,10 @@ export function PageComponentMap({ components, activeId, onSelect }: Props) {
             aria-label={label}
             aria-current={active ? "true" : undefined}
             onClick={() => onSelect(component.id)}
-            className={`relative z-[1] flex items-center justify-center w-7 h-7 rounded-md transition-[color,opacity] duration-300 ease-out ${
-              active
-                ? "text-surface-900 opacity-100"
-                : "text-surface-400 opacity-55 hover:opacity-100 hover:text-surface-800"
+            // Icon color = the component's category color from the add-component picker.
+            style={{ color: categoryColorFor(component.type) }}
+            className={`relative z-[1] flex items-center justify-center w-7 h-7 rounded-md transition-opacity duration-300 ease-out ${
+              active ? "opacity-100" : "opacity-55 hover:opacity-100"
             }`}
           >
             <MapIcon type={component.type} />
