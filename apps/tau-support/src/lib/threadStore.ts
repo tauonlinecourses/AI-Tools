@@ -154,6 +154,33 @@ export function getCourseBucket(
   );
 }
 
+/**
+ * Ensure a thread entry exists in the store (e.g. search hits not yet cached).
+ * Does not overwrite an existing entry.
+ */
+export function ensureThreadEntry(
+  store: ThreadStore,
+  courseId: string,
+  entry: StoredThreadEntry
+): ThreadStore {
+  const bucket = getCourseBucket(store, courseId);
+  if (bucket.threads[entry.thread.id]) return store;
+
+  return {
+    ...store,
+    courses: {
+      ...store.courses,
+      [courseId]: {
+        ...bucket,
+        threads: {
+          ...bucket.threads,
+          [entry.thread.id]: entry,
+        },
+      },
+    },
+  };
+}
+
 export function knownSnapshotsForCourse(
   store: ThreadStore,
   courseId: string

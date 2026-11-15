@@ -36,6 +36,7 @@ import {
   hydrateLastCheckAllFromSupabase,
   syncLastCheckAllToSupabase,
 } from "../src/lib/lastCheckAllSync.js";
+import { searchThreads } from "../src/lib/threadSearch.js";
 
 /** Loaded on demand so other actions don't pay for the dashboard's modules. */
 function loadDashboard() {
@@ -55,6 +56,8 @@ export async function runTauDataAction(
       // before the action settles, clearing the bound Supabase client mid-flight.
       case "hydrate":
         return await hydrateThreadStoreFromSupabase();
+      case "searchThreads":
+        return await searchThreads(String(p?.query ?? ""));
       case "fetchRemoteUiFlags":
         return await fetchRemoteUiFlags();
       case "syncCourseThreads":

@@ -351,14 +351,6 @@ function CategoryRow({
             : "bg-white"
         }`}
       >
-        <span
-          aria-hidden
-          className={`shrink-0 text-surface-600 transition-transform ${
-            open ? "-rotate-90" : ""
-          }`}
-        >
-          ◂
-        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-surface-900">
             {group.category}
@@ -366,6 +358,15 @@ function CategoryRow({
           <span className="block truncate text-xs text-surface-600">
             {group.questions.length} שאלות
           </span>
+        </span>
+        {/* After the label in DOM so RTL flex parks it on the visual left. */}
+        <span
+          aria-hidden
+          className={`shrink-0 text-surface-600 transition-transform ${
+            open ? "rotate-90" : ""
+          }`}
+        >
+          ▸
         </span>
       </button>
       {open ? (

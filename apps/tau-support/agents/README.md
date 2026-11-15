@@ -74,9 +74,14 @@ platform.
 - `../src/lib/threadStore.ts` — In-memory inbox + `localStorage` write-through
   cache (`tau-support-thread-store-v1`): per-course `lastCheckedAt` watermark,
   thread map, merge/upsert, retention cap, and per-thread `noAnswerNeeded`
-  override (cleared on newer poll activity). `saveThreadStore` returns
-  success/failure so a full localStorage quota can stop check-all instead of
+  override (cleared on newer poll activity). `ensureThreadEntry` inserts a
+  search-hit entry that is not yet cached (without overwriting). `saveThreadStore`
+  returns success/failure so a full localStorage quota can stop check-all instead of
   failing silently. Durable shared state lives in Supabase (see hydrate/sync).
+- `../src/lib/threadSearch.ts` — Free-text search across all synced questions
+  (`searchThreads`): ILIKE on title + OP body + reply bodies via the tau-data
+  BFF; rebuilds `ForumThread` forests with hydrate helpers; returns up to 50
+  hits.
 - `../src/lib/qaPairing.ts` — Deterministic student-question ↔ staff-answer
   pairing (plain text, `lang`, `content_hash`, `resolution_text`). Used by
   the Supabase sync; no network I/O.
@@ -199,8 +204,9 @@ platform.
   `category-test-results/` and score with `category-test:score`.
 - `../src/components/QuestionsDashboard.tsx` / `QuestionMap3D.tsx` — **דשבורד**
   header toggle: stat tiles, categories chart, per-category question lists
-  (newest first) and a lazy-loaded 3D map colored by category (a click opens
-  that category). Filters by course, category and date.
+  (newest first; expand chevron on the visual left of each RTL row) and a
+  lazy-loaded 3D map colored by category (a click opens that category).
+  Filters by course, category and date.
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -319,14 +325,26 @@ RTL split layout inspired by the campus IL forum list:
   (same unanswered rules as course rows / cards). Thread cards use
   `rounded-control`, a small downward drop shadow, and slightly larger type
   (`text-base` for titles and forum bodies).
+- **Header text search:** the main header title area (where **דף הבית** /
+  course / inbox titles used to sit) has a Hebrew search input with a
+  search icon (**חיפוש בכל השאלות…**). After 2+ characters (debounced ~300ms)
+  the main pane switches to a search-results feed using the same `ThreadCard`
+  UI as course / inbox lists. Search runs through BFF action `searchThreads`
+  (`src/lib/threadSearch.ts` → `/api/tau-data`) and matches Supabase
+  `threads.title`, `threads.body_text`, and `messages.body_text` (replies)
+  across all courses — not only the local 200/course inbox cache. Results
+  are capped at 50, newest first. Prefer a local `threadStore` entry when
+  present so **אין צורך במענה** / seen / staff-mark actions stay consistent;
+  otherwise upsert the hydrated hit into the store on first mutation.
+  Clearing the input (✕) restores the previous home / inbox / course view.
+  Starting a search exits docs / email / dashboard modes.
 - **Course header** sits only above the left thread pane (not over the
   sidebar). The right sidebar starts below that header row. Header has a
   right-edge border and a drop shadow under the bar. The outer hub box also
-  uses a page-level drop shadow. On home the header is **דף הבית**. On
-  inbox/course it shows compact counts
-  (`N שרשורים שמורים · N ללא מענה · N תגובות חדשות מפעם שעברה`) — inbox
-  includes the unanswered count too. Header height is fixed to that title +
-  counts pair only (no fetch request-stats / sync status lines in the header).
+  uses a page-level drop shadow. Outside docs / email / dashboard modes the
+  header title slot is the search field (icon + input, no subtitle). Header
+  height stays fixed (no fetch request-stats / sync status lines in the
+  header).
 - **Toolbar / check-all:** On home the primary CTA is **בדיקת שאלות חדשות**
   (dashboard); while a run is active the header shows **עצור** (finish after
   the current course). After **עצור**, the pause screen (and header) show

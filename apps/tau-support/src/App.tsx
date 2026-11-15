@@ -70,6 +70,7 @@ import { COURSES, findCourseById } from "./lib/courses";
 import {
   countNewAcrossStore,
   countNewForCourse,
+  ensureThreadEntry,
   getCourseBucket,
   knownSnapshotsForCourse,
   listGlobalInbox,
@@ -80,12 +81,19 @@ import {
   saveThreadStore,
   setThreadNoAnswerNeeded,
   sortedEntriesForCourse,
+  type StoredThreadEntry,
   type ThreadStore,
 } from "./lib/threadStore";
+import {
+  SEARCH_MIN_QUERY_LENGTH,
+  searchThreads,
+  type ThreadSearchItem,
+} from "./lib/threadSearch";
 import { countUnanswered, entryNeedsAnswer } from "./lib/unanswered";
 import type { ForumThreadsResponse } from "./lib/types";
 
 type InboxFilter = "all" | "unanswered";
+type SearchStatus = "idle" | "loading" | "error";
 
 const SESSION_STORAGE_KEY = "tau-support-use-cookies";
 const CSRF_STORAGE_KEY = "tau-support-csrf-token";
@@ -266,6 +274,11 @@ export default function App() {
   const [infoDocDeleteBusy, setInfoDocDeleteBusy] = useState(false);
   const [infoDocPinBusy, setInfoDocPinBusy] = useState(false);
   const [infoDocError, setInfoDocError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ThreadSearchItem[]>([]);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   const threadStoreRef = useRef(threadStore);
   threadStoreRef.current = threadStore;
@@ -822,30 +835,41 @@ export default function App() {
     [cookieAuthFrom, persistAuth]
   );
 
+  const clearSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchStatus("idle");
+    setSearchError(null);
+  }, []);
+
   const handleSelectCourse = useCallback((courseId: string) => {
     // Selection only shows the local store — fetch via טען תגובות חדשות or בדוק הכל.
+    clearSearch();
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(courseId);
-  }, []);
+  }, [clearSearch]);
 
   const handleSelectHome = useCallback(() => {
+    clearSearch();
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(null);
-  }, []);
+  }, [clearSearch]);
 
   const handleSelectInbox = useCallback(() => {
+    clearSearch();
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
     setInfoDocEditMode(null);
     setSelectedId(INBOX_SELECTION);
-  }, []);
+  }, [clearSearch]);
 
   const handleRefresh = useCallback(() => {
     if (!selectedId || selectedId === INBOX_SELECTION) return;
@@ -1188,42 +1212,71 @@ export default function App() {
     [checkAllCourses, cookieAuthFrom, persistCursor, pollCourse]
   );
 
-  const handleMarkSeen = useCallback((courseId: string, threadId: string) => {
-    setThreadStore((prev) => {
-      const next = markThreadSeen(prev, courseId, threadId);
+  const ensureSearchHitInStore = useCallback(
+    (courseId: string, threadId: string, fallback?: StoredThreadEntry) => {
+      const existing =
+        getCourseBucket(threadStoreRef.current, courseId).threads[threadId];
+      if (existing) return existing;
+      if (!fallback) return null;
+      const next = ensureThreadEntry(threadStoreRef.current, courseId, fallback);
       threadStoreRef.current = next;
-      const entry = getCourseBucket(next, courseId).threads[threadId];
-      if (entry) {
-        pendingUiFlagThreadIdsRef.current.add(threadId);
-        void syncThreadUiStateToSupabase(
-          threadId,
-          {
-            noAnswerNeeded: Boolean(entry.noAnswerNeeded),
-            seenAt: entry.seenAt ?? null,
-            isNew: Boolean(entry.isNew),
-            isUpdated: Boolean(entry.isUpdated),
-          },
-          {
-            courseId,
-            entry,
-            lastCheckedAt: getCourseBucket(next, courseId).lastCheckedAt,
-          }
-        ).then((res) => {
-          if (res.ok || res.skipped) {
-            pendingUiFlagThreadIdsRef.current.delete(threadId);
-          } else {
-            console.warn(
-              `[tau-support] Failed to persist seen state for ${threadId}: ${res.message}`
-            );
-          }
-        });
-      }
-      return next;
-    });
-  }, []);
+      setThreadStore(next);
+      saveThreadStore(next);
+      return getCourseBucket(next, courseId).threads[threadId] ?? fallback;
+    },
+    []
+  );
+
+  const handleMarkSeen = useCallback(
+    (
+      courseId: string,
+      threadId: string,
+      fallbackEntry?: StoredThreadEntry
+    ) => {
+      ensureSearchHitInStore(courseId, threadId, fallbackEntry);
+      setThreadStore((prev) => {
+        const next = markThreadSeen(prev, courseId, threadId);
+        threadStoreRef.current = next;
+        const entry = getCourseBucket(next, courseId).threads[threadId];
+        if (entry) {
+          pendingUiFlagThreadIdsRef.current.add(threadId);
+          void syncThreadUiStateToSupabase(
+            threadId,
+            {
+              noAnswerNeeded: Boolean(entry.noAnswerNeeded),
+              seenAt: entry.seenAt ?? null,
+              isNew: Boolean(entry.isNew),
+              isUpdated: Boolean(entry.isUpdated),
+            },
+            {
+              courseId,
+              entry,
+              lastCheckedAt: getCourseBucket(next, courseId).lastCheckedAt,
+            }
+          ).then((res) => {
+            if (res.ok || res.skipped) {
+              pendingUiFlagThreadIdsRef.current.delete(threadId);
+            } else {
+              console.warn(
+                `[tau-support] Failed to persist seen state for ${threadId}: ${res.message}`
+              );
+            }
+          });
+        }
+        return next;
+      });
+    },
+    [ensureSearchHitInStore]
+  );
 
   const handleToggleNoAnswerNeeded = useCallback(
-    (courseId: string, threadId: string, currentlyMarked: boolean) => {
+    (
+      courseId: string,
+      threadId: string,
+      currentlyMarked: boolean,
+      fallbackEntry?: StoredThreadEntry
+    ) => {
+      ensureSearchHitInStore(courseId, threadId, fallbackEntry);
       setThreadStore((prev) => {
         const next = setThreadNoAnswerNeeded(
           prev,
@@ -1261,11 +1314,17 @@ export default function App() {
         return next;
       });
     },
-    []
+    [ensureSearchHitInStore]
   );
 
   const handleMarkCommentAsStaff = useCallback(
-    async (courseId: string, threadId: string, commentId: string) => {
+    async (
+      courseId: string,
+      threadId: string,
+      commentId: string,
+      fallbackEntry?: StoredThreadEntry
+    ) => {
+      ensureSearchHitInStore(courseId, threadId, fallbackEntry);
       const next = markThreadCommentAsStaff(
         threadStoreRef.current,
         courseId,
@@ -1297,7 +1356,7 @@ export default function App() {
         );
       }
     },
-    []
+    [ensureSearchHitInStore]
   );
 
   const refreshInfoDocs = useCallback(async (opts?: { selectDefault?: boolean }) => {
@@ -1343,6 +1402,7 @@ export default function App() {
       const next = !prev;
       if (next) {
         // Docs mode is entered from the homepage only.
+        clearSearch();
         setEmailMode(false);
         setDashboardMode(false);
         setSelectedId(null);
@@ -1354,12 +1414,13 @@ export default function App() {
       }
       return next;
     });
-  }, []);
+  }, [clearSearch]);
 
   const handleToggleEmailMode = useCallback(() => {
     setEmailMode((prev) => {
       const next = !prev;
       if (next) {
+        clearSearch();
         setDocsMode(false);
         setDashboardMode(false);
         setInfoDocEditMode(null);
@@ -1368,12 +1429,13 @@ export default function App() {
       }
       return next;
     });
-  }, []);
+  }, [clearSearch]);
 
   const handleToggleDashboardMode = useCallback(() => {
     setDashboardMode((prev) => {
       const next = !prev;
       if (next) {
+        clearSearch();
         setDocsMode(false);
         setEmailMode(false);
         setInfoDocEditMode(null);
@@ -1382,7 +1444,7 @@ export default function App() {
       }
       return next;
     });
-  }, []);
+  }, [clearSearch]);
 
   // Keep the address bar in step with the dashboard, so it can be shared and
   // the browser's back/forward buttons move in and out of it.
@@ -1397,6 +1459,7 @@ export default function App() {
       const onDashboard = isDashboardUrl();
       setDashboardMode(onDashboard);
       if (onDashboard) {
+        clearSearch();
         setDocsMode(false);
         setEmailMode(false);
         setInfoDocEditMode(null);
@@ -1406,7 +1469,7 @@ export default function App() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [clearSearch]);
 
   const handleSelectTopic = useCallback((id: string) => {
     setSelectedTopicId(id);
@@ -1590,6 +1653,61 @@ export default function App() {
   }, [inboxFilter, inboxItems]);
   const inboxNewCount = countNewAcrossStore(threadStore);
 
+  const trimmedSearchQuery = searchQuery.trim();
+  const searchActive = trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH;
+
+  useEffect(() => {
+    if (!searchActive) {
+      searchRequestIdRef.current += 1;
+      setSearchResults([]);
+      setSearchStatus("idle");
+      setSearchError(null);
+      return;
+    }
+
+    setDocsMode(false);
+    setEmailMode(false);
+    setDashboardMode(false);
+    setInfoDocEditMode(null);
+
+    const requestId = ++searchRequestIdRef.current;
+    setSearchStatus("loading");
+    setSearchError(null);
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const result = await searchThreads(trimmedSearchQuery);
+        if (requestId !== searchRequestIdRef.current) return;
+        if (!result.ok) {
+          setSearchResults([]);
+          setSearchStatus("error");
+          setSearchError(result.message ?? "החיפוש נכשל");
+          return;
+        }
+        setSearchResults(result.items);
+        setSearchStatus("idle");
+        setSearchError(null);
+      })();
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [searchActive, trimmedSearchQuery]);
+
+  const displaySearchItems = useMemo(() => {
+    if (!searchActive) return [];
+    return searchResults.map((item) => {
+      const local =
+        getCourseBucket(threadStore, item.courseId).threads[item.entry.thread.id];
+      return {
+        courseId: item.courseId,
+        entry: local ?? item.entry,
+        fallbackEntry: item.entry,
+      };
+    });
+  }, [searchActive, searchResults, threadStore]);
+
   const selectedCourseId =
     selectedId && selectedId !== INBOX_SELECTION ? selectedId : null;
   const selectedCourse = selectedCourseId
@@ -1615,12 +1733,6 @@ export default function App() {
     checkAllProgress?.phase === "waiting"
       ? elapsedTick
       : undefined;
-  const selectedUnansweredCount = selectedCourseId
-    ? countUnanswered(selectedEntries)
-    : 0;
-  const selectedNewCount = selectedCourseId
-    ? countNewForCourse(threadStore, selectedCourseId)
-    : 0;
   const selectedInfoDoc =
     selectedTopicId != null
       ? infoDocs.find((d) => d.id === selectedTopicId) ?? null
@@ -1676,7 +1788,11 @@ export default function App() {
                 type="button"
                 onClick={handleSelectHome}
                 className={`flex h-full min-h-full w-full items-center gap-2 px-3 py-2.5 text-right transition-colors ${
-                  showingHome && !docsMode && !emailMode && !dashboardMode
+                  showingHome &&
+                  !docsMode &&
+                  !emailMode &&
+                  !dashboardMode &&
+                  !searchActive
                     ? "bg-sky-100 text-sky-950"
                     : "text-surface-900 hover:bg-sky-50"
                 }`}
@@ -1704,7 +1820,7 @@ export default function App() {
             <div className="relative z-20 flex h-[3.75rem] min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden border-b border-surface-200 bg-white px-4 shadow-[0_3px_4px_-3px_rgba(0,0,0,0.22)] md:border-r">
               <div
                 className={`min-w-0 flex-1 text-right ${
-                  showingHome && !docsMode && !emailMode && !dashboardMode
+                  !docsMode && !emailMode && !dashboardMode
                     ? "flex h-full items-center"
                     : ""
                 }`}
@@ -1749,69 +1865,52 @@ export default function App() {
                       ניסוח תשובה ממסמכי מידע ומשאלות דומות בפורומים
                     </p>
                   </>
-                ) : showingHome ? (
-                  <p className="w-full truncate text-lg font-semibold leading-none text-surface-900 sm:text-xl">
-                    דף הבית
-                  </p>
-                ) : selectedId ? (
-                  <>
-                    <p className="truncate text-sm font-semibold leading-5 text-surface-900">
-                      {showingInbox
-                        ? "פיד של כל הקורסים"
-                        : selectedCourse?.nameHe ||
-                          selectedCourse?.name ||
-                          selectedCourseId}
-                    </p>
-                    {showingInbox ? (
-                      <p
-                        className="mt-0.5 truncate text-xs leading-4 text-surface-600"
-                        dir="rtl"
+                ) : (
+                  <div className="relative flex min-w-0 items-center">
+                    <svg
+                      className="pointer-events-none absolute start-2.5 top-1/2 z-[1] -translate-y-1/2 text-surface-500"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" />
+                    </svg>
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="חיפוש בכל השאלות…"
+                      aria-label="חיפוש בכל השאלות"
+                      dir="rtl"
+                      className="h-8 w-full min-w-0 rounded-md border border-surface-200 bg-surface-50 ps-8 pe-8 text-sm text-surface-900 placeholder:text-surface-500 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                    />
+                    {searchQuery ? (
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="absolute end-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-xs text-surface-500 hover:bg-surface-100 hover:text-surface-900"
+                        title="נקה חיפוש"
+                        aria-label="נקה חיפוש"
                       >
-                        <span className="font-semibold text-surface-900">
-                          {inboxFilter === "unanswered"
-                            ? filteredInboxItems.length
-                            : inboxItems.length}
-                        </span>{" "}
-                        {inboxFilter === "unanswered"
-                          ? "שרשורים ללא מענה"
-                          : "שרשורים שמורים"}
-                        {" · "}
-                        <span className="font-semibold text-red-800">
-                          {inboxUnansweredCount}
-                        </span>{" "}
-                        ללא מענה
-                        {" · "}
-                        <span className="font-semibold text-blue-800">
-                          {inboxNewCount}
-                        </span>{" "}
-                        תגובות חדשות מפעם שעברה
-                      </p>
-                    ) : (
-                      <p
-                        className="mt-0.5 truncate text-xs leading-4 text-surface-600"
-                        dir="rtl"
-                      >
-                        <span className="font-semibold text-surface-900">
-                          {selectedEntries.length}
-                        </span>{" "}
-                        שרשורים שמורים
-                        {" · "}
-                        <span className="font-semibold text-red-800">
-                          {selectedUnansweredCount}
-                        </span>{" "}
-                        ללא מענה
-                        {" · "}
-                        <span className="font-semibold text-blue-800">
-                          {selectedNewCount}
-                        </span>{" "}
-                        תגובות חדשות מפעם שעברה
-                      </p>
-                    )}
-                  </>
-                ) : null}
+                        ✕
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {showingHome || docsMode || emailMode || dashboardMode ? (
+                {showingHome ||
+                searchActive ||
+                docsMode ||
+                emailMode ||
+                dashboardMode ? (
                   <>
                     <Button
                       variant="secondary"
@@ -1882,7 +1981,11 @@ export default function App() {
                     </Button>
                   </>
                 ) : null}
-                {!docsMode && !emailMode && !dashboardMode &&showingInbox ? (
+                {!docsMode &&
+                !emailMode &&
+                !dashboardMode &&
+                !searchActive &&
+                showingInbox ? (
                   <div
                     className="flex items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
                     role="group"
@@ -1915,7 +2018,11 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-                {!docsMode && !emailMode && !dashboardMode &&checkingAll ? (
+                {!docsMode &&
+                !emailMode &&
+                !dashboardMode &&
+                !searchActive &&
+                checkingAll ? (
                   checkAllProgress?.phase === "stopping" ? (
                     <Button
                       variant="secondary"
@@ -1936,7 +2043,11 @@ export default function App() {
                     </Button>
                   )
                 ) : null}
-                {!docsMode && !emailMode && !dashboardMode &&selectedCourseId ? (
+                {!docsMode &&
+                !emailMode &&
+                !dashboardMode &&
+                !searchActive &&
+                selectedCourseId ? (
                   <LoadThreadsButton
                     onLoad={handleRefresh}
                     loading={selectedSync?.status === "syncing"}
@@ -1985,7 +2096,88 @@ export default function App() {
 
             <main className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-surface-200 bg-white md:border-t-0">
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {docsMode ? (
+                {searchActive ? (
+                  <div className="flex flex-col gap-3 p-4" dir="rtl">
+                    {searchStatus === "loading" ? (
+                      <div className="flex min-h-[200px] items-center justify-center gap-2 text-sm text-surface-600">
+                        <Spinner size="sm" />
+                        מחפש…
+                      </div>
+                    ) : searchStatus === "error" ? (
+                      <div className="rounded-md border border-danger bg-red-50 p-4 text-right text-sm text-danger">
+                        {searchError ?? "החיפוש נכשל"}
+                      </div>
+                    ) : displaySearchItems.length === 0 ? (
+                      <div className="rounded-md border border-surface-200 bg-white p-4 text-right text-sm text-surface-600">
+                        לא נמצאו שרשורים התואמים ל־
+                        <span className="font-semibold">
+                          {trimmedSearchQuery}
+                        </span>
+                        .
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-surface-600">
+                          נמצאו{" "}
+                          <span className="font-semibold text-surface-900">
+                            {displaySearchItems.length}
+                          </span>{" "}
+                          שרשורים
+                        </p>
+                        {displaySearchItems.map(
+                          ({ courseId, entry, fallbackEntry }) => {
+                            const bucket = getCourseBucket(
+                              threadStore,
+                              courseId
+                            );
+                            return (
+                              <ThreadCard
+                                key={`${courseId}:${entry.thread.id}`}
+                                thread={entry.thread}
+                                courseId={courseId}
+                                courseLabel={courseDisplayName(courseId)}
+                                forumUiOrigin={
+                                  bucket.forumUiOrigin ??
+                                  "https://app.campus.gov.il"
+                                }
+                                categoryName={
+                                  bucket.categoryName ??
+                                  findCourseById(courseId)?.forumCategory
+                                }
+                                isNew={entry.isNew}
+                                isUpdated={entry.isUpdated}
+                                noAnswerNeeded={Boolean(entry.noAnswerNeeded)}
+                                onOpen={() =>
+                                  handleMarkSeen(
+                                    courseId,
+                                    entry.thread.id,
+                                    fallbackEntry
+                                  )
+                                }
+                                onToggleNoAnswerNeeded={() =>
+                                  handleToggleNoAnswerNeeded(
+                                    courseId,
+                                    entry.thread.id,
+                                    Boolean(entry.noAnswerNeeded),
+                                    fallbackEntry
+                                  )
+                                }
+                                onMarkCommentAsStaff={(commentId) =>
+                                  handleMarkCommentAsStaff(
+                                    courseId,
+                                    entry.thread.id,
+                                    commentId,
+                                    fallbackEntry
+                                  )
+                                }
+                              />
+                            );
+                          }
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : docsMode ? (
                   !isSupabaseConfigured ? (
                     <div
                       dir="rtl"

@@ -24,7 +24,7 @@ export interface HydrateResult {
   threadCount?: number;
 }
 
-interface ThreadDbRow {
+export interface ThreadDbRow {
   campus_thread_id: string;
   course_id: string;
   title: string | null;
@@ -42,7 +42,7 @@ interface ThreadDbRow {
   is_updated: boolean | null;
 }
 
-interface MessageDbRow {
+export interface MessageDbRow {
   campus_comment_id: string;
   thread_id: string;
   parent_id: string | null;
@@ -62,13 +62,20 @@ interface CourseDbRow {
   last_checked_at: string | null;
 }
 
+/** Columns needed to rebuild a ForumThread + UX flags from Supabase. */
+export const THREAD_HYDRATE_SELECT =
+  "campus_thread_id,course_id,title,author,author_label,body_text,comment_count,created_at,last_activity_at,raw,synced_at,no_answer_needed,seen_at,is_new,is_updated";
+
+export const MESSAGE_HYDRATE_SELECT =
+  "campus_comment_id,thread_id,parent_id,author,author_label,is_staff,endorsed,body_text,created_at,raw";
+
 function sortByCreated(a: ForumComment, b: ForumComment): number {
   return (
     activityTimestampMs(a.created_at) - activityTimestampMs(b.created_at)
   );
 }
 
-function buildCommentForest(flat: ForumComment[]): ForumComment[] {
+export function buildCommentForest(flat: ForumComment[]): ForumComment[] {
   const byId = new Map<string, ForumComment>();
   for (const item of flat) {
     byId.set(item.id, { ...item, children: [] });
@@ -103,7 +110,7 @@ function buildCommentForest(flat: ForumComment[]): ForumComment[] {
     .sort(sortByCreated);
 }
 
-function messageToComment(row: MessageDbRow): ForumComment {
+export function messageToComment(row: MessageDbRow): ForumComment {
   const raw = (row.raw ?? {}) as Partial<ForumComment>;
   let authorLabel = row.author_label ?? raw.author_label ?? null;
   // Manual סמן כצוות persists as messages.is_staff even when Campus IL
@@ -125,7 +132,7 @@ function messageToComment(row: MessageDbRow): ForumComment {
   };
 }
 
-function threadRowToForumThread(
+export function threadRowToForumThread(
   row: ThreadDbRow,
   comments: ForumComment[]
 ): ForumThread {
@@ -142,6 +149,23 @@ function threadRowToForumThread(
     raw_body: raw.raw_body ?? row.body_text ?? undefined,
     rendered_body: raw.rendered_body,
     comments: sanitizeCommentForest(comments),
+  };
+}
+
+/** Rebuild a StoredThreadEntry from DB thread + message rows. */
+export function storedEntryFromDbRows(
+  row: ThreadDbRow,
+  messageRows: MessageDbRow[],
+  now = new Date().toISOString()
+): StoredThreadEntry {
+  const flat = messageRows.map(messageToComment);
+  return {
+    thread: threadRowToForumThread(row, buildCommentForest(flat)),
+    fetchedAt: row.synced_at || now,
+    seenAt: row.seen_at ?? null,
+    isNew: Boolean(row.is_new),
+    isUpdated: Boolean(row.is_updated),
+    noAnswerNeeded: Boolean(row.no_answer_needed),
   };
 }
 
@@ -448,12 +472,8 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
       supabase
         .from("courses")
         .select("id,name_he,forum_category,last_checked_at"),
-      supabase.from("threads").select(
-        "campus_thread_id,course_id,title,author,author_label,body_text,comment_count,created_at,last_activity_at,raw,synced_at,no_answer_needed,seen_at,is_new,is_updated"
-      ),
-      supabase.from("messages").select(
-        "campus_comment_id,thread_id,parent_id,author,author_label,is_staff,endorsed,body_text,created_at,raw"
-      ),
+      supabase.from("threads").select(THREAD_HYDRATE_SELECT),
+      supabase.from("messages").select(MESSAGE_HYDRATE_SELECT),
     ]);
 
     if (coursesRes.error) throw coursesRes.error;
@@ -497,18 +517,11 @@ export async function hydrateThreadStoreFromSupabase(): Promise<HydrateResult> {
     const now = new Date().toISOString();
     for (const row of threadRows) {
       const bucket = ensureBucket(row.course_id);
-      const flat = (messagesByThread.get(row.campus_thread_id) ?? []).map(
-        messageToComment
+      bucket.threads[row.campus_thread_id] = storedEntryFromDbRows(
+        row,
+        messagesByThread.get(row.campus_thread_id) ?? [],
+        now
       );
-      const thread = threadRowToForumThread(row, buildCommentForest(flat));
-      bucket.threads[row.campus_thread_id] = {
-        thread,
-        fetchedAt: row.synced_at || now,
-        seenAt: row.seen_at ?? null,
-        isNew: Boolean(row.is_new),
-        isUpdated: Boolean(row.is_updated),
-        noAnswerNeeded: Boolean(row.no_answer_needed),
-      };
     }
 
     const courses: ThreadStore["courses"] = {};
