@@ -839,7 +839,7 @@ export async function duplicateComponent(
   let pageId = options?.pageId;
   let type = options?.type;
   let props = options?.props;
-  let courseId = options?.courseId;
+  const courseId = options?.courseId;
   let orderedIds = options?.orderedIds;
 
   if (!pageId || !type || !props) {

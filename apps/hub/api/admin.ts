@@ -19,15 +19,6 @@ import {
   removeUser,
 } from "../server/admin/users";
 
-function setCors(res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Authorization, Content-Type"
-  );
-}
-
 async function requireAdmin(req: VercelRequest) {
   const verified = await verifyPlatformRequest(req);
   await assertUserIsAdmin(verified.user.id);
@@ -112,9 +103,6 @@ const ADMIN_ACTIONS: Record<
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
-  if (req.method === "OPTIONS") return res.status(204).end();
-
   try {
     const verified = await requireAdmin(req);
 

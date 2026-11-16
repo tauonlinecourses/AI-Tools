@@ -5,16 +5,19 @@ import "@workspace/ui/styles";
 import { ToolAuthGate } from "@workspace/auth/ToolAuthGate";
 import App from "./App";
 import { DICTIONARY_BASE, dictionaryHomePath } from "./paths";
+import { ErrorBoundary } from "@workspace/ui";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ToolAuthGate toolId="dictionary-tool">
-      <BrowserRouter>
-        <Routes>
-          <Route path={`${DICTIONARY_BASE}/*`} element={<App />} />
-          <Route path="*" element={<Navigate to={dictionaryHomePath()} replace />} />
-        </Routes>
-      </BrowserRouter>
-    </ToolAuthGate>
+    <ErrorBoundary>
+      <ToolAuthGate toolId="dictionary-tool">
+        <BrowserRouter>
+          <Routes>
+            <Route path={`${DICTIONARY_BASE}/*`} element={<App />} />
+            <Route path="*" element={<Navigate to={dictionaryHomePath()} replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ToolAuthGate>
+    </ErrorBoundary>
   </React.StrictMode>
 );

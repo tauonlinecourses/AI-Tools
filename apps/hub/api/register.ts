@@ -3,19 +3,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { AuthError } from "@workspace/auth/server";
 import { listPublicGroups, registerPendingUser } from "../server/registerOps";
 
-function setCors(res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Authorization, Content-Type"
-  );
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
-  if (req.method === "OPTIONS") return res.status(204).end();
-
   try {
     if (req.method === "GET") {
       const resource =

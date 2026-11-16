@@ -1,15 +1,20 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { AuthError, redeemHandoffCode } from "@workspace/auth/server";
+import { allowedCorsOrigin } from "../server/corsOrigins";
 
-function setCors(res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+/** Only known tool origins may read the tokens this returns. */
+function setCors(req: VercelRequest, res: VercelResponse) {
+  res.setHeader("Vary", "Origin");
+  const origin = allowedCorsOrigin(req.headers.origin, process.env.VERCEL_ENV);
+  if (!origin) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
