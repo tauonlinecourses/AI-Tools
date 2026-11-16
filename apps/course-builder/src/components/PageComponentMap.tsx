@@ -141,7 +141,7 @@ export function PageComponentMap({ components, activeId, onSelect }: Props) {
             className={`relative z-[1] flex items-center justify-center w-7 h-7 rounded-md transition-[color,opacity] duration-300 ease-out ${
               active
                 ? "text-surface-900 opacity-100"
-                : "text-surface-400 opacity-55 hover:opacity-100 hover:text-surface-800"
+                : "text-surface-600 opacity-70 hover:opacity-100 hover:text-surface-800"
             }`}
           >
             <MapIcon type={component.type} />

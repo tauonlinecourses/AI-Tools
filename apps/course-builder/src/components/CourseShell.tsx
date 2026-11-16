@@ -1366,7 +1366,6 @@ export function CourseShell({ mode }: CourseShellProps) {
                     }
                   : null
               }
-              rollup={showRollups ? rollups?.perPage.get(selectedPage.id) : undefined}
               prevPage={
                 adjacentPages.prev
                   ? {
