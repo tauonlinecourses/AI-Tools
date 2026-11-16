@@ -1269,7 +1269,10 @@ export function CourseShell({ mode }: CourseShellProps) {
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 min-w-0 overflow-y-auto bg-white">
+        <div
+          data-course-main-scroll
+          className="flex-1 min-w-0 overflow-y-auto bg-white"
+        >
           <div className="fixed top-14 left-4 z-20 pointer-events-none">
             <SaveStatusIndicator />
           </div>

@@ -158,7 +158,7 @@ export function HubPage({ locale }: { locale: Locale }) {
       <SoftPageBg />
 
       <div className="relative z-10">
-        <div className="relative z-20 border-b border-surface-200/80 bg-white/55 backdrop-blur-[2px]">
+        <div className="relative z-20 bg-white/55 backdrop-blur-[2px]">
           <div className="max-w-screen-xl mx-auto px-6 py-8">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
@@ -231,7 +231,15 @@ export function HubPage({ locale }: { locale: Locale }) {
           </div>
         </div>
 
-        <div className="relative z-10 border-b border-surface-200/80 bg-white/40 backdrop-blur-[2px]">
+        <div className="relative z-10 bg-white/40 backdrop-blur-[2px]">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(to_right,transparent_0%,rgb(229_231_235_/_0.8)_12%,rgb(229_231_235_/_0.8)_88%,transparent_100%)]"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[linear-gradient(to_right,transparent_0%,rgb(229_231_235_/_0.8)_12%,rgb(229_231_235_/_0.8)_88%,transparent_100%)]"
+          />
           <div className="max-w-screen-xl mx-auto px-6">
             <div className="flex gap-1 overflow-x-auto py-2">
               <button

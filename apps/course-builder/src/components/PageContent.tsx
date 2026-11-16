@@ -71,6 +71,7 @@ import {
 } from "./icons";
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
 import { LessonPagesCard } from "./LessonPagesCard";
+import { PageComponentMap } from "./PageComponentMap";
 
 /** Sentinel for the open page-header comment thread (mutually exclusive with block threads). */
 const PAGE_COMMENTS_OPEN_ID = "__page_comments__";
@@ -536,6 +537,11 @@ export function PageContent({
   /** After add/duplicate, scroll the main pane to this component id once it paints. */
   const scrollToComponentId = useRef<string | null>(null);
   const copiedTimer = useRef<number | null>(null);
+  /** Page-map highlight: component currently in the main scroll viewport. */
+  const [mapActiveId, setMapActiveId] = useState<string | null>(null);
+  /** Ignore observer updates while a map click / programmatic scroll is settling. */
+  const mapLockUntil = useRef(0);
+  const mapLockTimer = useRef<number | null>(null);
 
   // The shell re-creates these callbacks on every render (including the ones
   // caused by the save indicator), so they must stay out of the load effect's
@@ -548,17 +554,87 @@ export function PageContent({
     if (pending) await pending;
   }
 
+  function scrollToComponent(id: string) {
+    const el = document.querySelector(
+      `[data-component-id="${CSS.escape(id)}"]`
+    );
+    setMapActiveId(id);
+    // Keep the clicked item selected while smooth-scroll settles; otherwise the
+    // intersection observer highlights a neighbor above the centered target.
+    mapLockUntil.current = Date.now() + 900;
+    if (mapLockTimer.current) window.clearTimeout(mapLockTimer.current);
+    mapLockTimer.current = window.setTimeout(() => {
+      mapLockUntil.current = 0;
+      mapLockTimer.current = null;
+    }, 900);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   useEffect(() => {
     const id = scrollToComponentId.current;
     if (!id || !components?.some((c) => c.id === id)) return;
     scrollToComponentId.current = null;
     const frame = window.requestAnimationFrame(() => {
-      const el = document.querySelector(
-        `[data-component-id="${CSS.escape(id)}"]`
-      );
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollToComponent(id);
     });
     return () => window.cancelAnimationFrame(frame);
+  }, [components]);
+
+  useEffect(() => {
+    if (!components?.length) {
+      setMapActiveId(null);
+      return;
+    }
+
+    const root = document.querySelector("[data-course-main-scroll]");
+    if (!(root instanceof HTMLElement)) return;
+
+    let raf = 0;
+    function updateActiveFromScroll() {
+      if (Date.now() < mapLockUntil.current) return;
+
+      // At (or very near) the top, always highlight the first component.
+      if (root.scrollTop <= 8) {
+        setMapActiveId(components[0].id);
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      // Focus line under the sticky page header.
+      const markerY = rootRect.top + Math.min(150, rootRect.height * 0.25);
+
+      // Last component whose top has crossed the marker (document order).
+      let nextId = components[0].id;
+      for (const component of components) {
+        const node = document.querySelector(
+          `[data-component-id="${CSS.escape(component.id)}"]`
+        );
+        if (!node) continue;
+        if (node.getBoundingClientRect().top <= markerY) {
+          nextId = component.id;
+        } else {
+          break;
+        }
+      }
+      setMapActiveId(nextId);
+    }
+
+    function onScrollOrResize() {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        updateActiveFromScroll();
+      });
+    }
+
+    updateActiveFromScroll();
+    root.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      root.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
   }, [components]);
 
   useEffect(() => {
@@ -570,7 +646,13 @@ export function PageContent({
     setOpenHeaderField(null);
     setCopiedComponentId(null);
     setEditingTitle(false);
+    setMapActiveId(null);
     scrollToComponentId.current = null;
+    mapLockUntil.current = 0;
+    if (mapLockTimer.current) {
+      window.clearTimeout(mapLockTimer.current);
+      mapLockTimer.current = null;
+    }
     if (copiedTimer.current) {
       window.clearTimeout(copiedTimer.current);
       copiedTimer.current = null;
@@ -1238,7 +1320,11 @@ export function PageContent({
 
   /** Polished preview: stacked blocks with comment gutter (no type header). */
   function renderPreviewBlock(component: PageComponent) {
-    return wrapWithComments(component.id, renderBlock(component));
+    return (
+      <div data-component-id={component.id}>
+        {wrapWithComments(component.id, renderBlock(component))}
+      </div>
+    );
   }
 
   function renderComponentCard(
@@ -1816,42 +1902,60 @@ export function PageContent({
     </div>
   );
 
+  const showPageMap = components !== null && components.length > 0;
+
   return (
-    <div className="flex flex-col max-w-3xl w-full mx-auto ps-12 pe-6 py-6">
-      {/* Sticky title + status in edit/implement only (not תצוגה) */}
-      <div
-        className={
-          isReview
-            ? "mb-3"
-            : // Bleed into the start gutter (ps-12) so comment icons scroll under the header.
-              "sticky top-0 z-30 -mt-6 -ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
-        }
-      >
-        <BlockComments
-          comments={pageComments}
-          mode={mode}
-          open={openCommentId === PAGE_COMMENTS_OPEN_ID}
-          onToggle={() =>
-            setOpenCommentId((prev) =>
-              prev === PAGE_COMMENTS_OPEN_ID ? null : PAGE_COMMENTS_OPEN_ID
-            )
-          }
-          onAdd={handleAddPageComment}
-          onSetResolved={handleSetPageCommentResolved}
-          onDelete={handleDeletePageComment}
-          ariaLabel="הערות לעמוד"
-          className="mb-0"
-        >
-          {pageHeader}
-        </BlockComments>
+    <div className="flex flex-col w-full max-w-4xl mx-auto pe-3 py-6">
+      {/* Same column geometry as the components row so the title stays centered above cards */}
+      <div className="flex w-full gap-2">
+        {showPageMap && <div className="w-9 shrink-0" aria-hidden />}
+        <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
+          {/* Sticky title + status in edit/implement only (not תצוגה) */}
+          <div
+            className={
+              isReview
+                ? "mb-3"
+                : // Bleed into the start gutter (ps-12) so comment icons scroll under the header.
+                  "sticky top-0 z-30 -mt-6 -ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
+            }
+          >
+            <BlockComments
+              comments={pageComments}
+              mode={mode}
+              open={openCommentId === PAGE_COMMENTS_OPEN_ID}
+              onToggle={() =>
+                setOpenCommentId((prev) =>
+                  prev === PAGE_COMMENTS_OPEN_ID ? null : PAGE_COMMENTS_OPEN_ID
+                )
+              }
+              onAdd={handleAddPageComment}
+              onSetResolved={handleSetPageCommentResolved}
+              onDelete={handleDeletePageComment}
+              ariaLabel="הערות לעמוד"
+              className="mb-0"
+            >
+              {pageHeader}
+            </BlockComments>
+          </div>
+
+          {error && (
+            <Card className="border-danger bg-red-50 mb-4">
+              <p className="text-base text-danger">{error}</p>
+            </Card>
+          )}
+        </div>
       </div>
 
-      {error && (
-        <Card className="border-danger bg-red-50 mb-4">
-          <p className="text-base text-danger">{error}</p>
-        </Card>
-      )}
-
+      {/* Components row: map aligns with the top of the components area */}
+      <div className="flex w-full gap-2">
+        {components !== null && components.length > 0 && (
+          <PageComponentMap
+            components={components}
+            activeId={mapActiveId}
+            onSelect={scrollToComponent}
+          />
+        )}
+        <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
       {/* Components */}
       {components === null && !error && (
         <div className="flex items-center gap-2 text-base text-surface-600">
@@ -2033,6 +2137,8 @@ export function PageContent({
           )}
         </nav>
       )}
+        </div>
+      </div>
     </div>
   );
 }
