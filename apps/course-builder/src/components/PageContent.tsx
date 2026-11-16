@@ -14,7 +14,6 @@ import type {
   PageWorkflowStatus,
   QuestionProps,
   Section,
-  StatusRollup,
 } from "../lib/types";
 import {
   componentStatus,
@@ -476,7 +475,6 @@ interface PageContentProps {
   lessonVideosFolderUrl?: string | null;
   /** When set on the course home page, renders Moodle-style lesson cards below content. */
   homeCourseStructure?: HomeCourseStructure | null;
-  rollup?: StatusRollup;
   prevPage: AdjacentPageLink | null;
   nextPage: AdjacentPageLink | null;
   onNavigatePage: (pageId: string) => void;
@@ -499,7 +497,6 @@ export function PageContent({
   lessonFilesFolderUrl,
   lessonVideosFolderUrl,
   homeCourseStructure,
-  rollup,
   prevPage,
   nextPage,
   onNavigatePage,
@@ -539,9 +536,16 @@ export function PageContent({
   const copiedTimer = useRef<number | null>(null);
   /** Page-map highlight: component currently in the main scroll viewport. */
   const [mapActiveId, setMapActiveId] = useState<string | null>(null);
-  /** Ignore observer updates while a map click / programmatic scroll is settling. */
-  const mapLockUntil = useRef(0);
+  const mapActiveIdRef = useRef<string | null>(null);
+  /** Ignore scrollspy while a map click / programmatic scroll is settling. */
+  const mapScrollLocked = useRef(false);
   const mapLockTimer = useRef<number | null>(null);
+  const mapScrollUnlock = useRef<(() => void) | null>(null);
+
+  function setMapActive(id: string | null) {
+    mapActiveIdRef.current = id;
+    setMapActiveId(id);
+  }
 
   // The shell re-creates these callbacks on every render (including the ones
   // caused by the save indicator), so they must stay out of the load effect's
@@ -554,19 +558,75 @@ export function PageContent({
     if (pending) await pending;
   }
 
+  function clearMapScrollLock() {
+    if (mapScrollUnlock.current) {
+      mapScrollUnlock.current();
+      return;
+    }
+    mapScrollLocked.current = false;
+    if (mapLockTimer.current) {
+      window.clearTimeout(mapLockTimer.current);
+      mapLockTimer.current = null;
+    }
+  }
+
   function scrollToComponent(id: string) {
     const el = document.querySelector(
       `[data-component-id="${CSS.escape(id)}"]`
     );
-    setMapActiveId(id);
-    // Keep the clicked item selected while smooth-scroll settles; otherwise the
-    // intersection observer highlights a neighbor above the centered target.
-    mapLockUntil.current = Date.now() + 900;
-    if (mapLockTimer.current) window.clearTimeout(mapLockTimer.current);
-    mapLockTimer.current = window.setTimeout(() => {
-      mapLockUntil.current = 0;
-      mapLockTimer.current = null;
-    }, 900);
+    setMapActive(id);
+    // Freeze scrollspy on the clicked item until motion fully stops. Short
+    // "quiet" windows false-trigger during smooth-scroll frame gaps and make
+    // the map pill jump through neighbors mid-flight.
+    clearMapScrollLock();
+    mapScrollLocked.current = true;
+
+    const root = document.querySelector("[data-course-main-scroll]");
+    let settleTimer: number | null = null;
+    let lastTop =
+      root instanceof HTMLElement ? root.scrollTop : 0;
+    const unlock = () => {
+      if (settleTimer) window.clearTimeout(settleTimer);
+      settleTimer = null;
+      if (mapLockTimer.current) {
+        window.clearTimeout(mapLockTimer.current);
+        mapLockTimer.current = null;
+      }
+      if (root instanceof HTMLElement) {
+        root.removeEventListener("scroll", onScroll);
+      }
+      mapScrollLocked.current = false;
+      mapScrollUnlock.current = null;
+      // Keep the clicked highlight; do not re-run scrollspy here (avoids a
+      // post-settle jump to the neighbor above a centered last card).
+    };
+    const scheduleSettleCheck = () => {
+      if (settleTimer) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        if (!(root instanceof HTMLElement)) {
+          unlock();
+          return;
+        }
+        // Require both event quiet time and an unchanged scrollTop.
+        if (Math.abs(root.scrollTop - lastTop) < 1) {
+          unlock();
+          return;
+        }
+        lastTop = root.scrollTop;
+        scheduleSettleCheck();
+      }, 500);
+    };
+    const onScroll = () => {
+      if (root instanceof HTMLElement) lastTop = root.scrollTop;
+      scheduleSettleCheck();
+    };
+    mapScrollUnlock.current = unlock;
+    if (root instanceof HTMLElement) {
+      root.addEventListener("scroll", onScroll, { passive: true });
+    }
+    // Safety if scroll is a no-op (already in view) or events are missed.
+    mapLockTimer.current = window.setTimeout(unlock, 4000);
+
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
@@ -582,7 +642,7 @@ export function PageContent({
 
   useEffect(() => {
     if (!components?.length) {
-      setMapActiveId(null);
+      setMapActive(null);
       return;
     }
 
@@ -591,11 +651,19 @@ export function PageContent({
 
     let raf = 0;
     function updateActiveFromScroll() {
-      if (Date.now() < mapLockUntil.current) return;
+      if (mapScrollLocked.current) return;
 
       // At (or very near) the top, always highlight the first component.
       if (root.scrollTop <= 8) {
-        setMapActiveId(components[0].id);
+        setMapActive(components[0].id);
+        return;
+      }
+
+      // At (or very near) the bottom, always highlight the last — footer content
+      // below the last card can leave its top under the marker otherwise.
+      const maxScroll = root.scrollHeight - root.clientHeight;
+      if (maxScroll > 0 && root.scrollTop >= maxScroll - 8) {
+        setMapActive(components[components.length - 1].id);
         return;
       }
 
@@ -616,7 +684,26 @@ export function PageContent({
           break;
         }
       }
-      setMapActiveId(nextId);
+
+      // Last card centered often sits below the marker while footer remains.
+      // Hysteresis avoids pill flicker at the promote/demote boundary.
+      const last = components[components.length - 1];
+      const lastNode = document.querySelector(
+        `[data-component-id="${CSS.escape(last.id)}"]`
+      );
+      if (lastNode) {
+        const lastTop = lastNode.getBoundingClientRect().top;
+        const promoteY = rootRect.top + rootRect.height * 0.4;
+        const demoteY = rootRect.top + rootRect.height * 0.65;
+        const onLast = mapActiveIdRef.current === last.id;
+        if (onLast) {
+          if (lastTop <= demoteY) nextId = last.id;
+        } else if (lastTop <= promoteY) {
+          nextId = last.id;
+        }
+      }
+
+      if (nextId !== mapActiveIdRef.current) setMapActive(nextId);
     }
 
     function onScrollOrResize() {
@@ -646,13 +733,9 @@ export function PageContent({
     setOpenHeaderField(null);
     setCopiedComponentId(null);
     setEditingTitle(false);
-    setMapActiveId(null);
+    setMapActive(null);
     scrollToComponentId.current = null;
-    mapLockUntil.current = 0;
-    if (mapLockTimer.current) {
-      window.clearTimeout(mapLockTimer.current);
-      mapLockTimer.current = null;
-    }
+    clearMapScrollLock();
     if (copiedTimer.current) {
       window.clearTimeout(copiedTimer.current);
       copiedTimer.current = null;
@@ -1893,12 +1976,6 @@ export function PageContent({
           </div>
         )}
       </div>
-      {isImplement && rollup && rollup.total_count > 0 && (
-        <span className="text-sm text-surface-500">
-          {rollup.implemented_count}/{rollup.total_count} רכיבים הוטמעו
-          {rollup.needs_update_count > 0 && ` · ${rollup.needs_update_count} עברו שינוי`}
-        </span>
-      )}
     </div>
   );
 
@@ -1906,19 +1983,21 @@ export function PageContent({
 
   return (
     <div className="flex flex-col w-full max-w-4xl mx-auto pe-3 py-6">
-      {/* Same column geometry as the components row so the title stays centered above cards */}
-      <div className="flex w-full gap-2">
-        {showPageMap && <div className="w-9 shrink-0" aria-hidden />}
-        <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
-          {/* Sticky title + status in edit/implement only (not תצוגה) */}
-          <div
-            className={
-              isReview
-                ? "mb-3"
-                : // Bleed into the start gutter (ps-12) so comment icons scroll under the header.
-                  "sticky top-0 z-30 -mt-6 -ms-12 mb-3 bg-white pt-6 pb-3 ps-12"
-            }
-          >
+      {/*
+        Sticky header must be a direct child of this tall outer column (which also
+        wraps the components row). Nesting it in a short header-only row breaks
+        position:sticky — the element cannot stick past its parent.
+      */}
+      <div
+        className={
+          isReview
+            ? "mb-3"
+            : "sticky top-0 z-30 -mt-6 mb-3 bg-white pt-6 pb-3"
+        }
+      >
+        <div className="flex w-full gap-2">
+          {showPageMap && <div className="w-9 shrink-0" aria-hidden />}
+          <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
             <BlockComments
               comments={pageComments}
               mode={mode}
@@ -1937,12 +2016,6 @@ export function PageContent({
               {pageHeader}
             </BlockComments>
           </div>
-
-          {error && (
-            <Card className="border-danger bg-red-50 mb-4">
-              <p className="text-base text-danger">{error}</p>
-            </Card>
-          )}
         </div>
       </div>
 
@@ -1956,6 +2029,12 @@ export function PageContent({
           />
         )}
         <div className="flex flex-col flex-1 min-w-0 max-w-3xl ps-12">
+      {error && (
+        <Card className="border-danger bg-red-50 mb-4">
+          <p className="text-base text-danger">{error}</p>
+        </Card>
+      )}
+
       {/* Components */}
       {components === null && !error && (
         <div className="flex items-center gap-2 text-base text-surface-600">
