@@ -39,6 +39,7 @@ export const ToolInfoCard = forwardRef<
   const [videoFailed, setVideoFailed] = useState(false);
   const showVideo = Boolean(details?.video) && !videoFailed;
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const showImage = !showVideo && Boolean(details?.image) && !imageFailed;
 
   const isComingSoon = tool.status === "coming-soon";
@@ -78,12 +79,24 @@ export const ToolInfoCard = forwardRef<
       )}
 
       {showImage && (
-        <div className="w-full bg-surface-100 border-b border-surface-200 overflow-hidden">
+        <div className="relative w-full bg-surface-100 border-b border-surface-200 overflow-hidden">
+          {!imageLoaded && (
+            <div
+              className="aspect-[2/1] w-full animate-pulse bg-surface-200"
+              aria-hidden="true"
+            />
+          )}
           <img
+            key={details!.image}
             src={encodeURI(details!.image!)}
             alt={copy.name}
-            className="block h-auto w-full"
-            loading="lazy"
+            className={
+              imageLoaded
+                ? "relative block h-auto w-full"
+                : "absolute inset-0 h-full w-full object-cover opacity-0"
+            }
+            loading="eager"
+            onLoad={() => setImageLoaded(true)}
             onError={() => setImageFailed(true)}
           />
         </div>
