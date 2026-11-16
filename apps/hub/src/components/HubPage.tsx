@@ -284,6 +284,9 @@ export function HubPage({ locale }: { locale: Locale }) {
                   tool={tool}
                   locale={locale}
                   allowed={allowedToolIds.includes(tool.id)}
+                  teamNames={publicGroups
+                    .filter((g) => g.toolIds.includes(tool.id))
+                    .map((g) => g.name)}
                 />
               ))}
             </div>
