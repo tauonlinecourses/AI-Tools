@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Badge } from "@workspace/ui";
 import type { AdminGroupRow } from "../../lib/adminApi";
 import { REPO_URL, TOOL_DOCS, type ToolDoc } from "./toolDocs";
+import { toolDetails } from "../../toolDetails";
 
 /** Selected tool comes from the URL hash (e.g. `#course-builder`) so a tool's doc can be linked. */
 function docIdFromHash(): string {
@@ -67,12 +68,30 @@ export function ToolDocsTab({ groups }: { groups: AdminGroupRow[] }) {
 
 function ToolDocView({ doc, groups }: { doc: ToolDoc; groups: AdminGroupRow[] }) {
   const accessGroups = groups.filter((g) => g.toolIds.includes(doc.id));
+  const addedAt = toolDetails[doc.id]?.addedAt ?? doc.addedAt;
+  const updatedAt = toolDetails[doc.id]?.updatedAt ?? doc.updatedAt;
 
   return (
     <article className="min-w-0 flex-1 space-y-6 border border-surface-200 bg-white p-6">
       <header className="space-y-2">
         <h2 className="text-xl font-semibold text-surface-900">{doc.nameHe}</h2>
         <p className="text-sm leading-relaxed text-surface-600">{doc.purpose}</p>
+        {(addedAt || updatedAt) && (
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 pt-1 text-xs">
+            {addedAt && (
+              <div className="flex gap-1.5">
+                <dt className="text-surface-500">נוצר:</dt>
+                <dd className="font-medium text-surface-900">{formatDateHe(addedAt)}</dd>
+              </div>
+            )}
+            {updatedAt && (
+              <div className="flex gap-1.5">
+                <dt className="text-surface-500">עדכון אחרון:</dt>
+                <dd className="font-medium text-surface-900">{formatDateHe(updatedAt)}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </header>
 
       <Section title="תהליך עבודה עיקרי">
@@ -149,6 +168,17 @@ function ToolDocView({ doc, groups }: { doc: ToolDoc; groups: AdminGroupRow[] })
       </Section>
     </article>
   );
+}
+
+/** ISO date (YYYY-MM-DD) → e.g. "13 ביולי 2026". */
+function formatDateHe(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("he-IL", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

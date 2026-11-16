@@ -36,6 +36,12 @@ export type ToolDoc = {
   accessNote?: string;
   /** Short folder tree (monospace). */
   structure: string;
+  /**
+   * Only for entries missing from `src/toolDetails.ts` (the hub itself).
+   * Tools take their added / updated dates from `toolDetails.ts`, shared with the hover card.
+   */
+  addedAt?: string;
+  updatedAt?: string;
 };
 
 const HUB_URL = "https://ai-tools-tauonline.vercel.app";
@@ -71,6 +77,8 @@ export const TOOL_DOCS: ToolDoc[] = [
     repoPath: "apps/hub",
     databases: [PLATFORM_DB],
     accessNote: "כל משתמש מאושר. אזור הניהול — מנהלים בלבד.",
+    addedAt: "2026-07-13",
+    updatedAt: "2026-11-16",
     structure: `apps/hub/
 ├── api/                 ← פונקציות Vercel (admin, register, auth-handoff…)
 ├── server/admin/        ← לוגיקת ניהול משתמשים וצוותים בצד השרת
@@ -165,7 +173,7 @@ export const TOOL_DOCS: ToolDoc[] = [
     id: "tau-support",
     nameHe: "תמיכה טכנית (TAU Support)",
     purpose:
-      "מרכז את הודעות פורומי התמיכה הטכנית מכל הקורסים של אוניברסיטת תל אביב ומציע טיוטות תשובה מבוססות מסמכי ידע ותשובות קודמות באמצעות AI.",
+      "מרכז את הודעות פורומי התמיכה הטכנית מכל הקורסים של אוניברסיטת תל אביב בפלטפורמת קמפוס IL ומציע טיוטות תשובה מבוססות מסמכי ידע ותשובות קודמות באמצעות AI.",
     workflow: [
       "הכלי מחובר לחשבון campus IL (Open edX) מאחורי הקלעים.",
       "הכלי מושך שרשורים ותגובות חדשים מכל הקורסים ב-courses.json.",

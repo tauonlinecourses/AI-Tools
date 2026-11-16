@@ -38,6 +38,8 @@ export const ToolInfoCard = forwardRef<
   const info = details?.copy[locale];
   const [videoFailed, setVideoFailed] = useState(false);
   const showVideo = Boolean(details?.video) && !videoFailed;
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = !showVideo && Boolean(details?.image) && !imageFailed;
 
   const isComingSoon = tool.status === "coming-soon";
   const accessText = isComingSoon
@@ -75,11 +77,22 @@ export const ToolInfoCard = forwardRef<
         </div>
       )}
 
+      {showImage && (
+        <div className="w-full bg-surface-100 border-b border-surface-200 overflow-hidden">
+          <img
+            src={encodeURI(details!.image!)}
+            alt={copy.name}
+            className="block h-auto w-full"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <h3 className="text-lg font-semibold text-surface-900">{copy.name}</h3>
-            {tool.status === "beta" && <Badge variant="default" size="sm">{t.beta}</Badge>}
             {isComingSoon && <Badge variant="default" size="sm">{t.comingSoon}</Badge>}
           </div>
           <ToolIcon name={tool.icon} />
@@ -91,7 +104,6 @@ export const ToolInfoCard = forwardRef<
 
         {info && info.features.length > 0 && (
           <div>
-            <h4 className="mb-1.5 text-xs font-semibold text-surface-900">{t.features}</h4>
             <ul className="space-y-1 text-sm text-surface-600">
               {info.features.map((f) => (
                 <li key={f} className="flex gap-2">

@@ -8,11 +8,14 @@ import type { Locale } from "./i18n";
  * - `video` (optional) is a path under `apps/hub/public/`, e.g. `/tool-previews/<id>.mp4`.
  *   Keep clips short (10–30s), muted, ~720p, and small (under ~5MB).
  *   Leave it out until the clip exists: no video means no video section.
+ * - `image` (optional) is a screenshot under `apps/hub/public/tools images/`.
+ *   Shown at the top of the card when there is no video. Wide images (~2:1) fit best.
  */
 export interface ToolDetails {
   addedAt:   string;
   updatedAt: string;
   video?:    string;
+  image?:    string;
   copy: Record<Locale, { about: string; features: string[] }>;
 }
 
@@ -20,23 +23,26 @@ export const toolDetails: Record<string, ToolDetails> = {
   "video-curator": {
     addedAt:   "2026-07-13",
     updatedAt: "2026-11-12",
+    image:     "/tools images/video curator.png",
     copy: {
       en: {
         about:
-          "Upload a lecture video, get an AI transcript, and split it into titled sections. Export the result as clips, subtitles, or an editing document.",
+          "Splits a video's transcript into titled sections with AI, then exports clips, SRT subtitles, and a PDF.",
         features: [
-          "AI transcription and section suggestions",
-          "Clip export per section",
-          "SRT subtitles and PDF editing notes",
+          "Video + SRT upload, or a YouTube link",
+          "AI splits the transcript into titled sections",
+          "Edit and reorder sections on a timeline",
+          "Export clips, SRT subtitles, or a PDF",
         ],
       },
       he: {
         about:
-          "מעלים סרטון הרצאה, מקבלים תמלול אוטומטי ומחלקים אותו לקטעים עם כותרות. את התוצאה אפשר לייצא כקליפים, כתוביות או מסמך עריכה.",
+          "מחלק תמלול של סרטון לפרקים בעזרת AI ומייצא קליפים, כתוביות SRT ו-PDF.",
         features: [
-          "תמלול והצעות חלוקה לקטעים",
-          "ייצוא קליפ לכל קטע",
-          "כתוביות SRT ומסמך עריכה ב-PDF",
+          "העלאת וידאו + SRT, או קישור YouTube",
+          "חלוקה אוטומטית של התמלול לפרקים עם כותרות",
+          "עריכה והזזה של פרקים על ציר הזמן",
+          "ייצוא קליפים, כתוביות SRT או PDF",
         ],
       },
     },
@@ -44,23 +50,26 @@ export const toolDetails: Record<string, ToolDetails> = {
   "course-builder": {
     addedAt:   "2026-08-09",
     updatedAt: "2026-11-12",
+    image:     "/tools images/course builder.png",
     copy: {
       en: {
         about:
-          "Plan a course's structure and write each page's content in one place. Implementers get a review view that shows exactly what to build in Moodle or edX.",
+          "A platform for writing implementation documents for course developers, lecturers, and teaching assistants, with an implementation view that streamlines building the course in Moodle/edX for the learning-systems team.",
         features: [
-          "Course outline with units and pages",
-          "Rich page editor with lessons and questions",
-          "Review view for the implementation team",
+          "Course structure: lessons → pages",
+          "Pages built from a component library, with statuses",
+          "Implementation view to mark what's already built on each platform",
+          "Moodle MBZ import/export and local backup",
         ],
       },
       he: {
         about:
-          "תכנון מבנה הקורס וכתיבת התוכן של כל עמוד במקום אחד. צוות ההטמעה מקבל תצוגה שמראה בדיוק מה לבנות במודל או ב-edX.",
+          "פלטפורמה ליצירת מסמכי הטמעה עבור מפתחי קורסים, מרצים ועוזרי הוראה, עם תצוגת הטמעה על מנת ליעל את תהליך ההטמעה ויישום לצוות מערכות למידה בפלטפורמות Moodle/edX.",
         features: [
-          "מבנה קורס עם יחידות ועמודים",
-          "עורך עמודים עם שיעורים ושאלות",
-          "תצוגת הטמעה לצוות ההטמעה",
+          "מבנה קורס: שיעורים ← עמודים",
+          "בניית עמודים ממאגר רכיבים וסימון סטטוס",
+          "תצוגת הטמעה לסימון מה כבר הוטמע בכל פלטפורמה",
+          "ייבוא וייצוא MBZ של Moodle וגיבוי מקומי",
         ],
       },
     },
@@ -68,23 +77,24 @@ export const toolDetails: Record<string, ToolDetails> = {
   "mbz-explorer": {
     addedAt:   "2026-08-11",
     updatedAt: "2026-11-12",
+    image:     "/tools images/mbz explorer.png",
     copy: {
       en: {
         about:
-          "Open a Moodle .mbz course backup in the browser and browse its sections, activities, and content without restoring it to Moodle.",
+          "View a Moodle course backup (.mbz) in the browser — structure, activities, and decoded content.",
         features: [
-          "Course structure tree",
-          "Decoded activity and page content",
-          "Runs locally in the browser",
+          "Opens in the browser only, no server",
+          "Course structure tree of sections and activities",
+          "Decoded content for each activity",
         ],
       },
       he: {
         about:
-          "פותחים קובץ גיבוי של קורס מודל (MBZ) בדפדפן וצופים ביחידות, בפעילויות ובתוכן בלי לשחזר אותו למודל.",
+          "צפייה בגיבוי קורס של Moodle (.mbz) בדפדפן — מבנה, פעילויות ותוכן מפוענח.",
         features: [
-          "עץ מבנה הקורס",
-          "תצוגת תוכן הפעילויות והעמודים",
-          "עובד מקומית בדפדפן",
+          "נפתח בדפדפן בלבד, בלי שרת",
+          "עץ מבנה הקורס: פרקים ופעילויות",
+          "תצוגת התוכן המפוענח של כל פעילות",
         ],
       },
     },
@@ -92,23 +102,26 @@ export const toolDetails: Record<string, ToolDetails> = {
   "tau-support": {
     addedAt:   "2026-09-02",
     updatedAt: "2026-11-12",
+    image:     "/tools images/tau support.png",
     copy: {
       en: {
         about:
-          "Pulls new technical-help forum threads from all of the university's Campus IL courses into one view, sorted by category, so staff can answer them faster.",
+          "Gathers technical-support forum posts from all Tel Aviv University courses and suggests AI-drafted answers based on knowledge documents and previous answers.",
         features: [
-          "New forum threads from every course in one place",
-          "Questions grouped by category",
-          "AI-drafted answers",
+          "New threads and replies from every course in one place",
+          "Similar questions and a draft answer for each question",
+          "Questions dashboard with categories and trends",
+          "Knowledge documents edited inside the tool",
         ],
       },
       he: {
         about:
-          "מרכז את השרשורים החדשים בפורומי העזרה הטכנית מכל קורסי האוניברסיטה בקמפוס IL במקום אחד, ממוינים לקטגוריות, כדי שהצוות יענה מהר יותר.",
+          "מרכז את הודעות פורומי התמיכה הטכנית מכל הקורסים של אוניברסיטת תל אביב בפלטפורמת קמפוס IL ומציע טיוטות תשובה מבוססות מסמכי ידע ותשובות קודמות באמצעות AI.",
         features: [
-          "שרשורים חדשים מכל הקורסים במקום אחד",
-          "שאלות ממוינות לקטגוריות",
-          "טיוטות תשובה מבוססות AI",
+          "שרשורים ותגובות חדשים מכל הקורסים במקום אחד",
+          "שאלות דומות וטיוטת תשובה לכל שאלה",
+          "דשבורד שאלות עם קטגוריות ומגמות",
+          "עריכת מסמכי המידע מתוך הכלי",
         ],
       },
     },
@@ -116,23 +129,24 @@ export const toolDetails: Record<string, ToolDetails> = {
   "virtual-support": {
     addedAt:   "2026-10-18",
     updatedAt: "2026-11-12",
+    image:     "/tools images/virtual support.png",
     copy: {
       en: {
         about:
-          "A chatbot that answers technical-support questions using the organization's own guides and staff documents, with links to the sources it used.",
+          "A knowledge base for the support team, with Q&A grounded in sources and citations.",
         features: [
-          "Answers grounded in staff documents",
-          "Source links for every answer",
-          "Browse guides by topic",
+          "Knowledge documents organized in folders and pages",
+          "Chat answers built only from the documents, with citations",
+          "Click a citation to open the document",
         ],
       },
       he: {
         about:
-          "צ׳אט-בוט שעונה על שאלות תמיכה טכנית על סמך המדריכים ומסמכי הצוות של הארגון, עם קישורים למקורות שעליהם התבסס.",
+          "מאגר ידע לצוות התמיכה עם שאלות ותשובות מבוססות מקורות וציטוטים.",
         features: [
-          "תשובות המבוססות על מסמכי הצוות",
-          "קישור למקור בכל תשובה",
-          "עיון במדריכים לפי נושא",
+          "מסמכי ידע מסודרים לפי תיקיות ועמודים",
+          "תשובות בצ׳אט רק מתוך המסמכים, עם ציטוטים",
+          "לחיצה על ציטוט פותחת את המסמך",
         ],
       },
     },
@@ -140,21 +154,24 @@ export const toolDetails: Record<string, ToolDetails> = {
   "dictionary-tool": {
     addedAt:   "2026-10-19",
     updatedAt: "2026-10-19",
+    image:     "/tools images/dictionary tool.png",
     copy: {
       en: {
         about:
-          "Turn an Excel glossary with term and definition columns into an XML file you can import straight into a Moodle glossary.",
+          "Converts an Excel file of terms and definitions into an XML file for importing a glossary into Moodle.",
         features: [
-          "Excel upload with preview",
-          "Moodle glossary XML export",
+          "Excel upload with term and definition columns",
+          "Preview of the terms",
+          "XML download for a Moodle glossary activity",
         ],
       },
       he: {
         about:
-          "הופך קובץ אקסל עם עמודות מושג והגדרה לקובץ XML שאפשר לייבא ישירות למילון מונחים במודל.",
+          "ממיר קובץ Excel של מונחים והגדרות לקובץ XML לייבוא מילון ב-Moodle.",
         features: [
-          "העלאת אקסל עם תצוגה מקדימה",
-          "ייצוא XML למילון מונחים במודל",
+          "העלאת Excel עם העמודות מושג והגדרה",
+          "תצוגה מקדימה של המונחים",
+          "הורדת XML לפעילות מילון ב-Moodle",
         ],
       },
     },
@@ -162,21 +179,24 @@ export const toolDetails: Record<string, ToolDetails> = {
   "video-transcriber": {
     addedAt:   "2026-11-04",
     updatedAt: "2026-11-04",
+    image:     "/tools images/video transcriber.png",
     copy: {
       en: {
         about:
-          "A desktop app that transcribes video files on your computer. This page links to the installer on SharePoint.",
+          "Download page and install guide for the desktop Video Transcriber, stored on SharePoint.",
         features: [
           "Download from SharePoint",
           "Step-by-step install guide",
+          "Desktop shortcut created on install",
         ],
       },
       he: {
         about:
-          "תוכנה לשולחן העבודה שמתמללת קבצי וידאו על המחשב שלך. העמוד מקשר לקובץ ההתקנה ב-SharePoint.",
+          "דף הורדה והוראות התקנה לתוכנת מתמלל הוידאו השולחנית, שנשמרת ב-SharePoint.",
         features: [
           "הורדה מ-SharePoint",
           "מדריך התקנה צעד אחר צעד",
+          "קיצור דרך בשולחן העבודה אחרי ההתקנה",
         ],
       },
     },
