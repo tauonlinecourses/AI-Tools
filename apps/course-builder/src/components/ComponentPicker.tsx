@@ -70,9 +70,16 @@ function fitQuickBar(
   return { common: 0, tileWidth: TILE_MIN };
 }
 
+const tileBtn =
+  "relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-control border border-transparent px-1.5 py-2.5 text-center text-[13px] leading-tight transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF]";
+const tileBtnOk = "hover:border-surface-200 hover:bg-surface-50 focus-visible:bg-surface-50";
+const tileBtnLocked = "cursor-not-allowed opacity-45";
+
 /**
  * Add-component menu: opens as a quick bar (recommended templates for this spot + most
  * used types) that expands into search, a category rail and the full catalog.
+ * Chrome matches site panels (surface borders, sharp control radii, blue accent);
+ * category colors stay on icons, dots, and template previews.
  */
 export function ComponentPicker({
   prevType,
@@ -134,6 +141,8 @@ export function ComponentPicker({
   // A persistent bar never grabs focus by itself (it renders on page load).
   const didExpand = useRef(false);
   useEffect(() => {
+    const winX = window.scrollX;
+    const winY = window.scrollY;
     if (expanded) {
       didExpand.current = true;
       searchRef.current?.focus({ preventScroll: true });
@@ -146,7 +155,51 @@ export function ComponentPicker({
         ?.querySelector<HTMLElement>("[data-pick]:not([aria-disabled='true'])")
         ?.focus({ preventScroll: true });
     }
+    // Focus can still move the window in some browsers; keep the shell pinned.
+    if (window.scrollX !== winX || window.scrollY !== winY) {
+      window.scrollTo(winX, winY);
+    }
   }, [expanded, persistent]);
+
+  // When the full menu opens, nudge the main pane so more of the picker is visible.
+  // Always clamp to the content's max scroll — never use scrollIntoView (it can
+  // scroll the window and leave blank space below the app shell).
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    const scrollRoot = document.querySelector<HTMLElement>("[data-course-main-scroll]");
+    if (!el || !scrollRoot) return;
+
+    const clampScroll = () => {
+      const maxScroll = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+      if (scrollRoot.scrollTop > maxScroll) scrollRoot.scrollTop = maxScroll;
+    };
+
+    if (!expanded) {
+      // Collapse shortens the page; pull scroll back if we were past the new end.
+      const id = requestAnimationFrame(clampScroll);
+      return () => cancelAnimationFrame(id);
+    }
+
+    const winX = window.scrollX;
+    const winY = window.scrollY;
+    const id = requestAnimationFrame(() => {
+      const maxScroll = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+      const rootRect = scrollRoot.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const need = elRect.bottom - rootRect.bottom + 8;
+      if (need > 0) {
+        const top = Math.min(maxScroll, scrollRoot.scrollTop + need);
+        if (top > scrollRoot.scrollTop) {
+          scrollRoot.scrollTo({ top, behavior: "smooth" });
+        }
+      }
+      // Keep the outer window pinned — nested scrollIntoView/focus can move it.
+      if (window.scrollX !== winX || window.scrollY !== winY) {
+        window.scrollTo(winX, winY);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [expanded]);
 
   // Close on outside pointer-down (the triggers toggle themselves).
   useEffect(() => {
@@ -198,11 +251,17 @@ export function ComponentPicker({
     }
   }
 
-  // Keep the keyboard-highlighted row in view.
+  // Keep the keyboard-highlighted row in view inside the results pane only.
   useEffect(() => {
-    rootRef.current
-      ?.querySelector("[data-active='true']")
-      ?.scrollIntoView({ block: "nearest" });
+    const row = rootRef.current?.querySelector<HTMLElement>("[data-active='true']");
+    const pane = row?.closest<HTMLElement>("[data-picker-results]");
+    if (!row || !pane) return;
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    if (rowTop < pane.scrollTop) pane.scrollTop = rowTop;
+    else if (rowBottom > pane.scrollTop + pane.clientHeight) {
+      pane.scrollTop = rowBottom - pane.clientHeight;
+    }
   }, [active, query]);
 
   const tile = (t: PickerType) => {
@@ -216,15 +275,11 @@ export function ComponentPicker({
         aria-disabled={r ? true : undefined}
         title={r ?? item.description}
         onClick={() => pick(t)}
-        className={`relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-[10px] border border-transparent px-1.5 py-2.5 text-center text-[13px] leading-tight transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
-          r
-            ? "cursor-not-allowed opacity-45"
-            : "hover:border-[#D6E0EA] hover:bg-[#EEF3F8] focus-visible:bg-[#EEF3F8]"
-        }`}
+        className={`${tileBtn} ${r ? tileBtnLocked : tileBtnOk}`}
       >
         {r && <LockIcon className="absolute end-1.5 top-1.5 h-3 w-3 text-surface-500" />}
         <TypeIcon item={item} iconFor={iconFor} />
-        <span className="w-full truncate text-[#1B3A5C]">{item.label}</span>
+        <span className="w-full truncate text-surface-800">{item.label}</span>
       </button>
     );
   };
@@ -245,20 +300,20 @@ export function ComponentPicker({
         aria-disabled={r ? true : undefined}
         title={r ?? undefined}
         onClick={() => (r ? setMessage(r) : onPickTemplate(template))}
-        className={`flex min-w-0 flex-col gap-2 rounded-[12px] border border-[#D6E0EA] bg-white p-2.5 text-start transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
-          r ? "cursor-not-allowed opacity-45" : "hover:border-[#0F6CBF]"
+        className={`flex min-w-0 flex-col gap-2 rounded-control border border-surface-200 bg-white p-2.5 text-start transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
+          r ? "cursor-not-allowed opacity-45" : "hover:border-[#0F6CBF] hover:bg-surface-50"
         }`}
       >
-        <span className="flex flex-col gap-[3px] rounded-[8px] bg-[#EEF3F8] p-1.5" aria-hidden>
+        <span className="flex flex-col gap-[3px] rounded-control bg-surface-50 p-1.5" aria-hidden>
           {template.types.map((t, i) => (
             <i
               key={i}
-              className="block h-[9px] rounded-[3px]"
+              className="block h-[9px] rounded-timeline"
               style={{ background: `color-mix(in srgb, ${catColor(catalogItem(t).category)} 45%, white)` }}
             />
           ))}
         </span>
-        <span className="flex items-center gap-1 text-[13px] font-semibold text-[#14263A]">
+        <span className="flex items-center gap-1 text-[13px] font-semibold text-surface-900">
           {template.label}
           {r && <LockIcon className="h-3 w-3 text-surface-500" />}
         </span>
@@ -285,16 +340,16 @@ export function ComponentPicker({
         aria-disabled={r ? true : undefined}
         onClick={() => pick(item.type)}
         onMouseMove={() => setActive(index)}
-        className={`flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-1.5 text-start ${
-          isActive ? "bg-[#EEF3F8]" : ""
+        className={`flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-start transition-colors duration-fast ${
+          isActive ? "bg-surface-100" : "hover:bg-surface-50"
         } ${r ? "cursor-not-allowed opacity-45" : ""}`}
       >
         <TypeIcon item={item} iconFor={iconFor} />
         <span className="flex min-w-0 flex-col leading-snug">
-          <span className="text-sm text-[#14263A]">
+          <span className="text-sm text-surface-900">
             {item.label}
             {index === 0 && (
-              <span className="ms-1.5 rounded-[5px] bg-[#D4E5F5] px-1.5 text-[10.5px] font-semibold text-[#1B3A5C]">
+              <span className="ms-1.5 rounded-control bg-surface-100 px-1.5 text-[10.5px] font-semibold text-[#0F6CBF]">
                 תוצאה מובילה
               </span>
             )}
@@ -309,7 +364,7 @@ export function ComponentPicker({
     const c = CATEGORIES.find((x) => x.id === id)!;
     return (
       <div className="mx-1 mb-1 mt-3 flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-surface-500 first:mt-0.5">
-        <span className="h-2 w-2 rounded-[2px]" style={{ background: c.color }} />
+        <span className="h-2 w-2 rounded-timeline" style={{ background: c.color }} />
         {c.label}
         {id === "social" || id === "quiz" ? (
           <span className="inline-flex items-center gap-1 font-normal">
@@ -320,8 +375,10 @@ export function ComponentPicker({
     );
   };
 
+  // `relative` gives the sr-only live regions (position: absolute) a containing block;
+  // without it they escape the shell's clip and stretch the document's scroll height.
   const shell =
-    "my-2 overflow-hidden rounded-[14px] border border-[#D6E0EA] bg-white shadow-[0_10px_30px_-12px_rgba(20,38,58,0.28)]";
+    "relative my-2 overflow-hidden rounded-control border border-surface-200 bg-white";
 
   if (!expanded) {
     const common = POPULAR;
@@ -339,26 +396,22 @@ export function ComponentPicker({
             aria-disabled={r ? true : undefined}
             title={r ?? template.description}
             onClick={() => (r ? setMessage(r) : onPickTemplate(template))}
-            className={`relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-[10px] border border-transparent px-1.5 py-2.5 text-center text-[13px] leading-tight transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF] ${
-              r
-                ? "cursor-not-allowed opacity-45"
-                : "hover:border-[#D6E0EA] hover:bg-[#EEF3F8] focus-visible:bg-[#EEF3F8]"
-            }`}
+            className={`${tileBtn} ${r ? tileBtnLocked : tileBtnOk}`}
           >
             {r && <LockIcon className="absolute end-1.5 top-1.5 h-3 w-3 text-surface-500" />}
             <span
               aria-hidden
-              className="flex h-[34px] w-[42px] shrink-0 flex-col gap-[2px] rounded-[9px] bg-[#EEF3F8] p-[4px]"
+              className="flex h-[34px] w-[42px] shrink-0 flex-col gap-[2px] rounded-control bg-surface-50 p-[4px]"
             >
               {template.types.map((t, i) => (
                 <i
                   key={i}
-                  className="block flex-1 rounded-[2px]"
+                  className="block flex-1 rounded-timeline"
                   style={{ background: `color-mix(in srgb, ${catColor(catalogItem(t).category)} 55%, white)` }}
                 />
               ))}
             </span>
-            <span className="w-full truncate text-[#1B3A5C]">{template.label}</span>
+            <span className="w-full truncate text-surface-800">{template.label}</span>
           </button>
         </div>
       );
@@ -380,7 +433,7 @@ export function ComponentPicker({
           </div>
           {fit.common > 0 && (
             <>
-              <span className="w-px shrink-0 self-stretch bg-[#D6E0EA]" aria-hidden />
+              <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex items-center gap-1 truncate px-1.5 text-[11.5px] text-surface-500">
                   <ClockIcon />
@@ -391,7 +444,7 @@ export function ComponentPicker({
             </>
           )}
         </div>
-        <p aria-live="polite" className={message ? "px-3 pb-1.5 text-xs text-[#B7791F]" : "sr-only"}>
+        <p aria-live="polite" className={message ? "px-3 pb-1.5 text-xs text-warning" : "sr-only"}>
           {message}
         </p>
         <button
@@ -399,7 +452,7 @@ export function ComponentPicker({
           data-expand
           aria-expanded={false}
           onClick={() => setExpanded(true)}
-          className="flex w-full items-center justify-center gap-2 border-t border-[#D6E0EA] bg-[#EEF3F8] px-3 py-2.5 text-[13px] font-medium text-[#0F6CBF] hover:bg-[#D4E5F5] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#0F6CBF]"
+          className="flex w-full items-center justify-center gap-2 border-t border-surface-200 bg-[#F8F9FA] px-3 py-2.5 text-[13px] font-medium text-[#0F6CBF] transition-colors duration-fast hover:bg-surface-100 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#0F6CBF]"
         >
           <SearchIcon />
           חיפוש וכל הרכיבים ({CATALOG.length})
@@ -422,77 +475,111 @@ export function ComponentPicker({
   const shownCats = view === "all" ? CATEGORIES.map((c) => c.id) : [view as CategoryId];
 
   return (
-    <div ref={rootRef} dir="rtl" role="dialog" aria-label="הוספת רכיב" onKeyDown={onKeyDown} className={shell}>
-      <div className="flex flex-col gap-2 border-b border-[#D6E0EA] p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 text-xs text-surface-500">
-            {contextLabel}
-            <span aria-live="polite" className="ms-2 text-[#B7791F]">{message}</span>
-          </span>
-          {persistent && (
-            <button
-              type="button"
-              onClick={collapse}
-              className="inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-xs font-medium text-[#0F6CBF] hover:bg-[#D4E5F5]"
-            >
-              <ChevronDownIcon className="h-3.5 w-3.5 rotate-180" />
-              חזרה לתפריט המהיר
-            </button>
-          )}
-        </div>
-        <label className="flex items-center gap-2 rounded-[10px] border border-[#D6E0EA] bg-white px-2.5 py-1.5 text-surface-500 focus-within:border-[#0F6CBF] focus-within:shadow-[0_0_0_3px_#D4E5F5]">
-          <SearchIcon />
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(0);
-              setMessage("");
-            }}
-            placeholder="חיפוש רכיב… (סרטון, quiz, פורום)"
-            autoComplete="off"
-            aria-label="חיפוש רכיב"
-            className="w-full min-w-0 border-0 bg-transparent text-sm text-[#14263A] outline-none"
-          />
-        </label>
-      </div>
-
-      {query.trim() ? (
-        <div className="max-h-[320px] overflow-auto p-1.5">
-          {results.length ? (
-            results.map(row)
-          ) : (
-            <p className="p-5 text-center text-sm text-surface-500">
-              לא נמצא רכיב בשם “{query.trim()}”. נסו מילה אחרת או עיינו בקטגוריות.
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="grid h-[340px] grid-cols-[136px_minmax(0,1fr)] max-sm:h-auto max-sm:grid-cols-1">
-          <nav
-            aria-label="קטגוריות"
-            className="flex flex-col gap-0.5 overflow-auto border-e border-[#D6E0EA] bg-[#EEF3F8] px-1.5 py-2 max-sm:flex-row max-sm:border-b max-sm:border-e-0"
-          >
-            {views.map((v) => (
+    <div
+      ref={rootRef}
+      dir="rtl"
+      role="dialog"
+      aria-label="הוספת רכיב"
+      aria-description={contextLabel}
+      onKeyDown={onKeyDown}
+      className={shell}
+    >
+      {/* Sidebar full height; search + body sit beside it (visual left in RTL). */}
+      <div className="grid h-[380px] grid-cols-[136px_minmax(0,1fr)] max-sm:h-auto max-sm:grid-cols-1">
+        <nav
+          aria-label="קטגוריות"
+          className="flex flex-col gap-0.5 overflow-auto border-e border-surface-200 bg-[#F8F9FA] px-1.5 py-2 max-sm:flex-row max-sm:border-b max-sm:border-e-0"
+        >
+          {views.map((v) => {
+            const selected = view === v.id;
+            const cat = CATEGORIES.find((c) => c.id === v.id);
+            return (
               <button
                 key={v.id}
                 type="button"
-                aria-pressed={view === v.id}
-                onClick={() => setView(v.id)}
-                className={`flex shrink-0 items-center justify-between gap-2 rounded-[8px] px-2.5 py-1.5 text-start text-[13px] ${
-                  view === v.id
-                    ? "bg-white font-semibold text-[#0F6CBF] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-                    : "text-[#14263A] hover:bg-white/60"
+                aria-pressed={selected}
+                onClick={() => {
+                  setView(v.id);
+                  setQuery("");
+                  setActive(0);
+                  setMessage("");
+                }}
+                className={`flex shrink-0 items-center justify-between gap-2 rounded-control px-2.5 py-1.5 text-start text-[13px] transition-colors duration-fast ${
+                  selected
+                    ? "bg-[#0F6CBF] font-medium text-white"
+                    : "text-surface-800 hover:bg-white hover:text-surface-900"
                 }`}
               >
-                <span>{v.label}</span>
-                {v.count !== undefined && <span className="text-[11px] font-normal text-surface-500">{v.count}</span>}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {cat && (
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-timeline ${selected ? "ring-1 ring-white/70" : ""}`}
+                      style={{ background: cat.color }}
+                      aria-hidden
+                    />
+                  )}
+                  <span className="truncate">{v.label}</span>
+                </span>
+                {v.count !== undefined && (
+                  <span className={`text-[11px] font-normal ${selected ? "text-white/80" : "text-surface-500"}`}>
+                    {v.count}
+                  </span>
+                )}
               </button>
-            ))}
-          </nav>
-          <div className="min-w-0 overflow-auto px-2.5 py-2 max-sm:max-h-[300px]">
-            {view === "home" ? (
+            );
+          })}
+        </nav>
+
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="flex flex-col gap-1.5 p-2.5 pb-2">
+            <div className="flex items-center gap-2">
+              <label className="flex min-w-0 flex-1 items-center gap-2 rounded-control border border-surface-200 bg-white px-2.5 py-1.5 text-surface-500 focus-within:border-[#0F6CBF]">
+                <SearchIcon />
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setActive(0);
+                    setMessage("");
+                  }}
+                  placeholder="חיפוש רכיב… (סרטון, quiz, פורום)"
+                  autoComplete="off"
+                  aria-label="חיפוש רכיב"
+                  className="w-full min-w-0 border-0 bg-transparent text-sm text-surface-900 outline-none"
+                />
+              </label>
+              {persistent && (
+                <button
+                  type="button"
+                  onClick={collapse}
+                  title="חזרה לתפריט המהיר"
+                  aria-label="חזרה לתפריט המהיר"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-control px-2 py-1.5 text-xs font-medium text-[#0F6CBF] transition-colors duration-fast hover:bg-surface-100"
+                >
+                  <ChevronDownIcon className="h-3.5 w-3.5 rotate-180" />
+                  חזרה
+                </button>
+              )}
+            </div>
+            <p aria-live="polite" className={message ? "px-0.5 text-xs text-warning" : "sr-only"}>
+              {message}
+            </p>
+          </div>
+
+          <div
+            data-picker-results
+            className="min-h-0 flex-1 overflow-auto px-2.5 pb-2 max-sm:max-h-[300px]"
+          >
+            {query.trim() ? (
+              results.length ? (
+                <div className="flex flex-col gap-0.5">{results.map(row)}</div>
+              ) : (
+                <p className="p-5 text-center text-sm text-surface-500">
+                  לא נמצא רכיב בשם “{query.trim()}”. נסו מילה אחרת או עיינו בקטגוריות.
+                </p>
+              )
+            ) : view === "home" ? (
               <div className="flex flex-col gap-4 px-0.5 py-1">
                 <div>
                   <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-surface-500">
@@ -520,7 +607,7 @@ export function ComponentPicker({
                 <button
                   type="button"
                   onClick={() => setView("all")}
-                  className="self-start rounded-[8px] px-2.5 py-1.5 text-[13px] font-medium text-[#0F6CBF] hover:bg-[#D4E5F5]"
+                  className="self-start rounded-control px-2.5 py-1.5 text-[13px] font-medium text-[#0F6CBF] transition-colors duration-fast hover:bg-surface-100"
                 >
                   כל הרכיבים ({CATALOG.length}) ←
                 </button>
@@ -556,7 +643,7 @@ export function ComponentPicker({
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -578,7 +665,7 @@ function TypeIcon({
   return (
     <span
       aria-hidden
-      className={`flex shrink-0 items-center justify-center ${small ? "h-6 w-6 rounded-[7px]" : "h-[34px] w-[34px] rounded-[9px]"}`}
+      className={`flex shrink-0 items-center justify-center ${small ? "h-6 w-6 rounded-control" : "h-[34px] w-[34px] rounded-control"}`}
       style={{ color, background: `color-mix(in srgb, ${color} 14%, white)` }}
     >
       {iconFor(componentOf(item.type))}

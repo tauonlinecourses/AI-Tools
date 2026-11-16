@@ -1271,7 +1271,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         {/* Main content */}
         <div
           data-course-main-scroll
-          className="flex-1 min-w-0 overflow-y-auto bg-white"
+          className="relative flex-1 min-w-0 overflow-y-auto bg-white"
         >
           <div className="fixed top-14 left-4 z-20 pointer-events-none">
             <SaveStatusIndicator />

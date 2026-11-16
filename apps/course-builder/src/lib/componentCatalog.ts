@@ -183,6 +183,12 @@ export const TEMPLATES: ComponentTemplate[] = [
     types: ["video", "question_single", "question_single"],
   },
   {
+    id: "video-with-button",
+    label: "וידאו עם כפתור",
+    description: "וידאו · כפתור",
+    types: ["video", "button"],
+  },
+  {
     id: "explain-with-image",
     label: "הסבר עם תמונה",
     description: "טקסט · תמונה · טקסט",
@@ -217,14 +223,14 @@ export function templateLockReason(
 
 /** Templates that usually fit after a given block type, best first. */
 const TEMPLATE_SUGGESTIONS: Partial<Record<ComponentType | "_start", string[]>> = {
-  _start: ["lesson-opening", "explain-with-image", "watch-and-check"],
-  banner: ["explain-with-image", "watch-and-check", "discussion"],
-  text: ["explain-with-image", "watch-and-check", "summary-reflection"],
-  text_unit: ["explain-with-image", "watch-and-check", "summary-reflection"],
-  image: ["explain-with-image", "watch-and-check", "summary-reflection"],
-  video: ["watch-and-check", "summary-reflection", "discussion"],
-  interactive_video: ["watch-and-check", "summary-reflection", "explain-with-image"],
-  question: ["explain-with-image", "lesson-opening", "watch-and-check"],
+  _start: ["lesson-opening", "video-with-button", "watch-and-check"],
+  banner: ["video-with-button", "explain-with-image", "watch-and-check"],
+  text: ["video-with-button", "explain-with-image", "watch-and-check"],
+  text_unit: ["video-with-button", "explain-with-image", "watch-and-check"],
+  image: ["video-with-button", "explain-with-image", "watch-and-check"],
+  video: ["video-with-button", "watch-and-check", "summary-reflection"],
+  interactive_video: ["video-with-button", "watch-and-check", "summary-reflection"],
+  question: ["video-with-button", "explain-with-image", "lesson-opening"],
 };
 
 /**
