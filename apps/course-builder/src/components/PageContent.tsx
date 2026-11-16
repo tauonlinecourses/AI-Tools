@@ -641,39 +641,44 @@ export function PageContent({
   }, [components]);
 
   useEffect(() => {
-    if (!components?.length) {
+    // Capture narrowed locals for the scrollspy closures — TS does not keep
+    // state/querySelector narrowing inside nested functions.
+    if (!components || components.length === 0) {
       setMapActive(null);
       return;
     }
+    const list = components;
 
-    const root = document.querySelector("[data-course-main-scroll]");
-    if (!(root instanceof HTMLElement)) return;
+    const scrollNode = document.querySelector("[data-course-main-scroll]");
+    if (!(scrollNode instanceof HTMLElement)) return;
+    // Explicit HTMLElement binding so nested scrollspy closures stay non-null for tsc.
+    const scrollRoot: HTMLElement = scrollNode;
 
     let raf = 0;
     function updateActiveFromScroll() {
       if (mapScrollLocked.current) return;
 
       // At (or very near) the top, always highlight the first component.
-      if (root.scrollTop <= 8) {
-        setMapActive(components[0].id);
+      if (scrollRoot.scrollTop <= 8) {
+        setMapActive(list[0].id);
         return;
       }
 
       // At (or very near) the bottom, always highlight the last — footer content
       // below the last card can leave its top under the marker otherwise.
-      const maxScroll = root.scrollHeight - root.clientHeight;
-      if (maxScroll > 0 && root.scrollTop >= maxScroll - 8) {
-        setMapActive(components[components.length - 1].id);
+      const maxScroll = scrollRoot.scrollHeight - scrollRoot.clientHeight;
+      if (maxScroll > 0 && scrollRoot.scrollTop >= maxScroll - 8) {
+        setMapActive(list[list.length - 1].id);
         return;
       }
 
-      const rootRect = root.getBoundingClientRect();
+      const rootRect = scrollRoot.getBoundingClientRect();
       // Focus line under the sticky page header.
       const markerY = rootRect.top + Math.min(150, rootRect.height * 0.25);
 
       // Last component whose top has crossed the marker (document order).
-      let nextId = components[0].id;
-      for (const component of components) {
+      let nextId = list[0].id;
+      for (const component of list) {
         const node = document.querySelector(
           `[data-component-id="${CSS.escape(component.id)}"]`
         );
@@ -687,7 +692,7 @@ export function PageContent({
 
       // Last card centered often sits below the marker while footer remains.
       // Hysteresis avoids pill flicker at the promote/demote boundary.
-      const last = components[components.length - 1];
+      const last = list[list.length - 1];
       const lastNode = document.querySelector(
         `[data-component-id="${CSS.escape(last.id)}"]`
       );
@@ -715,11 +720,11 @@ export function PageContent({
     }
 
     updateActiveFromScroll();
-    root.addEventListener("scroll", onScrollOrResize, { passive: true });
+    scrollRoot.addEventListener("scroll", onScrollOrResize, { passive: true });
     window.addEventListener("resize", onScrollOrResize);
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
-      root.removeEventListener("scroll", onScrollOrResize);
+      scrollRoot.removeEventListener("scroll", onScrollOrResize);
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [components]);
