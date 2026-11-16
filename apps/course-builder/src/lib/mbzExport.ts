@@ -341,7 +341,7 @@ export async function exportCourseMbz(
 
     const cbSection = tree.sections.find((s) => s.id === binding.cb_id);
     if (!cbSection) continue;
-    let next = patchSectionName(xml, cbSection.title);
+    const next = patchSectionName(xml, cbSection.title);
     vfs.set(sectionPath, encodeVfsText(next));
   }
 
