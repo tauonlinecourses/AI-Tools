@@ -51,6 +51,14 @@ export default function App() {
         <Route path="/admin" element={<AdminPage locale="he" />} />
         <Route path="/en/admin" element={<AdminPage locale="en" />} />
         <Route
+          path="/admin/docs"
+          element={<AdminPage locale="he" initialTab="docs" />}
+        />
+        <Route
+          path="/en/admin/docs"
+          element={<AdminPage locale="en" initialTab="docs" />}
+        />
+        <Route
           path={`${MBZ_BASE}/*`}
           element={
             <ApprovedOnly locale="he">

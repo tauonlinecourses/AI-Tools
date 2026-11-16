@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { PageLayout, Spinner } from "@workspace/ui";
 import { usePlatformAuth } from "@workspace/auth/react";
 import type { Locale } from "../i18n";
@@ -18,6 +18,7 @@ import { GroupEditorModal } from "./admin/GroupEditorModal";
 import { GroupMembersModal } from "./admin/GroupMembersModal";
 import { GroupsTab } from "./admin/GroupsTab";
 import { InviteUserModal } from "./admin/InviteUserModal";
+import { ToolDocsTab } from "./admin/ToolDocsTab";
 import { UserGroupsModal } from "./admin/UserGroupsModal";
 import { UsersTable } from "./admin/UsersTable";
 import {
@@ -26,15 +27,23 @@ import {
   type StatusFilter,
 } from "./admin/UsersToolbar";
 
-type Tab = "users" | "groups";
+type Tab = "users" | "groups" | "docs";
 
-export function AdminPage({ locale }: { locale: Locale }) {
+export function AdminPage({
+  locale,
+  initialTab = "users",
+}: {
+  locale: Locale;
+  initialTab?: Tab;
+}) {
   const t = copy(locale);
   const homeHref = locale === "en" ? "/en" : "/";
+  const adminHref = locale === "en" ? "/en/admin" : "/admin";
+  const navigate = useNavigate();
   const { loading: authLoading, session, isAdmin, accountStatus, user } =
     usePlatformAuth();
 
-  const [tab, setTab] = useState<Tab>("users");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [groups, setGroups] = useState<AdminGroupRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +88,13 @@ export function AdminPage({ locale }: { locale: Locale }) {
     if (authLoading || !session || !isAdmin) return;
     void reload();
   }, [authLoading, session, isAdmin]);
+
+  /** The docs tab has its own URL (`/admin/docs`) so it can be linked and bookmarked. */
+  function switchTab(next: Tab) {
+    setTab(next);
+    const path = next === "docs" ? `${adminHref}/docs` : adminHref;
+    if (window.location.pathname !== path) navigate(path, { replace: true });
+  }
 
   const filteredUsers = useMemo(() => {
     let list = users;
@@ -187,7 +203,7 @@ export function AdminPage({ locale }: { locale: Locale }) {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setTab("users")}
+            onClick={() => switchTab("users")}
             className={[
               "rounded-control px-3 py-1.5 text-xs font-semibold transition-colors",
               tab === "users"
@@ -199,7 +215,7 @@ export function AdminPage({ locale }: { locale: Locale }) {
           </button>
           <button
             type="button"
-            onClick={() => setTab("groups")}
+            onClick={() => switchTab("groups")}
             className={[
               "rounded-control px-3 py-1.5 text-xs font-semibold transition-colors",
               tab === "groups"
@@ -208,6 +224,18 @@ export function AdminPage({ locale }: { locale: Locale }) {
             ].join(" ")}
           >
             {t.groupsTab}
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("docs")}
+            className={[
+              "rounded-control px-3 py-1.5 text-xs font-semibold transition-colors",
+              tab === "docs"
+                ? "bg-black text-white"
+                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+            ].join(" ")}
+          >
+            {t.docsTab}
           </button>
         </div>
 
@@ -241,6 +269,8 @@ export function AdminPage({ locale }: { locale: Locale }) {
               onRemove={(u) => void onRemove(u)}
             />
           </div>
+        ) : tab === "docs" ? (
+          <ToolDocsTab groups={groups} />
         ) : (
           <GroupsTab
             locale={locale}
