@@ -842,8 +842,8 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {commentCount > 0 && (
           <span
-            className={`inline-grid place-items-center shrink-0 size-3.5 rounded-full text-[9px] font-bold leading-none tabular-nums ${
-              commentCount > 9 ? "w-auto min-w-3.5 px-1" : ""
+            className={`inline-grid place-items-center shrink-0 size-4 rounded-full text-[10px] font-bold leading-none tabular-nums ${
+              commentCount > 9 ? "w-auto min-w-4 px-1" : ""
             } ${
               isSelected
                 ? commentTone === "open"
@@ -865,9 +865,7 @@ export function CourseShell({ mode }: CourseShellProps) {
                 : `${commentCount} הערות שנפתרו`
             }
           >
-            <span className="block translate-y-[0.5px]">
-              {commentCount > 99 ? "99+" : commentCount}
-            </span>
+            {commentCount > 99 ? "99+" : commentCount}
           </span>
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}
