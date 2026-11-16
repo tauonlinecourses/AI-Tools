@@ -279,11 +279,18 @@ export async function createHandoffCode(params: {
   accessToken: string;
   refreshToken: string;
 }): Promise<string> {
-  // RPC requires approved status; skip a separate profiles round-trip.
-  await assertUserHasToolAccess(params.userId, params.toolId);
-  const code = randomBytes(24).toString("hex");
   const admin = createPlatformServiceClient();
-  await purgeExpiredHandoffCodes(admin);
+  // Cleanup is independent of this login: run it alongside the access check
+  // and insert instead of before them. It never throws.
+  const purge = purgeExpiredHandoffCodes(admin);
+  // RPC requires approved status; skip a separate profiles round-trip.
+  try {
+    await assertUserHasToolAccess(params.userId, params.toolId);
+  } catch (err) {
+    await purge;
+    throw err;
+  }
+  const code = randomBytes(24).toString("hex");
   const { error } = await admin.from("auth_handoff_codes").insert({
     code,
     user_id: params.userId,
@@ -293,6 +300,9 @@ export async function createHandoffCode(params: {
     refresh_token: params.refreshToken,
     expires_at: new Date(Date.now() + HANDOFF_TTL_MS).toISOString(),
   });
+  // Finish cleanup before the function returns (serverless may freeze after).
+  // Safe in parallel: it only deletes rows that have already expired.
+  await purge;
   if (error) throw error;
   return code;
 }

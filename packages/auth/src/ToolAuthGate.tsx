@@ -11,6 +11,7 @@ import {
   assertToolAccess,
   isToolAccessDeniedError,
 } from "./client.js";
+import { getPlatformPublicConfig } from "./env.js";
 
 function hubExchangeUrl(): string {
   const hub =
@@ -21,6 +22,22 @@ function hubExchangeUrl(): string {
       ? "http://localhost:5173"
       : "https://ai-tools-tauonline.vercel.app");
   return `${hub.replace(/\/$/, "")}/api/auth-exchange`;
+}
+
+/** Open a connection to an origin we are about to call (TLS in parallel). */
+function preconnect(url: string | undefined): void {
+  if (!url || typeof document === "undefined") return;
+  try {
+    const origin = new URL(url).origin;
+    if (document.head.querySelector(`link[rel="preconnect"][href="${origin}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    link.crossOrigin = "anonymous";
+    document.head.appendChild(link);
+  } catch {
+    // Optimization only.
+  }
 }
 
 type HandoffTokens = { access_token: string; refresh_token: string };
@@ -184,6 +201,8 @@ export function ToolAuthGate({
           // Handoff mint already verified approved + tool access; skip a second
           // entitlement RPC so entry feels instant after exchange.
           setMessage("Signing in…");
+          // setSession calls Platform Supabase right after the exchange.
+          preconnect(getPlatformPublicConfig()?.url);
           const tokens = await exchangeHandoffOnce(code, hubExchangeUrl());
           await setPlatformSession(tokens);
           if (cancelled) return;

@@ -412,9 +412,12 @@ export async function exchangeHandoffCode(params: {
   const exchangeUrl = params.exchangeUrl ?? "/api/auth/exchange";
   // Exchange may be called on the tool origin; hub exchange lives on hub.
   // Tools call hub's absolute exchange URL via VITE_HUB_URL.
+  // text/plain keeps this a CORS "simple request": no OPTIONS preflight, so one
+  // fewer round trip to the hub. The hub parses string bodies as JSON, and its
+  // CORS allow-list still decides who may read the response.
   const res = await fetch(exchangeUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
     body: JSON.stringify({ code: params.code }),
   });
   const body = (await res.json().catch(() => null)) as {
