@@ -4,13 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { Badge, Spinner } from "@workspace/ui";
 import { toolIsOpenable, type Tool } from "../tools.config";
 import { ui, localizeTool, type Locale } from "../i18n";
-import { handoffToTool } from "../lib/openTool";
+import { handoffToTool, prefetchToolHandoff } from "../lib/openTool";
 import { placePopover } from "../lib/placePopover";
 import { ToolIcon } from "./ToolIcon";
 import { ToolInfoCard } from "./ToolInfoCard";
 
 const OPEN_DELAY_MS = 350;
 const CLOSE_DELAY_MS = 150;
+/** Hover this long before pre-minting a handoff (skip quick mouse sweeps). */
+const PREFETCH_DELAY_MS = 150;
 
 export function ToolCard({
   tool,
@@ -49,7 +51,26 @@ export function ToolCard({
   }, []);
   const keepOpen = useCallback(() => window.clearTimeout(timer.current), []);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const prefetchTimer = useRef<number | undefined>(undefined);
+  const schedulePrefetch = useCallback(
+    (start: boolean) => {
+      window.clearTimeout(prefetchTimer.current);
+      if (!start || !isClickable || tool.hubPath) return;
+      prefetchTimer.current = window.setTimeout(
+        () => void prefetchToolHandoff(tool),
+        PREFETCH_DELAY_MS,
+      );
+    },
+    [isClickable, tool],
+  );
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      window.clearTimeout(prefetchTimer.current);
+    },
+    [],
+  );
 
   // Position once the card has rendered and we know its height.
   useLayoutEffect(() => {
@@ -133,10 +154,22 @@ export function ToolCard({
             void openTool();
           }
         }}
-        onMouseEnter={() => schedule(true)}
-        onMouseLeave={() => schedule(false)}
-        onFocus={() => schedule(true)}
-        onBlur={() => schedule(false)}
+        onMouseEnter={() => {
+          schedule(true);
+          schedulePrefetch(true);
+        }}
+        onMouseLeave={() => {
+          schedule(false);
+          schedulePrefetch(false);
+        }}
+        onFocus={() => {
+          schedule(true);
+          schedulePrefetch(true);
+        }}
+        onBlur={() => {
+          schedule(false);
+          schedulePrefetch(false);
+        }}
         role={isClickable ? "link" : undefined}
         // Every card is focusable so keyboard users can read its info card.
         tabIndex={0}

@@ -2,6 +2,7 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter video-curator",
   "outputDirectory": "dist",
+  "regions": ["dub1"],
   "ignoreCommand": "sh ../../scripts/vercel-ignore.sh",
   "headers": [
     {

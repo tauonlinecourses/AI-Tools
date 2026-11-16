@@ -2,6 +2,7 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter tau-support",
   "outputDirectory": "dist",
+  "regions": ["dub1"],
   "functions": {
     "api/tau-data.ts": { "maxDuration": 60 }
   },
