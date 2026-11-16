@@ -69,7 +69,7 @@ describe("vfsToMbz roundtrip", () => {
     expect(bytes[0]).toBe(0x1f);
     expect(bytes[1]).toBe(0x8b);
 
-    const { vfs: again, archiveKind } = await extract(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const { vfs: again, archiveKind } = await extract(new Uint8Array(bytes).buffer);
     expect(archiveKind).toBe("tgz");
     expect(again.has("moodle_backup.xml")).toBe(true);
     expect(again.has("sections/section_1/section.xml")).toBe(true);
@@ -80,7 +80,7 @@ describe("vfsToMbz roundtrip", () => {
     const bytes = vfsToMbz(vfs, { format: "zip" });
     expect(bytes[0]).toBe(0x50);
     expect(bytes[1]).toBe(0x4b);
-    const { archiveKind } = await extract(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const { archiveKind } = await extract(new Uint8Array(bytes).buffer);
     expect(archiveKind).toBe("zip");
   });
 });

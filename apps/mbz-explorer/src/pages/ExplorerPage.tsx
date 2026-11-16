@@ -14,6 +14,7 @@ import {
   type SessionState,
 } from "../lib/session";
 import { hydrateHtmlBlobs } from "../lib/hydrateBlobs";
+import { sanitizeMbzHtml } from "../lib/sanitizeHtml";
 import { mbzHomePath } from "../paths";
 
 export function ExplorerPage() {
@@ -152,12 +153,14 @@ export function ExplorerPage() {
             vfs={session.vfs}
             activity={activity}
             hydrateHtml={(html) =>
-              hydrateHtmlBlobs(
-                html,
-                session.manifest,
-                session.vfs,
-                session.blobStore,
-                session.urlCache
+              sanitizeMbzHtml(
+                hydrateHtmlBlobs(
+                  html,
+                  session.manifest,
+                  session.vfs,
+                  session.blobStore,
+                  session.urlCache
+                )
               )
             }
             onDecodeSection={onExpandSection}
