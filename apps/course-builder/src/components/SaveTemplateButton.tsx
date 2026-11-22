@@ -9,6 +9,7 @@ import {
 import { DuplicateTemplateNameError } from "../lib/api";
 import { isTemplateNameTaken, saveUserTemplate, useUserTemplates } from "../lib/userTemplates";
 import { TemplateIcon } from "./icons";
+import { SuccessToast } from "./SuccessToast";
 
 const MAX_NAME = 80;
 
@@ -119,12 +120,10 @@ export function SaveTemplateButton({
       </button>
 
       {savedName && !open && (
-        <div
-          role="status"
-          className="absolute top-full end-0 z-[60] mt-2 whitespace-nowrap rounded-control border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 shadow-lg"
-        >
-          התבנית „{savedName}” נשמרה בתבניות שלי
-        </div>
+        <SuccessToast
+          title={`התבנית ${savedName} נשמרה`}
+          detail='היא תופיע אצלך בתבניות שלי'
+        />
       )}
 
       {open && (
@@ -135,7 +134,7 @@ export function SaveTemplateButton({
         >
           <span className="text-sm font-semibold text-surface-800">שמירת העמוד כתבנית</span>
           <p className="text-xs leading-snug text-surface-500">
-            נשמר מבנה העמוד בלבד (סוגי הרכיבים והסדר שלהם), בלי התוכן ובלי הבאנר (הוא נוסף אוטומטית לכל עמוד). התבנית תופיע אצלך ב„תבניות שלי”.
+            נשמר מבנה העמוד בלבד (סוגי הרכיבים והסדר שלהם), בלי התוכן ובלי הבאנר (הוא נוסף אוטומטית לכל עמוד). התבנית תופיע אצלך בתבניות שלי.
           </p>
           <label className="flex flex-col gap-1 text-xs font-medium text-surface-600">
             שם התבנית

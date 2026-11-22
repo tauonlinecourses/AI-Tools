@@ -141,24 +141,60 @@ export function searchCatalog(query: string): CatalogItem[] {
 
 const RECENT_KEY = "course-builder:recent-component-types";
 
-export function readRecent(): PickerType[] {
+const RECENT_MAX = 5;
+
+/*
+ * Recently added component types (this browser only). Kept as a tiny store so
+ * every open picker updates as soon as a component is added — including the
+ * always-open bottom bar and pickers in other tabs (via the `storage` event).
+ */
+let recentCache: PickerType[] | null = null;
+const recentListeners = new Set<() => void>();
+
+function loadRecent(): PickerType[] {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    return Array.isArray(raw)
-      ? raw.filter((t): t is PickerType => CATALOG.some((i) => i.type === t)).slice(0, 5)
-      : [];
+    return Array.isArray(raw) ? raw.filter(isPickerType).slice(0, RECENT_MAX) : [];
   } catch {
     return [];
   }
 }
 
+/** Newest first. Returns the same array until the list changes (safe as a store snapshot). */
+export function readRecent(): PickerType[] {
+  recentCache ??= loadRecent();
+  return recentCache;
+}
+
+function notifyRecent() {
+  recentListeners.forEach((l) => l());
+}
+
+/** Record a component the user added by hand (template inserts don't count). */
 export function pushRecent(t: PickerType): void {
+  recentCache = [t, ...readRecent().filter((x) => x !== t)].slice(0, RECENT_MAX);
   try {
-    const next = [t, ...readRecent().filter((x) => x !== t)].slice(0, 5);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentCache));
   } catch {
-    /* storage unavailable: recent list just stays empty */
+    /* storage unavailable: the list still updates for this session */
   }
+  notifyRecent();
+}
+
+function onStorage(e: StorageEvent) {
+  if (e.key !== RECENT_KEY && e.key !== null) return;
+  recentCache = null;
+  notifyRecent();
+}
+
+/** For `useSyncExternalStore(subscribeRecent, readRecent)`. */
+export function subscribeRecent(listener: () => void): () => void {
+  if (recentListeners.size === 0) window.addEventListener("storage", onStorage);
+  recentListeners.add(listener);
+  return () => {
+    recentListeners.delete(listener);
+    if (recentListeners.size === 0) window.removeEventListener("storage", onStorage);
+  };
 }
 
 export interface ComponentTemplate {

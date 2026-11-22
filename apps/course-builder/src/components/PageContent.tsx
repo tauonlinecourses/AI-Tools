@@ -972,7 +972,7 @@ export function PageContent({
           }
         })()
       );
-      template.types.forEach(pushRecent);
+      // Templates don't count toward "recently used" (only blocks added one at a time).
       onContentChange();
       onStatusChange();
     } catch (e) {

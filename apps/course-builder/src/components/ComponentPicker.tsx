@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ComponentType, PageComponent } from "../lib/types";
 import {
   CATALOG,
@@ -10,6 +10,7 @@ import {
   componentOf,
   lockReason,
   readRecent,
+  subscribeRecent,
   searchCatalog,
   suggestionsAfter,
   suggestTemplates,
@@ -58,23 +59,31 @@ const TILE_MAX = 110;
 const TILE_GAP = 2; // gap-0.5
 const SEPARATOR = 1 + 12 * 2; // 1px line + gap-x-3 on each side
 
+/** Recently used tiles in the quick bar (the rest of the room goes to popular). */
+const QUICK_RECENT_MAX = 3;
+
 /**
- * Quick bar layout: how many "most used" tiles fit next to the recommended templates,
- * and one shared tile width that makes the row end flush (no leftover gap).
+ * Quick bar layout: how many recent and "most used" tiles fit next to the recommended
+ * templates, and one shared tile width that makes the row end flush (no leftover gap).
+ * When space runs out, popular tiles go first, then recent ones.
  */
 function fitQuickBar(
   width: number,
   suggestionCount: number,
-  commonCount: number,
-): { common: number; tileWidth: number } {
-  for (let k = commonCount; k >= 0; k--) {
+  recentCount: number,
+  popularCount: number,
+): { recent: number; popular: number; tileWidth: number } {
+  for (let k = recentCount + popularCount; k >= 0; k--) {
+    const r = Math.min(recentCount, k);
+    const p = k - r;
     const n = suggestionCount + k;
-    const gaps = TILE_GAP * (Math.max(suggestionCount - 1, 0) + Math.max(k - 1, 0));
-    const chrome = k > 0 ? SEPARATOR : 0;
+    const gaps =
+      TILE_GAP * (Math.max(suggestionCount - 1, 0) + Math.max(r - 1, 0) + Math.max(p - 1, 0));
+    const chrome = SEPARATOR * ((r > 0 ? 1 : 0) + (p > 0 ? 1 : 0));
     const w = (width - chrome - gaps) / n;
-    if (w >= TILE_MIN) return { common: k, tileWidth: Math.min(w, TILE_MAX) };
+    if (w >= TILE_MIN) return { recent: r, popular: p, tileWidth: Math.min(w, TILE_MAX) };
   }
-  return { common: 0, tileWidth: TILE_MIN };
+  return { recent: 0, popular: 0, tileWidth: TILE_MIN };
 }
 
 const tileBtn =
@@ -123,7 +132,7 @@ export function ComponentPicker({
   const [message, setMessage] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const recent = useMemo(readRecent, []);
+  const recent = useSyncExternalStore(subscribeRecent, readRecent);
   const userTemplates = useUserTemplates();
   const quickRowRef = useRef<HTMLDivElement>(null);
   const [quickWidth, setQuickWidth] = useState(0);
@@ -404,7 +413,7 @@ export function ComponentPicker({
                 ? "טוען…"
                 : userTemplates.status === "error"
                   ? "לא הצלחנו לטעון את התבניות שלך"
-                  : "עדיין אין לך תבניות. בנו עמוד ולחצו על „שמירת העמוד כתבנית” בכותרת העמוד."}
+                  : "עדיין אין לך תבניות. בנו עמוד ולחצו על שמירת העמוד כתבנית בכותרת העמוד."}
             </p>
           )}
         </div>
@@ -469,10 +478,11 @@ export function ComponentPicker({
     "relative my-2 overflow-hidden rounded-control border border-surface-200 bg-white";
 
   if (!expanded) {
-    const common = POPULAR;
+    const quickRecent = recent.slice(0, QUICK_RECENT_MAX);
+    const common = POPULAR.filter((t) => !quickRecent.includes(t));
     const fit = quickWidth
-      ? fitQuickBar(quickWidth, quickTemplates.length, common.length)
-      : { common: 0, tileWidth: 84 };
+      ? fitQuickBar(quickWidth, quickTemplates.length, quickRecent.length, common.length)
+      : { recent: 0, popular: 0, tileWidth: 84 };
     // Template tile: same box as a component tile, with a mini block stack as its icon.
     const templateSlot = (template: ComponentTemplate) => {
       const r = templateLockReason(template, components, isHome);
@@ -512,15 +522,27 @@ export function ComponentPicker({
     return (
       <div ref={rootRef} dir="rtl" role="dialog" aria-label="הוספה מהירה" onKeyDown={onKeyDown} className={shell}>
         <div ref={quickRowRef} className="flex justify-center gap-x-3 overflow-hidden px-2 pb-1 pt-2">
-          {/* RTL: first in DOM sits on the right — popular right, templates visual-left. */}
-          {fit.common > 0 && (
+          {/* RTL: first in DOM sits on the right — recent, then popular, templates visual-left. */}
+          {fit.recent > 0 && (
             <>
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex items-center gap-1 truncate px-1.5 text-[11.5px] text-surface-500">
                   <ClockIcon />
+                  בשימוש לאחרונה
+                </span>
+                <div className="flex gap-0.5">{quickRecent.slice(0, fit.recent).map(slot)}</div>
+              </div>
+              <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
+            </>
+          )}
+          {fit.popular > 0 && (
+            <>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-1 truncate px-1.5 text-[11.5px] text-surface-500">
+                  <SparkIcon />
                   הנפוצים ביותר
                 </span>
-                <div className="flex gap-0.5">{common.slice(0, fit.common).map(slot)}</div>
+                <div className="flex gap-0.5">{common.slice(0, fit.popular).map(slot)}</div>
               </div>
               <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
             </>
@@ -670,7 +692,7 @@ export function ComponentPicker({
                 <div className="flex flex-col gap-0.5">{results.map(row)}</div>
               ) : (
                 <p className="p-5 text-center text-sm text-surface-500">
-                  לא נמצא רכיב בשם “{query.trim()}”. נסו מילה אחרת או עיינו בקטגוריות.
+                  לא נמצא רכיב בשם {query.trim()}. נסו מילה אחרת או עיינו בקטגוריות.
                 </p>
               )
             ) : view === "home" ? (
