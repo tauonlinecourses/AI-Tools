@@ -17,6 +17,7 @@ import type {
   StatusRollup,
 } from "./types";
 import { derivePageType } from "./types";
+import { isPickerType, TEMPLATE_EXCLUDED_TYPES, type PickerType } from "./componentCatalog";
 import {
   computeCourseOverviewStats,
   type CourseOverviewStats,
@@ -1281,4 +1282,83 @@ async function renumber(
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) fail(`Reordering ${table}`, failed.error);
+}
+
+// ============================================================
+// User templates (private per user; RLS limits rows to auth.uid())
+// ============================================================
+
+/** A template the signed-in user saved from a page (layout only). */
+export interface UserTemplate {
+  id: string;
+  name: string;
+  types: PickerType[];
+  created_at: string;
+}
+
+interface UserTemplateRow {
+  id: string;
+  name: string;
+  items: unknown;
+  created_at: string;
+}
+
+/** Drops item types the catalog no longer knows, so old rows can't break the picker. */
+function toUserTemplate(row: UserTemplateRow): UserTemplate {
+  const items = Array.isArray(row.items) ? row.items : [];
+  const types = items
+    .map((item) => (item && typeof item === "object" ? (item as { type?: unknown }).type : null))
+    .filter(isPickerType)
+    .filter((t) => !TEMPLATE_EXCLUDED_TYPES.has(t));
+  return { id: row.id, name: row.name, types, created_at: row.created_at };
+}
+
+/** Postgres unique-violation on (owner_id, name). */
+const isDuplicateName = (error: { code?: string } | null) => error?.code === "23505";
+
+export class DuplicateTemplateNameError extends Error {
+  constructor() {
+    super("כבר יש לך תבנית בשם הזה");
+    this.name = "DuplicateTemplateNameError";
+  }
+}
+
+const USER_TEMPLATE_COLUMNS = "id, name, items, created_at";
+
+/** The signed-in user's templates, newest first. */
+export async function listUserTemplates(): Promise<UserTemplate[]> {
+  const { data, error } = await supabase
+    .from("user_templates")
+    .select(USER_TEMPLATE_COLUMNS)
+    .order("created_at", { ascending: false });
+  if (error) fail("Loading your templates", error);
+  return (data ?? []).map(toUserTemplate).filter((t) => t.types.length > 0);
+}
+
+export async function createUserTemplate(
+  name: string,
+  types: PickerType[]
+): Promise<UserTemplate> {
+  const { data, error } = await supabase
+    .from("user_templates")
+    .insert({ name: name.trim(), items: types.map((type) => ({ type })) })
+    .select(USER_TEMPLATE_COLUMNS)
+    .single();
+  if (isDuplicateName(error)) throw new DuplicateTemplateNameError();
+  if (error) fail("Saving template", error);
+  return toUserTemplate(data);
+}
+
+export async function renameUserTemplate(id: string, name: string): Promise<void> {
+  const { error } = await supabase
+    .from("user_templates")
+    .update({ name: name.trim() })
+    .eq("id", id);
+  if (isDuplicateName(error)) throw new DuplicateTemplateNameError();
+  if (error) fail("Renaming template", error);
+}
+
+export async function deleteUserTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from("user_templates").delete().eq("id", id);
+  if (error) fail("Deleting template", error);
 }

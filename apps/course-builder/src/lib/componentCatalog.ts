@@ -167,6 +167,44 @@ export interface ComponentTemplate {
   description: string;
   /** Inserted in this order; activities still land at the bottom of the page. */
   types: PickerType[];
+  /** "user" = saved by the signed-in user (can be renamed / deleted). Defaults to built-in. */
+  source?: "builtin" | "user";
+}
+
+export const isPickerType = (value: unknown): value is PickerType =>
+  typeof value === "string" && CATALOG.some((i) => i.type === value);
+
+/** The picker item that recreates a page component (questions keep their kind). */
+export function pickerTypeOf(component: Pick<PageComponent, "type" | "props">): PickerType {
+  if (component.type !== "question") return component.type;
+  const kind = (component.props as { questionType?: QuestionType }).questionType;
+  const match = (Object.keys(QUESTION_ITEMS) as (keyof typeof QUESTION_ITEMS)[]).find(
+    (id) => QUESTION_ITEMS[id] === kind,
+  );
+  return match ?? "question_single";
+}
+
+/** Never saved in user templates: every new page already gets its banner automatically. */
+export const TEMPLATE_EXCLUDED_TYPES: ReadonlySet<PickerType> = new Set(["banner"]);
+
+/** A page's layout as template items, in page order (banners left out). */
+export function templateTypesFromPage(components: PageComponent[]): PickerType[] {
+  return [...components]
+    .sort((a, b) => a.position - b.position)
+    .map(pickerTypeOf)
+    .filter((t) => !TEMPLATE_EXCLUDED_TYPES.has(t));
+}
+
+/** "טקסט · וידאו · 2 × שאלה": labels in order, repeated neighbours collapsed. */
+export function describeTemplateTypes(types: PickerType[]): string {
+  const parts: { label: string; count: number }[] = [];
+  for (const t of types) {
+    const label = componentLabel(componentOf(t));
+    const last = parts[parts.length - 1];
+    if (last?.label === label) last.count += 1;
+    else parts.push({ label, count: 1 });
+  }
+  return parts.map((p) => (p.count > 1 ? `${p.count} × ${p.label}` : p.label)).join(" · ");
 }
 
 export const TEMPLATES: ComponentTemplate[] = [

@@ -444,3 +444,10 @@ export const EyeOffIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
     />
   </svg>
 );
+
+/** Stacked layers: "save page as template". */
+export const TemplateIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={`${shrink} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5" />
+  </svg>
+);

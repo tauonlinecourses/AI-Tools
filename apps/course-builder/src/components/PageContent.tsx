@@ -69,6 +69,7 @@ import {
   VideoIcon,
 } from "./icons";
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
+import { SaveTemplateButton } from "./SaveTemplateButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 import { PageComponentMap } from "./PageComponentMap";
 import { ComponentPicker } from "./ComponentPicker";
@@ -1967,6 +1968,9 @@ export function PageContent({
               showDisabled
             />
           </div>
+        )}
+        {editable && components !== null && (
+          <SaveTemplateButton components={components} defaultName={page.title} />
         )}
         {editable && (
           <div className="shrink-0 flex items-center">

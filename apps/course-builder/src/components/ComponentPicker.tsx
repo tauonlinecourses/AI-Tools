@@ -19,7 +19,14 @@ import {
   type CategoryId,
   type PickerType,
 } from "../lib/componentCatalog";
-import { ChevronDownIcon, LockIcon } from "./icons";
+import { ChevronDownIcon, LockIcon, PencilIcon, TrashIcon } from "./icons";
+import { DuplicateTemplateNameError } from "../lib/api";
+import {
+  deleteUserTemplate,
+  isTemplateNameTaken,
+  renameUserTemplate,
+  useUserTemplates,
+} from "../lib/userTemplates";
 
 type View = "home" | "all" | "templates" | CategoryId;
 
@@ -117,6 +124,7 @@ export function ComponentPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const recent = useMemo(readRecent, []);
+  const userTemplates = useUserTemplates();
   const quickRowRef = useRef<HTMLDivElement>(null);
   const [quickWidth, setQuickWidth] = useState(0);
 
@@ -322,9 +330,89 @@ export function ComponentPicker({
     );
   };
 
-  const templateGrid = (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-      {TEMPLATES.map(templateCard)}
+  async function renameTemplate(template: ComponentTemplate) {
+    const next = window.prompt("שם חדש לתבנית", template.label)?.trim();
+    if (!next || next === template.label) return;
+    if (isTemplateNameTaken(next, template.id)) {
+      setMessage("כבר יש לך תבנית בשם הזה");
+      return;
+    }
+    try {
+      await renameUserTemplate(template.id, next);
+    } catch (e) {
+      setMessage(e instanceof DuplicateTemplateNameError ? e.message : "שינוי השם נכשל");
+    }
+  }
+
+  async function removeTemplate(template: ComponentTemplate) {
+    if (!window.confirm(`למחוק את התבנית "${template.label}"? לא ניתן לשחזר אותה.`)) return;
+    try {
+      await deleteUserTemplate(template.id);
+    } catch {
+      setMessage("מחיקת התבנית נכשלה");
+    }
+  }
+
+  const templateAction =
+    "rounded-control bg-white/90 p-1 text-surface-500 shadow-sm transition-colors duration-fast hover:bg-surface-100 hover:text-surface-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F6CBF]";
+
+  /** User template: the same card plus rename / delete (siblings, not nested buttons). */
+  const userTemplateCard = (template: ComponentTemplate) => (
+    <div key={template.id} className="group/tpl relative flex min-w-0 flex-col">
+      {templateCard(template)}
+      <div className="absolute top-1.5 end-1.5 flex gap-0.5 opacity-0 transition-opacity duration-fast focus-within:opacity-100 group-hover/tpl:opacity-100">
+        <button
+          type="button"
+          title="שינוי שם"
+          aria-label={`שינוי שם התבנית ${template.label}`}
+          onClick={() => void renameTemplate(template)}
+          className={templateAction}
+        >
+          <PencilIcon className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="מחיקה"
+          aria-label={`מחיקת התבנית ${template.label}`}
+          onClick={() => void removeTemplate(template)}
+          className={templateAction}
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const gridClass = "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2";
+  const subHeading = "mb-1.5 text-[11.5px] font-semibold text-surface-500";
+  const mine = userTemplates.templates;
+
+  /**
+   * "My templates" above the built-in ones. `showEmptyHint` explains how to make one
+   * (templates tab only, so For You stays compact).
+   */
+  const templateSections = (showEmptyHint: boolean) => (
+    <div className="flex flex-col gap-3">
+      {(mine.length > 0 || showEmptyHint) && (
+        <div>
+          <div className={subHeading}>התבניות שלי</div>
+          {mine.length > 0 ? (
+            <div className={gridClass}>{mine.map(userTemplateCard)}</div>
+          ) : (
+            <p className="text-xs text-surface-500">
+              {userTemplates.status === "loading"
+                ? "טוען…"
+                : userTemplates.status === "error"
+                  ? "לא הצלחנו לטעון את התבניות שלך"
+                  : "עדיין אין לך תבניות. בנו עמוד ולחצו על „שמירת העמוד כתבנית” בכותרת העמוד."}
+            </p>
+          )}
+        </div>
+      )}
+      <div>
+        {(mine.length > 0 || showEmptyHint) && <div className={subHeading}>תבניות מוכנות</div>}
+        <div className={gridClass}>{TEMPLATES.map(templateCard)}</div>
+      </div>
     </div>
   );
 
@@ -424,16 +512,9 @@ export function ComponentPicker({
     return (
       <div ref={rootRef} dir="rtl" role="dialog" aria-label="הוספה מהירה" onKeyDown={onKeyDown} className={shell}>
         <div ref={quickRowRef} className="flex justify-center gap-x-3 overflow-hidden px-2 pb-1 pt-2">
-          <div className="flex shrink-0 flex-col gap-0.5">
-            <span className="flex items-center gap-1 px-1.5 text-[11.5px] text-surface-500">
-              <LayersIcon />
-              {prevType ? `תבניות מומלצות אחרי ${typeLabel(prevType)}` : "תבניות לפתיחת עמוד"}
-            </span>
-            <div className="flex gap-0.5">{quickTemplates.map(templateSlot)}</div>
-          </div>
+          {/* RTL: first in DOM sits on the right — popular right, templates visual-left. */}
           {fit.common > 0 && (
             <>
-              <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex items-center gap-1 truncate px-1.5 text-[11.5px] text-surface-500">
                   <ClockIcon />
@@ -441,8 +522,16 @@ export function ComponentPicker({
                 </span>
                 <div className="flex gap-0.5">{common.slice(0, fit.common).map(slot)}</div>
               </div>
+              <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
             </>
           )}
+          <div className="flex shrink-0 flex-col gap-0.5">
+            <span className="flex items-center gap-1 px-1.5 text-[11.5px] text-surface-500">
+              <LayersIcon />
+              {prevType ? `תבניות מומלצות אחרי ${typeLabel(prevType)}` : "תבניות לפתיחת עמוד"}
+            </span>
+            <div className="flex gap-0.5">{quickTemplates.map(templateSlot)}</div>
+          </div>
         </div>
         <p aria-live="polite" className={message ? "px-3 pb-1.5 text-xs text-warning" : "sr-only"}>
           {message}
@@ -465,7 +554,7 @@ export function ComponentPicker({
   const views: { id: View; label: string; count?: number }[] = [
     { id: "home", label: "בשבילך" },
     { id: "all", label: "הכל", count: CATALOG.length },
-    { id: "templates", label: "תבניות", count: TEMPLATES.length },
+    { id: "templates", label: "תבניות", count: TEMPLATES.length + mine.length },
     ...CATEGORIES.map((c) => ({
       id: c.id,
       label: c.label,
@@ -473,6 +562,9 @@ export function ComponentPicker({
     })),
   ];
   const shownCats = view === "all" ? CATEGORIES.map((c) => c.id) : [view as CategoryId];
+  // For You: recommended + recent share one row; keep counts low so tiles stay readable.
+  const homeSuggestions = suggestions.slice(0, 3);
+  const homeRecent = recent.filter((t) => !homeSuggestions.includes(t)).slice(0, 3);
 
   return (
     <div
@@ -504,24 +596,26 @@ export function ComponentPicker({
                   setActive(0);
                   setMessage("");
                 }}
-                className={`flex shrink-0 items-center justify-between gap-2 rounded-control px-2.5 py-1.5 text-start text-[13px] transition-colors duration-fast ${
+                className={`flex shrink-0 items-start justify-between gap-2 rounded-control px-2.5 py-2 text-start text-[13px] leading-snug transition-colors duration-fast ${
                   selected
                     ? "bg-[#0F6CBF] font-medium text-white"
                     : "text-surface-800 hover:bg-white hover:text-surface-900"
                 }`}
               >
-                <span className="flex min-w-0 items-center gap-1.5">
+                <span className="flex min-w-0 items-start gap-1.5">
                   {cat && (
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-timeline ${selected ? "ring-1 ring-white/70" : ""}`}
+                      className={`mt-1 h-2 w-2 shrink-0 rounded-timeline ${selected ? "ring-1 ring-white/70" : ""}`}
                       style={{ background: cat.color }}
                       aria-hidden
                     />
                   )}
-                  <span className="truncate">{v.label}</span>
+                  <span className="whitespace-normal break-words">{v.label}</span>
                 </span>
                 {v.count !== undefined && (
-                  <span className={`text-[11px] font-normal ${selected ? "text-white/80" : "text-surface-500"}`}>
+                  <span
+                    className={`mt-0.5 shrink-0 text-[11px] font-normal ${selected ? "text-white/80" : "text-surface-500"}`}
+                  >
                     {v.count}
                   </span>
                 )}
@@ -581,43 +675,41 @@ export function ComponentPicker({
               )
             ) : view === "home" ? (
               <div className="flex flex-col gap-4 px-0.5 py-1">
-                <div>
-                  <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-surface-500">
-                    <SparkIcon />
-                    {prevType ? `מומלץ אחרי ${typeLabel(prevType)}` : "מומלץ לפתיחת עמוד"}
-                  </div>
-                  <div className="flex flex-wrap gap-0.5">{suggestions.map(tileSlot)}</div>
-                </div>
-                {recent.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-surface-500">
-                      <ClockIcon />
-                      בשימוש לאחרונה
+                <div className="flex gap-x-3 overflow-hidden">
+                  <div className="flex shrink-0 flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5 px-1.5 text-xs font-semibold text-surface-500">
+                      <SparkIcon />
+                      {prevType ? `מומלץ אחרי ${typeLabel(prevType)}` : "מומלץ לפתיחת עמוד"}
                     </div>
-                    <div className="flex flex-wrap gap-0.5">{recent.map(tileSlot)}</div>
+                    <div className="flex gap-0.5">{homeSuggestions.map(tileSlot)}</div>
                   </div>
-                )}
+                  {homeRecent.length > 0 && (
+                    <>
+                      <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5 truncate px-1.5 text-xs font-semibold text-surface-500">
+                          <ClockIcon />
+                          בשימוש לאחרונה
+                        </div>
+                        <div className="flex gap-0.5">{homeRecent.map(tileSlot)}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div>
                   <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-surface-500">
                     <LayersIcon />
                     תבניות (כמה רכיבים יחד)
                   </div>
-                  {templateGrid}
+                  {templateSections(false)}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setView("all")}
-                  className="self-start rounded-control px-2.5 py-1.5 text-[13px] font-medium text-[#0F6CBF] transition-colors duration-fast hover:bg-surface-100"
-                >
-                  כל הרכיבים ({CATALOG.length}) ←
-                </button>
               </div>
             ) : view === "templates" ? (
               <div className="px-0.5 py-1">
                 <p className="mb-2 text-xs text-surface-500">
                   כל תבנית מוסיפה כמה רכיבים יחד. שאלות ופעילויות נוספות לתחתית העמוד.
                 </p>
-                {templateGrid}
+                {templateSections(true)}
               </div>
             ) : view === "all" ? (
               // Categories flow inline and wrap only once a row is full.
