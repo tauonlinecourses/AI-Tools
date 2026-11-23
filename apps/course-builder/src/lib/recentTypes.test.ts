@@ -38,6 +38,20 @@ describe("recently used component types", () => {
     pushRecent("video");
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it("pads empty recent with POPULAR so the quick bar always has 5", async () => {
+    const { resolveQuickRecent, POPULAR } = await load();
+    expect(resolveQuickRecent([])).toEqual(POPULAR.slice(0, 5));
+  });
+
+  it("keeps real recent first and fills remaining slots from POPULAR", async () => {
+    const { resolveQuickRecent, POPULAR } = await load();
+    expect(resolveQuickRecent(["forum", "banner"])).toEqual([
+      "forum",
+      "banner",
+      ...POPULAR.filter((t) => t !== "forum" && t !== "banner").slice(0, 3),
+    ]);
+  });
 });
 
 describe("recently used templates", () => {

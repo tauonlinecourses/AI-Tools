@@ -94,7 +94,7 @@ export function suggestionsAfter(prev: ComponentType | null): PickerType[] {
   return SUGGESTIONS[prev ?? "_start"] ?? SUGGESTIONS._start!;
 }
 
-/** Most-used order for the quick bar's "common" row. */
+/** Default fillers for the quick bar's "בשימוש לאחרונה" row (always 5 slots). */
 export const POPULAR: PickerType[] = [
   "text",
   "video",
@@ -102,6 +102,21 @@ export const POPULAR: PickerType[] = [
   "question_single",
   "button",
 ];
+
+/**
+ * Quick-bar recent types: newest-used first, padded with `POPULAR` so the row
+ * is always `max` tiles even before the user has added anything.
+ */
+export function resolveQuickRecent(
+  recent: PickerType[],
+  max = RECENT_MAX,
+): PickerType[] {
+  const used = recent.filter(isPickerType).slice(0, max);
+  if (used.length >= max) return used;
+  const seen = new Set(used);
+  const fillers = POPULAR.filter((t) => !seen.has(t));
+  return [...used, ...fillers].slice(0, max);
+}
 
 /** Display name for a page component type ("שאלה" for any question kind). */
 export function componentLabel(t: ComponentType): string {

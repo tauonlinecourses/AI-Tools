@@ -10,6 +10,7 @@ import {
   lockReason,
   readRecent,
   readRecentTemplateIds,
+  resolveQuickRecent,
   resolveRecentTemplates,
   subscribeRecent,
   subscribeRecentTemplates,
@@ -507,7 +508,7 @@ export function ComponentPicker({
     "relative my-2 overflow-hidden rounded-control border border-surface-200 bg-white";
 
   if (!expanded) {
-    const quickRecent = recent.slice(0, QUICK_RECENT_MAX);
+    const quickRecent = resolveQuickRecent(recent, QUICK_RECENT_MAX);
     const fit = quickWidth
       ? fitQuickBar(quickWidth, quickTemplates.length, quickRecent.length)
       : { recent: 0, tileWidth: TILE_FIXED };
