@@ -1969,7 +1969,7 @@ export function PageContent({
             />
           </div>
         )}
-        {editable && components !== null && (
+        {editable && !isHome && components !== null && (
           <SaveTemplateButton components={components} defaultName={page.title} />
         )}
         {editable && (

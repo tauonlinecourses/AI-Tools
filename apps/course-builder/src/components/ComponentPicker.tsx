@@ -3,7 +3,6 @@ import type { ComponentType, PageComponent } from "../lib/types";
 import {
   CATALOG,
   CATEGORIES,
-  POPULAR,
   TEMPLATES,
   catalogItem,
   componentLabel,
@@ -56,34 +55,38 @@ const catColor = (id: CategoryId) => CATEGORIES.find((c) => c.id === id)!.color;
 
 const TILE_MIN = 80;
 const TILE_MAX = 110;
+/** Fixed tile width in the expanded catalog (home / all / category grids). */
+const TILE_FIXED = 84;
 const TILE_GAP = 2; // gap-0.5
 const SEPARATOR = 1 + 12 * 2; // 1px line + gap-x-3 on each side
 
-/** Recently used tiles in the quick bar (the rest of the room goes to popular). */
-const QUICK_RECENT_MAX = 3;
+/** Tile caption: wrap to 2 lines so longer names show without widening tiles (keeps quick-bar count). */
+const tileLabel = "w-full text-balance break-words text-surface-800 line-clamp-2";
+
+/** Recently used tiles in the quick bar (beside recommended templates). */
+const QUICK_RECENT_MAX = 5;
+/** Recommended templates shown in the quick bar. */
+const QUICK_TEMPLATE_MAX = 2;
 
 /**
- * Quick bar layout: how many recent and "most used" tiles fit next to the recommended
- * templates, and one shared tile width that makes the row end flush (no leftover gap).
- * When space runs out, popular tiles go first, then recent ones.
+ * Quick bar layout: how many recent tiles fit next to the recommended templates,
+ * and one shared tile width that makes the row end flush (no leftover gap).
+ * When space runs out, recent tiles drop first.
  */
 function fitQuickBar(
   width: number,
   suggestionCount: number,
   recentCount: number,
-  popularCount: number,
-): { recent: number; popular: number; tileWidth: number } {
-  for (let k = recentCount + popularCount; k >= 0; k--) {
-    const r = Math.min(recentCount, k);
-    const p = k - r;
-    const n = suggestionCount + k;
+): { recent: number; tileWidth: number } {
+  for (let r = recentCount; r >= 0; r--) {
+    const n = suggestionCount + r;
     const gaps =
-      TILE_GAP * (Math.max(suggestionCount - 1, 0) + Math.max(r - 1, 0) + Math.max(p - 1, 0));
-    const chrome = SEPARATOR * ((r > 0 ? 1 : 0) + (p > 0 ? 1 : 0));
+      TILE_GAP * (Math.max(suggestionCount - 1, 0) + Math.max(r - 1, 0));
+    const chrome = SEPARATOR * (r > 0 ? 1 : 0);
     const w = (width - chrome - gaps) / n;
-    if (w >= TILE_MIN) return { recent: r, popular: p, tileWidth: Math.min(w, TILE_MAX) };
+    if (w >= TILE_MIN) return { recent: r, tileWidth: Math.min(w, TILE_MAX) };
   }
-  return { recent: 0, popular: 0, tileWidth: TILE_MIN };
+  return { recent: 0, tileWidth: TILE_MIN };
 }
 
 const tileBtn =
@@ -92,8 +95,8 @@ const tileBtnOk = "hover:border-surface-200 hover:bg-surface-50 focus-visible:bg
 const tileBtnLocked = "cursor-not-allowed opacity-45";
 
 /**
- * Add-component menu: opens as a quick bar (recommended templates for this spot + most
- * used types) that expands into search, a category rail and the full catalog.
+ * Add-component menu: opens as a quick bar (recommended templates for this spot +
+ * recently used types) that expands into search, a category rail and the full catalog.
  * Chrome matches site panels (surface borders, sharp control radii, blue accent);
  * category colors stay on icons, dots, and template previews.
  */
@@ -150,7 +153,7 @@ export function ComponentPicker({
   }, [expanded]);
 
   const suggestions = suggestionsAfter(prevType);
-  const quickTemplates = suggestTemplates(prevType, components, isHome);
+  const quickTemplates = suggestTemplates(prevType, components, isHome, QUICK_TEMPLATE_MAX);
   const reason = (t: PickerType) => lockReason(componentOf(t), components, isHome);
   const results = useMemo(() => searchCatalog(query), [query]);
 
@@ -296,14 +299,14 @@ export function ComponentPicker({
       >
         {r && <LockIcon className="absolute end-1.5 top-1.5 h-3 w-3 text-surface-500" />}
         <TypeIcon item={item} iconFor={iconFor} />
-        <span className="w-full truncate text-surface-800">{item.label}</span>
+        <span className={tileLabel}>{item.label}</span>
       </button>
     );
   };
 
   /** Fixed-width tile, same look as the quick bar. */
   const tileSlot = (t: PickerType) => (
-    <div key={t} className="w-[84px] shrink-0">
+    <div key={t} className="shrink-0" style={{ width: TILE_FIXED }}>
       {tile(t)}
     </div>
   );
@@ -330,9 +333,9 @@ export function ComponentPicker({
             />
           ))}
         </span>
-        <span className="flex items-center gap-1 text-[13px] font-semibold text-surface-900">
-          {template.label}
-          {r && <LockIcon className="h-3 w-3 text-surface-500" />}
+        <span className="flex items-start gap-1 text-[13px] font-semibold text-surface-900">
+          <span className="min-w-0 flex-1 text-balance break-words">{template.label}</span>
+          {r && <LockIcon className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" />}
         </span>
         <small className="text-[11.5px] leading-snug text-surface-500">{r ?? template.description}</small>
       </button>
@@ -479,10 +482,9 @@ export function ComponentPicker({
 
   if (!expanded) {
     const quickRecent = recent.slice(0, QUICK_RECENT_MAX);
-    const common = POPULAR.filter((t) => !quickRecent.includes(t));
     const fit = quickWidth
-      ? fitQuickBar(quickWidth, quickTemplates.length, quickRecent.length, common.length)
-      : { recent: 0, popular: 0, tileWidth: 84 };
+      ? fitQuickBar(quickWidth, quickTemplates.length, quickRecent.length)
+      : { recent: 0, tileWidth: TILE_FIXED };
     // Template tile: same box as a component tile, with a mini block stack as its icon.
     const templateSlot = (template: ComponentTemplate) => {
       const r = templateLockReason(template, components, isHome);
@@ -509,7 +511,7 @@ export function ComponentPicker({
                 />
               ))}
             </span>
-            <span className="w-full truncate text-surface-800">{template.label}</span>
+            <span className={tileLabel}>{template.label}</span>
           </button>
         </div>
       );
@@ -522,7 +524,7 @@ export function ComponentPicker({
     return (
       <div ref={rootRef} dir="rtl" role="dialog" aria-label="הוספה מהירה" onKeyDown={onKeyDown} className={shell}>
         <div ref={quickRowRef} className="flex justify-center gap-x-3 overflow-hidden px-2 pb-1 pt-2">
-          {/* RTL: first in DOM sits on the right — recent, then popular, templates visual-left. */}
+          {/* RTL: first in DOM sits on the right — recent, templates visual-left. */}
           {fit.recent > 0 && (
             <>
               <div className="flex min-w-0 flex-col gap-0.5">
@@ -531,18 +533,6 @@ export function ComponentPicker({
                   בשימוש לאחרונה
                 </span>
                 <div className="flex gap-0.5">{quickRecent.slice(0, fit.recent).map(slot)}</div>
-              </div>
-              <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
-            </>
-          )}
-          {fit.popular > 0 && (
-            <>
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="flex items-center gap-1 truncate px-1.5 text-[11.5px] text-surface-500">
-                  <SparkIcon />
-                  הנפוצים ביותר
-                </span>
-                <div className="flex gap-0.5">{common.slice(0, fit.popular).map(slot)}</div>
               </div>
               <span className="w-px shrink-0 self-stretch bg-surface-200" aria-hidden />
             </>
@@ -739,7 +729,10 @@ export function ComponentPicker({
                 {shownCats.map((id) => (
                   <div key={id} className="min-w-0">
                     {sectionHeader(id)}
-                    <div className="grid grid-flow-col auto-cols-[84px] gap-0.5">
+                    <div
+                      className="grid grid-flow-col gap-0.5"
+                      style={{ gridAutoColumns: `${TILE_FIXED}px` }}
+                    >
                       {CATALOG.filter((i) => i.category === id).map((i) => tile(i.type))}
                     </div>
                   </div>
@@ -749,7 +742,12 @@ export function ComponentPicker({
               shownCats.map((id) => (
                 <div key={id}>
                   {sectionHeader(id)}
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-0.5">
+                  <div
+                    className="grid gap-0.5"
+                    style={{
+                      gridTemplateColumns: `repeat(auto-fill, minmax(${TILE_FIXED}px, 1fr))`,
+                    }}
+                  >
                     {CATALOG.filter((i) => i.category === id).map((i) => tile(i.type))}
                   </div>
                 </div>
