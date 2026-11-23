@@ -36,20 +36,14 @@ import { exportCourseBackup } from "../lib/courseBackup";
 import { exportCourseMbz, pickOriginalMbzFile } from "../lib/mbzExport";
 import { getCourseMbzSource } from "../lib/mbzStorage";
 import type { CourseMbzSource } from "../lib/mbzTypes";
+import { getPlatformSession } from "@workspace/auth/client";
+import type { PageCommentCounts } from "../lib/api";
 
 interface CourseShellProps {
   mode: CourseViewMode;
 }
 
 type Renaming = { kind: "section" | "page"; id: string } | null;
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 /** True when at least one page in the lesson is ready for implementers. */
 function sectionHasReadyPages(pages: Page[]): boolean {
@@ -181,8 +175,9 @@ export function CourseShell({ mode }: CourseShellProps) {
   } | null>(null);
   const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
   const [commentCounts, setCommentCounts] = useState<
-    Map<string, { open: number; resolved: number }>
+    Map<string, PageCommentCounts>
   >(new Map());
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [exportingBackup, setExportingBackup] = useState(false);
   const [exportingMbz, setExportingMbz] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -221,10 +216,27 @@ export function CourseShell({ mode }: CourseShellProps) {
   const refreshCommentCounts = useCallback(() => {
     if (!tree) return;
     api
-      .getCommentCountsByPage(tree.pages.map((p) => p.id))
+      .getCommentCountsByPage(
+        tree.pages.map((p) => p.id),
+        viewerUserId
+      )
       .then(setCommentCounts)
       .catch(() => undefined);
-  }, [tree]);
+  }, [tree, viewerUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPlatformSession()
+      .then((session) => {
+        if (!cancelled) setViewerUserId(session?.user?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setViewerUserId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     refreshRollups();
@@ -757,7 +769,12 @@ export function CourseShell({ mode }: CourseShellProps) {
     const openComments = pageComments?.open ?? 0;
     const resolvedComments = pageComments?.resolved ?? 0;
     const commentCount = openComments > 0 ? openComments : resolvedComments;
-    const commentTone = openComments > 0 ? "open" : "resolved";
+    const commentTone: "open" | "resolved" | "mention" =
+      openComments > 0
+        ? pageComments?.mentionedOpen
+          ? "mention"
+          : "open"
+        : "resolved";
     const workflowSwatchClass =
       page.workflow_status === "ready_for_implementation"
         ? "bg-emerald-400/40"
@@ -842,27 +859,35 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {commentCount > 0 && (
           <span
-            className={`inline-grid place-items-center shrink-0 size-4 rounded-full text-[10px] font-bold leading-none tabular-nums ${
+            className={`inline-flex items-center justify-center shrink-0 size-4 rounded-full text-[10px] font-bold leading-none tabular-nums ${
               commentCount > 9 ? "w-auto min-w-4 px-1" : ""
             } ${
               isSelected
-                ? commentTone === "open"
-                  ? "bg-white text-[#0F6CBF]"
-                  : "bg-white/85 text-surface-600"
-                : commentTone === "open"
-                  ? "bg-[#0F6CBF] text-white"
-                  : "bg-surface-300 text-white"
+                ? commentTone === "mention"
+                  ? "bg-white text-[#7C3AED]"
+                  : commentTone === "open"
+                    ? "bg-white text-[#0F6CBF]"
+                    : "bg-white/85 text-surface-600"
+                : commentTone === "mention"
+                  ? "bg-[#7C3AED] text-white"
+                  : commentTone === "open"
+                    ? "bg-[#0F6CBF] text-white"
+                    : "bg-surface-300 text-white"
             }`}
             dir="ltr"
             title={
-              commentTone === "open"
-                ? `${commentCount} הערות פתוחות על העמוד`
-                : `${commentCount} הערות שנפתרו על העמוד`
+              commentTone === "mention"
+                ? `${commentCount} הערות פתוחות על העמוד (תויגת)`
+                : commentTone === "open"
+                  ? `${commentCount} הערות פתוחות על העמוד`
+                  : `${commentCount} הערות שנפתרו על העמוד`
             }
             aria-label={
-              commentTone === "open"
-                ? `${commentCount} הערות פתוחות`
-                : `${commentCount} הערות שנפתרו`
+              commentTone === "mention"
+                ? `${commentCount} הערות פתוחות (תויגת)`
+                : commentTone === "open"
+                  ? `${commentCount} הערות פתוחות`
+                  : `${commentCount} הערות שנפתרו`
             }
           >
             {commentCount > 99 ? "99+" : commentCount}
@@ -1132,69 +1157,14 @@ export function CourseShell({ mode }: CourseShellProps) {
       <div dir="rtl" lang="he" className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden">
         {/* Sidebar — fixed pane; own scrollbar when nav overflows */}
         <aside className="w-[22rem] shrink-0 bg-[#F8F9FA] flex flex-col min-h-0 overflow-hidden">
-          <div className="p-4 border-b border-surface-200 flex flex-col gap-2">
-            {/* Title (right) + mode toggle (top-left in RTL) */}
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-xl font-semibold text-surface-900 leading-snug min-w-0 flex-1">
+          <div className="border-b border-surface-200 p-4 flex flex-col gap-2">
+            {/* RTL: title on the right, backup on the visual top-left */}
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <span className="min-w-0 flex-1 text-3xl font-semibold leading-none tracking-tight text-surface-900">
                 {tree?.course.title ?? "..."}
               </span>
-              <div className="flex border border-surface-200 rounded-control overflow-hidden shrink-0 text-xs font-semibold">
-                {(
-                  [
-                    { path: "edit", label: "עריכה", value: "edit" as const },
-                    { path: "implement", label: "הטמעה", value: "implement" as const },
-                    { path: "review", label: "תצוגה", value: "review" as const },
-                  ] as const
-                ).map((seg, i) => (
-                  <Link
-                    key={seg.value}
-                    to={`/courses/${courseId}/${seg.path}${
-                      selectedSection
-                        ? `?section=${selectedSection.id}`
-                        : showOverview
-                          ? "?view=overview"
-                          : selectedPage
-                            ? `?page=${selectedPage.id}`
-                            : ""
-                    }`}
-                    className={`px-2.5 py-1 transition-colors duration-fast ${
-                      i > 0 ? "border-s border-surface-200" : ""
-                    } ${
-                      mode === seg.value
-                        ? "bg-black text-white"
-                        : "bg-white text-surface-600"
-                    }`}
-                  >
-                    {seg.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            {tree?.course.updated_at && (
-              <span className="block w-full text-sm text-surface-500">
-                עודכן לאחרונה ב{formatDate(tree.course.updated_at)}
-              </span>
-            )}
-            {tree && (
-              <div className="flex w-full items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={selectOverview}
-                  title="סקירת מבנה והתקדמות הקורס"
-                  className={`flex items-center gap-1.5 min-w-0 px-2 h-9 rounded-lg text-base transition-colors duration-fast ${
-                    showOverview
-                      ? "bg-[#0F6CBF] text-white font-medium"
-                      : "text-surface-600 hover:bg-white hover:text-surface-900"
-                  }`}
-                >
-                  <ChartPieIcon
-                    className={`w-4 h-4 shrink-0 ${
-                      showOverview ? "text-white" : "text-surface-500"
-                    }`}
-                  />
-                  <span className="truncate">סקירת קורס</span>
-                </button>
-                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0">
+              {tree && (
+                <div className="flex flex-col items-end gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={handleExportBackup}
@@ -1218,7 +1188,26 @@ export function CourseShell({ mode }: CourseShellProps) {
                     </button>
                   )}
                 </div>
-              </div>
+              )}
+            </div>
+            {tree && (
+              <button
+                type="button"
+                onClick={selectOverview}
+                title="דשבורד הקורס — מבנה והתקדמות"
+                className={`flex w-full items-center justify-center gap-1.5 px-2 h-9 rounded-lg text-base transition-colors duration-fast ${
+                  showOverview
+                    ? "bg-[#0F6CBF] text-white font-medium"
+                    : "bg-white text-surface-700 hover:bg-surface-50 hover:text-surface-900 border border-surface-200"
+                }`}
+              >
+                <ChartPieIcon
+                  className={`w-4 h-4 shrink-0 ${
+                    showOverview ? "text-white" : "text-surface-500"
+                  }`}
+                />
+                                <span className="truncate">דשבורד הקורס</span>
+              </button>
             )}
             {backupError && (
               <p className="text-xs text-danger leading-snug">{backupError}</p>
@@ -1226,6 +1215,44 @@ export function CourseShell({ mode }: CourseShellProps) {
           </div>
 
           <nav className="scrollbar-rounded flex-1 overflow-y-auto py-2">
+            {/* Mode toggle — top of sidebar content, with side padding */}
+            <div className="px-4 pb-2">
+              <div
+                className="flex w-full overflow-hidden rounded-control border border-surface-200 text-xs font-semibold"
+                role="navigation"
+                aria-label="מצב תצוגה"
+              >
+                {(
+                  [
+                    { path: "edit", label: "עריכה", value: "edit" as const },
+                    { path: "implement", label: "הטמעה", value: "implement" as const },
+                    { path: "review", label: "תצוגה", value: "review" as const },
+                  ] as const
+                ).map((seg, i) => (
+                  <Link
+                    key={seg.value}
+                    to={`/courses/${courseId}/${seg.path}${
+                      selectedSection
+                        ? `?section=${selectedSection.id}`
+                        : showOverview
+                          ? "?view=overview"
+                          : selectedPage
+                            ? `?page=${selectedPage.id}`
+                            : ""
+                    }`}
+                    className={`flex-1 py-1.5 text-center transition-colors duration-fast ${
+                      i > 0 ? "border-s border-surface-200" : ""
+                    } ${
+                      mode === seg.value
+                        ? "bg-black text-white"
+                        : "bg-white text-surface-600 hover:bg-surface-50 hover:text-surface-900"
+                    }`}
+                  >
+                    {seg.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
             {tree === null && !error && (
               <div className="flex items-center gap-2 px-4 py-2 text-base text-surface-600">
                 <Spinner size="sm" />
@@ -1269,7 +1296,7 @@ export function CourseShell({ mode }: CourseShellProps) {
         {/* Main content */}
         <div
           data-course-main-scroll
-          className="flex-1 min-w-0 overflow-y-auto bg-white"
+          className="relative flex-1 min-w-0 overflow-y-auto bg-white"
         >
           <div className="fixed top-14 left-4 z-20 pointer-events-none">
             <SaveStatusIndicator />

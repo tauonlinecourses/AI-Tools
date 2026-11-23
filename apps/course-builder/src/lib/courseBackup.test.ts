@@ -63,7 +63,12 @@ function validBackup() {
       {
         componentTempKey: "c1",
         author_role: "review",
-        body: "Looks good",
+        author_user_id: "00000000-0000-0000-0000-000000000099",
+        author_display_name: "dana",
+        body: "Looks good @amir",
+        mentions: [
+          { user_id: "00000000-0000-0000-0000-000000000001", display_name: "amir" },
+        ],
         resolved_at: null,
         created_at: "2026-01-01T00:00:00.000Z",
       },
@@ -72,7 +77,10 @@ function validBackup() {
       {
         pageTempKey: "p1",
         author_role: "edit",
+        author_user_id: null,
+        author_display_name: null,
         body: "Page note",
+        mentions: [],
         resolved_at: null,
         created_at: "2026-01-01T00:00:00.000Z",
       },
@@ -89,6 +97,23 @@ describe("parseCourseBackup", () => {
   it("defaults missing pageComments to an empty array", () => {
     const { pageComments: _ignored, ...legacy } = validBackup();
     expect(parseCourseBackup(legacy).pageComments).toEqual([]);
+  });
+
+  it("defaults missing comment mentions to an empty array", () => {
+    const raw = validBackup() as Record<string, unknown>;
+    const comments = structuredClone(validBackup().comments) as Array<
+      Record<string, unknown>
+    >;
+    const pageComments = structuredClone(validBackup().pageComments) as Array<
+      Record<string, unknown>
+    >;
+    delete comments[0].mentions;
+    delete pageComments[0].mentions;
+    raw.comments = comments;
+    raw.pageComments = pageComments;
+    const parsed = parseCourseBackup(raw);
+    expect(parsed.comments[0].mentions).toEqual([]);
+    expect(parsed.pageComments[0].mentions).toEqual([]);
   });
 
   it("rejects non-objects and wrong format/version", () => {

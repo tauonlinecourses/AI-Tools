@@ -13,10 +13,12 @@ import {
 import type {
   BlockProps,
   CommentAuthorRole,
+  CommentMention,
   ComponentType,
   PageWorkflowStatus,
 } from "./types";
 import { isHomePage } from "./types";
+import { normalizeMentions } from "./commentMentions";
 
 export const BACKUP_FORMAT = "course-builder-backup" as const;
 export const BACKUP_VERSION = 1 as const;
@@ -78,7 +80,10 @@ export interface BackupComponent {
 export interface BackupComment {
   componentTempKey: string;
   author_role: CommentAuthorRole;
+  author_user_id: string | null;
+  author_display_name: string | null;
   body: string;
+  mentions: CommentMention[];
   resolved_at: string | null;
   created_at: string;
 }
@@ -86,7 +91,10 @@ export interface BackupComment {
 export interface BackupPageComment {
   pageTempKey: string;
   author_role: CommentAuthorRole;
+  author_user_id: string | null;
+  author_display_name: string | null;
   body: string;
+  mentions: CommentMention[];
   resolved_at: string | null;
   created_at: string;
 }
@@ -190,7 +198,10 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
       comments.push({
         componentTempKey: comment.component_id,
         author_role: comment.author_role,
+        author_user_id: comment.author_user_id,
+        author_display_name: comment.author_display_name,
         body: comment.body,
+        mentions: comment.mentions ?? [],
         resolved_at: comment.resolved_at,
         created_at: comment.created_at,
       });
@@ -200,7 +211,10 @@ export async function buildCourseBackup(courseId: string): Promise<CourseBackup>
       pageComments.push({
         pageTempKey: comment.page_id,
         author_role: comment.author_role,
+        author_user_id: comment.author_user_id,
+        author_display_name: comment.author_display_name,
         body: comment.body,
+        mentions: comment.mentions ?? [],
         resolved_at: comment.resolved_at,
         created_at: comment.created_at,
       });
@@ -360,7 +374,10 @@ export function parseCourseBackup(raw: unknown): CourseBackup {
     return {
       componentTempKey,
       author_role,
+      author_user_id: asNullableString(item.author_user_id),
+      author_display_name: asNullableString(item.author_display_name),
       body: asString(item.body, `comments[${index}].body`),
+      mentions: normalizeMentions(item.mentions),
       resolved_at: asNullableString(item.resolved_at),
       created_at:
         typeof item.created_at === "string" && item.created_at
@@ -389,7 +406,10 @@ export function parseCourseBackup(raw: unknown): CourseBackup {
     return {
       pageTempKey,
       author_role,
+      author_user_id: asNullableString(item.author_user_id),
+      author_display_name: asNullableString(item.author_display_name),
       body: asString(item.body, `pageComments[${index}].body`),
+      mentions: normalizeMentions(item.mentions),
       resolved_at: asNullableString(item.resolved_at),
       created_at:
         typeof item.created_at === "string" && item.created_at
@@ -513,7 +533,10 @@ export async function importCourseBackup(backup: CourseBackup): Promise<string> 
       const commentRows = backup.comments.map((c) => ({
         component_id: componentIdMap.get(c.componentTempKey)!,
         author_role: c.author_role,
+        author_user_id: c.author_user_id,
+        author_display_name: c.author_display_name,
         body: c.body,
+        mentions: c.mentions ?? [],
         resolved_at: c.resolved_at,
         created_at: c.created_at,
       }));
@@ -525,7 +548,10 @@ export async function importCourseBackup(backup: CourseBackup): Promise<string> 
       const pageCommentRows = backup.pageComments.map((c) => ({
         page_id: pageIdMap.get(c.pageTempKey)!,
         author_role: c.author_role,
+        author_user_id: c.author_user_id,
+        author_display_name: c.author_display_name,
         body: c.body,
+        mentions: c.mentions ?? [],
         resolved_at: c.resolved_at,
         created_at: c.created_at,
       }));

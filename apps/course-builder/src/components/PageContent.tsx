@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
   ButtonAlign,
+  CommentMention,
   ComponentComment,
   ComponentType,
   CourseViewMode,
@@ -37,6 +38,7 @@ import { BlockComments } from "./BlockComments";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { AutoGrowTextField, NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
+import { stripTrailingPeriod } from "../lib/questionText";
 import { validatePageQuestions } from "../lib/questionValidation";
 import {
   PageImplementationStatusToggle,
@@ -47,7 +49,9 @@ import {
   statusHeaderClass,
 } from "./StatusBadge";
 import {
-  AlignIcon,
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
   BannerIcon,
   ButtonIcon,
   ChevronLeftIcon,
@@ -57,7 +61,6 @@ import {
   GripIcon,
   HomeIcon,
   LinkIcon,
-  LockIcon,
   PencilIcon,
   PlusIcon,
   QuestionIcon,
@@ -69,8 +72,21 @@ import {
   VideoIcon,
 } from "./icons";
 import { LessonFilesButton, LessonVideosButton } from "./LessonFilesButton";
+import { SaveTemplateButton } from "./SaveTemplateButton";
 import { LessonPagesCard } from "./LessonPagesCard";
 import { PageComponentMap } from "./PageComponentMap";
+import { ComponentPicker } from "./ComponentPicker";
+import {
+  categoryColorFor,
+  componentOf,
+  lockReason,
+  pushRecent,
+  pushRecentTemplate,
+  questionTypeOf,
+  type PickerType,
+  templateLockReason,
+  type ComponentTemplate,
+} from "../lib/componentCatalog";
 
 /** Sentinel for the open page-header comment thread (mutually exclusive with block threads). */
 const PAGE_COMMENTS_OPEN_ID = "__page_comments__";
@@ -85,15 +101,28 @@ type HeaderField =
   | "image-image-url"
   | "text-unit-image-url"
   | "text-unit-file-url"
-  | "button-text"
-  | "button-align"
-  | "button-url";
+  | "button-url"
+  | "button-image-url";
 
-const BUTTON_ALIGN_OPTIONS: { value: ButtonAlign; label: string }[] = [
-  { value: "right", label: "ימין" },
-  { value: "center", label: "מרכז" },
-  { value: "left", label: "שמאל" },
-];
+/** Cycle order for the button align header toggle (icon updates to match). */
+const BUTTON_ALIGN_CYCLE: ButtonAlign[] = ["center", "right", "left"];
+
+const BUTTON_ALIGN_LABEL: Record<ButtonAlign, string> = {
+  center: "מרכז",
+  right: "ימין",
+  left: "שמאל",
+};
+
+function nextButtonAlign(current: ButtonAlign): ButtonAlign {
+  const i = BUTTON_ALIGN_CYCLE.indexOf(current);
+  return BUTTON_ALIGN_CYCLE[(i < 0 ? 0 : i + 1) % BUTTON_ALIGN_CYCLE.length];
+}
+
+function buttonAlignIcon(align: ButtonAlign, className = "w-4 h-4") {
+  if (align === "left") return <AlignLeftIcon className={className} />;
+  if (align === "right") return <AlignRightIcon className={className} />;
+  return <AlignCenterIcon className={className} />;
+}
 
 /** Shared max length for video title and button label. */
 const SHORT_LABEL_MAX_LENGTH = 38;
@@ -210,6 +239,58 @@ function HeaderOpenUrlButton({
   );
 }
 
+/** Implement-mode header copy control with brief "הועתק" feedback. */
+function HeaderCopyButton({
+  copied,
+  disabled,
+  disabledLabel,
+  label = "העתק",
+  onCopy,
+}: {
+  copied: boolean;
+  disabled?: boolean;
+  disabledLabel?: string;
+  label?: string;
+  onCopy: () => void;
+}) {
+  if (disabled) {
+    return (
+      <span
+        role="button"
+        aria-disabled="true"
+        aria-label={disabledLabel ?? "אין קישור להעתקה"}
+        title={disabledLabel ?? "אין קישור להעתקה"}
+        className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-surface-300 cursor-not-allowed"
+      >
+        <CopyIcon className="w-4 h-4" />
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"
+      title={label}
+      aria-label={copied ? "הועתק" : label}
+      onClick={onCopy}
+    >
+      <CopyIcon
+        className={`w-4 h-4 transition-opacity duration-fast ${
+          copied ? "opacity-0" : "opacity-100"
+        }`}
+      />
+      <span
+        className={`absolute inset-0 flex items-center justify-center text-[11px] font-medium leading-none transition-opacity duration-fast pointer-events-none ${
+          copied ? "opacity-100" : "opacity-0"
+        }`}
+        aria-hidden={!copied}
+      >
+        הועתק
+      </span>
+    </button>
+  );
+}
+
 /** Clipboard payload for the implement-mode header copy button (by block type). */
 function headerCopyPayload(component: PageComponent): ClipboardPayload {
   switch (component.type) {
@@ -223,7 +304,9 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
     case "interactive_video":
       return { plain: component.props.url ?? "" };
     case "question":
-      return { plain: component.props.prompt ?? "" };
+      return {
+        plain: stripTrailingPeriod(component.props.prompt ?? ""),
+      };
     case "image":
       return { plain: component.props.imageUrl ?? "" };
     case "text_unit":
@@ -291,22 +374,6 @@ function activityPickerPageType(
   return type === "question" ? "h5p" : type;
 }
 
-const MAIN_COMPONENT_TYPES: ComponentType[] = [
-  "banner",
-  "video",
-  "text",
-  "image",
-  "text_unit",
-  "interactive_unit",
-  "button",
-];
-const ACTIVITY_COMPONENT_TYPES: ComponentType[] = [
-  "question",
-  "notes_board",
-  "word_cloud",
-  "forum",
-];
-
 /** Larger icons for the add-component picker tiles. */
 function pickerTileIcon(type: ComponentType): React.ReactNode {
   const cls = "w-5 h-5";
@@ -337,59 +404,6 @@ function pickerTileIcon(type: ComponentType): React.ReactNode {
   }
 }
 
-function canAddActivityType(
-  type: ComponentType,
-  list: PageComponent[],
-  isHome: boolean
-): boolean {
-  if (isHome || !ACTIVITY_TYPES.has(type)) return false;
-  const otherKind = list.find((c) => ACTIVITY_TYPES.has(c.type) && c.type !== type);
-  if (otherKind) return false;
-  if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
-    return false;
-  }
-  return true;
-}
-
-function AddComponentTile({
-  type,
-  disabled,
-  onAdd,
-}: {
-  type: ComponentType;
-  disabled?: boolean;
-  onAdd: (type: ComponentType) => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onAdd(type)}
-      className={`flex flex-col items-center justify-center gap-2 rounded-[12px] bg-white px-2 py-3.5 transition-colors duration-fast ${
-        disabled
-          ? "cursor-not-allowed opacity-40 shadow-none"
-          : "shadow-[0_1px_3px_rgba(15,108,191,0.1)] hover:bg-[#F8FBFE] hover:shadow-[0_2px_6px_rgba(15,108,191,0.14)]"
-      }`}
-    >
-      <span
-        className={`flex h-9 w-9 items-center justify-center rounded-[8px] ${
-          disabled ? "bg-[#E8EEF4] text-surface-400" : "bg-[#E8F2FB] text-[#0F6CBF]"
-        }`}
-        aria-hidden
-      >
-        {pickerTileIcon(type)}
-      </span>
-      <span
-        className={`text-sm font-medium ${
-          disabled ? "text-surface-400" : "text-[#1B3A5C]"
-        }`}
-      >
-        {typeMeta[type].label}
-      </span>
-    </button>
-  );
-}
-
 function emptyChoiceOptions(count: number) {
   return Array.from({ length: count }, () => ({
     id: crypto.randomUUID(),
@@ -406,6 +420,20 @@ function defaultChoiceQuestionProps(): QuestionProps {
     options,
     correctOptionId: options[0]?.id,
   };
+}
+
+/** New question preset to a kind. True/false uses the block's fixed נכון / לא נכון options. */
+function defaultQuestionProps(questionType: QuestionType): QuestionProps {
+  if (questionType === "yes_no") {
+    return { questionType, prompt: "", correctOptionId: "__correct" };
+  }
+  return { ...defaultChoiceQuestionProps(), questionType };
+}
+
+/** Default props for a picker item (question items preset their kind). */
+function pickerProps(pick: PickerType): BlockProps {
+  const questionType = questionTypeOf(pick);
+  return questionType ? defaultQuestionProps(questionType) : defaultProps(componentOf(pick));
 }
 
 function defaultProps(type: ComponentType): BlockProps {
@@ -429,7 +457,7 @@ function defaultProps(type: ComponentType): BlockProps {
     case "interactive_unit":
       return { imageUrl: "", fileUrl: "" };
     case "button":
-      return { text: "", align: "center", url: "" };
+      return { text: "", align: "center", url: "", imageUrl: "" };
     case "word_cloud":
       return { centerWord: "" };
     case "notes_board":
@@ -518,6 +546,9 @@ export function PageContent({
   const [pageComments, setPageComments] = useState<PageComment[]>([]);
   /** At most one open comment thread at a time. */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
+  /** Where an inline "+" picker is open (before index `at`). The bottom bar is always shown. */
+  const [pickerAt, setPickerAt] = useState<{ at: number } | null>(null);
+  const closePicker = useCallback(() => setPickerAt(null), []);
   const [error, setError] = useState<string | null>(null);
   /** At most one field popover in a block header is open. */
   const [openHeaderField, setOpenHeaderField] = useState<string | null>(null);
@@ -939,9 +970,9 @@ export function PageContent({
   async function insertComponentAt(
     type: ComponentType,
     insertIdx: number,
-    list: PageComponent[]
+    list: PageComponent[],
+    props: BlockProps = defaultProps(type)
   ) {
-    const props = defaultProps(type);
     const now = new Date().toISOString();
     const optimistic: PageComponent = {
       id: crypto.randomUUID(),
@@ -999,47 +1030,175 @@ export function PageContent({
     }
   }
 
-  async function handleAdd(type: ComponentType) {
+  /**
+   * Insert from the component picker. Content types go at `at` (never below
+   * pinned activities); activities always go to the bottom of the page.
+   */
+  async function handleInsertAt(pick: PickerType, at: number) {
     setError(null);
+    const type = componentOf(pick);
     const list = components ?? [];
-
-    if (isHome && ACTIVITY_TYPES.has(type)) {
-      window.alert("לא ניתן להוסיף פעילויות לדף הבית. ניתן להוסיף רק רכיבי תוכן.");
+    const reason = lockReason(type, list, isHome);
+    if (reason) {
+      window.alert(reason);
       return;
     }
+    setPickerAt(null);
+    pushRecent(pick);
+    const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+    const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+    const insertIdx = PINNED_BOTTOM_TYPES.has(type)
+      ? list.length
+      : Math.min(at, contentEnd);
+    await insertComponentAt(type, insertIdx, list, pickerProps(pick));
+  }
 
-    if (ACTIVITY_TYPES.has(type)) {
-      const otherKind = list.find(
-        (c) => ACTIVITY_TYPES.has(c.type) && c.type !== type
+  /**
+   * Insert a picker template: its content blocks go in order at `at`, its
+   * activities go to the bottom. Saved in one request.
+   */
+  async function handleInsertTemplate(template: ComponentTemplate, at: number) {
+    setError(null);
+    const list = components ?? [];
+    const reason = templateLockReason(template, list, isHome);
+    if (reason) {
+      window.alert(reason);
+      return;
+    }
+    setPickerAt(null);
+    pushRecentTemplate(template.id);
+
+    const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
+    const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
+    let pos = Math.min(at, contentEnd);
+    const now = new Date().toISOString();
+    const added: PageComponent[] = [];
+    const draft = [...list];
+    for (const pick of template.types) {
+      const type = componentOf(pick);
+      const component: PageComponent = {
+        id: crypto.randomUUID(),
+        page_id: page.id,
+        type,
+        position: 0,
+        props: pickerProps(pick),
+        implemented_at: null,
+        updated_at: now,
+      };
+      added.push(component);
+      if (PINNED_BOTTOM_TYPES.has(type)) {
+        draft.push(component);
+      } else {
+        draft.splice(pos, 0, component);
+        pos += 1;
+      }
+    }
+    const next = draft.map((c, position) => ({ ...c, position }));
+    const addedIds = new Set(added.map((c) => c.id));
+    const shiftsExisting = next.some((c, i) => !addedIds.has(c.id) && list[i]?.id !== c.id);
+
+    // Paint immediately; persist in the background with the same client ids.
+    scrollToComponentId.current = added[0].id;
+    setComponents(next);
+
+    let resolveInsert!: () => void;
+    let rejectInsert!: (reason: unknown) => void;
+    const insertReady = new Promise<void>((resolve, reject) => {
+      resolveInsert = resolve;
+      rejectInsert = reject;
+    });
+    insertReady.catch(() => {});
+    for (const id of addedIds) pendingInserts.current.set(id, insertReady);
+
+    let inserted = false;
+    try {
+      await trackSave(
+        (async () => {
+          try {
+            await api.addComponents(
+              page.id,
+              next
+                .filter((c) => addedIds.has(c.id))
+                .map(({ id, type, position, props }) => ({ id, type, position, props })),
+              { courseId }
+            );
+            inserted = true;
+            resolveInsert();
+          } catch (err) {
+            rejectInsert(err);
+            throw err;
+          }
+          if (shiftsExisting) {
+            await api.reorderComponents(next.map((c) => c.id));
+          }
+        })()
       );
-      if (otherKind) {
-        const existingLabel = typeMeta[otherKind.type]?.label ?? otherKind.type;
-        const newLabel = typeMeta[type]?.label ?? type;
-        window.alert(
-          `לא ניתן להוסיף "${newLabel}" — כבר קיימת פעילות מסוג "${existingLabel}" בעמוד זה. ניתן להוסיף רק סוג פעילות אחד בכל עמוד.`
-        );
-        return;
-      }
-      // notes_board / word_cloud / forum: only one instance; question may repeat.
-      if (SINGLETON_ACTIVITY_TYPES.has(type) && list.some((c) => c.type === type)) {
-        const label = typeMeta[type]?.label ?? type;
-        window.alert(
-          `לא ניתן להוסיף עוד "${label}" — ניתן להוסיף פעילות זו פעם אחת בלבד בכל עמוד (רק שאלה ניתנת להוספה יותר מפעם אחת).`
-        );
-        return;
-      }
+      onContentChange();
+      onStatusChange();
+    } catch (e) {
+      if (!inserted) setComponents(list);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      for (const id of addedIds) pendingInserts.current.delete(id);
     }
+  }
 
-    const isPinned = PINNED_BOTTOM_TYPES.has(type);
-    let insertIdx: number;
-    if (isPinned) {
-      insertIdx = list.length;
-    } else {
-      const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
-      insertIdx = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
-    }
+  /** Inline "+" between blocks plus, when open, the picker for that spot. */
+  function renderInserter(at: number, list: PageComponent[]) {
+    const open = pickerAt?.at === at;
+    return (
+      <>
+        <div className="group/ins relative h-0">
+          <div className="absolute inset-x-0 -top-3 flex h-3 items-center justify-center">
+            <span
+              aria-hidden
+              className={`absolute inset-x-2 top-1/2 border-t-2 border-[#0F6CBF] transition-opacity duration-fast ${
+                open ? "opacity-45" : "opacity-0 group-hover/ins:opacity-45 group-focus-within/ins:opacity-45"
+              }`}
+            />
+            <button
+              type="button"
+              data-picker-trigger
+              aria-label="הוספת רכיב כאן"
+              aria-expanded={open}
+              onClick={() => setPickerAt(open ? null : { at })}
+              className={`relative z-10 flex h-[22px] w-[22px] items-center justify-center rounded-full border-[1.5px] border-[#0F6CBF] transition-opacity duration-fast focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F6CBF] [@media(hover:none)]:opacity-100 ${
+                open
+                  ? "bg-[#0F6CBF] text-white opacity-100"
+                  : "bg-white text-[#0F6CBF] opacity-0 group-hover/ins:opacity-100"
+              }`}
+            >
+              <PlusIcon className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+        {open && renderPicker(at, false, list)}
+      </>
+    );
+  }
 
-    await insertComponentAt(type, insertIdx, list);
+  function renderPicker(at: number, end: boolean, list: PageComponent[]) {
+    const prev = at > 0 ? list[at - 1] : null;
+    return (
+      <ComponentPicker
+        key={`${at}:${end}`}
+        prevType={prev?.type ?? null}
+        contextLabel={
+          end
+            ? "הוספה בסוף העמוד"
+            : prev
+              ? `הוספה אחרי: ${typeMeta[prev.type]?.label ?? prev.type}`
+              : "הוספה בראש העמוד"
+        }
+        components={list}
+        isHome={isHome}
+        iconFor={pickerTileIcon}
+        onPick={(type) => void handleInsertAt(type, at)}
+        onPickTemplate={(template) => void handleInsertTemplate(template, at)}
+        onClose={closePicker}
+        persistent={end}
+      />
+    );
   }
 
   /** Insert a fresh question component immediately after an existing question. */
@@ -1170,11 +1329,17 @@ export function PageContent({
     }
   }
 
-  async function handleAddComment(componentId: string, body: string) {
+  async function handleAddComment(
+    componentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
     setError(null);
     try {
       await waitForInsert(componentId);
-      const created = await trackSave(api.addComment(componentId, mode, body));
+      const created = await trackSave(
+        api.addComment(componentId, mode, body, mentions)
+      );
       setCommentsByComponent((prev) => {
         const next = new Map(prev);
         const list = [...(next.get(componentId) ?? []), created];
@@ -1209,6 +1374,33 @@ export function PageContent({
     }
   }
 
+  async function handleEditComment(
+    componentId: string,
+    commentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.updateComment(commentId, body, mentions)
+      );
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        const list = next.get(componentId);
+        if (!list) return prev;
+        next.set(
+          componentId,
+          list.map((c) => (c.id === updated.id ? updated : c))
+        );
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
   async function handleDeleteComment(componentId: string, commentId: string) {
     setError(null);
     try {
@@ -1230,10 +1422,15 @@ export function PageContent({
     }
   }
 
-  async function handleAddPageComment(body: string) {
+  async function handleAddPageComment(
+    body: string,
+    mentions: CommentMention[]
+  ) {
     setError(null);
     try {
-      const created = await trackSave(api.addPageComment(page.id, mode, body));
+      const created = await trackSave(
+        api.addPageComment(page.id, mode, body, mentions)
+      );
       setPageComments((prev) => [...prev, created]);
       onCommentsChange?.();
     } catch (e) {
@@ -1255,6 +1452,25 @@ export function PageContent({
         prev.map((c) => (c.id === updated.id ? updated : c))
       );
       onCommentsChange?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleEditPageComment(
+    commentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.updatePageComment(commentId, body, mentions)
+      );
+      setPageComments((prev) =>
+        prev.map((c) => (c.id === updated.id ? updated : c))
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       throw e;
@@ -1283,8 +1499,13 @@ export function PageContent({
         onToggle={() =>
           setOpenCommentId((prev) => (prev === componentId ? null : componentId))
         }
-        onAdd={(body) => handleAddComment(componentId, body)}
+        onAdd={(body, mentions) =>
+          handleAddComment(componentId, body, mentions)
+        }
         onSetResolved={handleSetCommentResolved}
+        onEdit={(commentId, body, mentions) =>
+          handleEditComment(componentId, commentId, body, mentions)
+        }
         onDelete={(commentId) => handleDeleteComment(componentId, commentId)}
       >
         {block}
@@ -1428,12 +1649,13 @@ export function PageContent({
     const isLinkUnit =
       component.type === "text_unit" || component.type === "interactive_unit";
     const isButton = component.type === "button";
+    const buttonAlign: ButtonAlign = component.props.align ?? "center";
     const flushBody = isVideo || isBanner || isImage || isLinkUnit;
     /** Edit-mode URL/title field icons next to the type label. */
     const showHeaderMediaControls =
       editable &&
       (isBanner || isVideo || isImage || isLinkUnit || isButton);
-    /** Implement-mode open-URL icons on the visual-left actions (no copy for these). */
+    /** Implement-mode open-URL icons on the visual-left actions (video also gets copy-link). */
     const hasImplementOpenUrls =
       isBanner || isVideo || isImage || isLinkUnit || isButton;
     const fieldIsOpen = (field: HeaderField) =>
@@ -1473,7 +1695,13 @@ export function PageContent({
               editable ? "text-surface-700" : "text-inherit"
             }`}
           >
-            {meta.icon}
+            {/* Icon in the component's category color (same as the picker and page map). */}
+            <span
+              className="flex shrink-0 items-center"
+              style={{ color: categoryColorFor(component.type) }}
+            >
+              {meta.icon}
+            </span>
             {editable && component.type === "question" ? (
               <select
                 className="bg-transparent outline-none cursor-pointer text-sm font-semibold text-surface-700"
@@ -1672,70 +1900,25 @@ export function PageContent({
           )}
           {editable && isButton && (
             <div className="flex items-center gap-1">
-              <HeaderFieldPopover
-                open={fieldIsOpen("button-text")}
-                label="טקסט הכפתור"
-                title="עריכת טקסט הכפתור"
-                icon={<PencilIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "button-text")}
-                onClose={closeHeaderField}
+              <button
+                type="button"
+                className="p-1.5 text-surface-500 hover:bg-surface-200 hover:text-surface-900 transition-colors duration-fast"
+                title={`יישור: ${BUTTON_ALIGN_LABEL[buttonAlign]} (לחצו לשינוי)`}
+                aria-label={`יישור נוכחי ${BUTTON_ALIGN_LABEL[buttonAlign]}. לחצו לשינוי יישור`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handlePropsChange(component.id, {
+                    ...component.props,
+                    align: nextButtonAlign(buttonAlign),
+                  });
+                }}
               >
-                <AutoGrowTextField
-                  autoFocus
-                  maxLength={SHORT_LABEL_MAX_LENGTH}
-                  value={component.props.text ?? ""}
-                  placeholder="כפתור"
-                  onChange={(event) =>
-                    handlePropsChange(component.id, {
-                      ...component.props,
-                      text: event.target.value.slice(0, SHORT_LABEL_MAX_LENGTH),
-                    })
-                  }
-                />
-              </HeaderFieldPopover>
-              <HeaderFieldPopover
-                open={fieldIsOpen("button-align")}
-                label="יישור"
-                title="עריכת יישור הכפתור"
-                icon={<AlignIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "button-align")}
-                onClose={closeHeaderField}
-              >
-                <div
-                  className="inline-flex w-full rounded border border-surface-200 overflow-hidden"
-                  role="group"
-                  aria-label="יישור כפתור"
-                >
-                  {BUTTON_ALIGN_OPTIONS.map((opt) => {
-                    const selected =
-                      (component.props.align ?? "center") === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={`flex-1 px-3 h-9 text-sm font-semibold transition-colors duration-fast ${
-                          selected
-                            ? "bg-surface-900 text-white"
-                            : "bg-white text-surface-700 hover:bg-surface-50"
-                        }`}
-                        aria-pressed={selected}
-                        onClick={() =>
-                          handlePropsChange(component.id, {
-                            ...component.props,
-                            align: opt.value,
-                          })
-                        }
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </HeaderFieldPopover>
+                {buttonAlignIcon(buttonAlign)}
+              </button>
               <HeaderFieldPopover
                 open={fieldIsOpen("button-url")}
-                label="קישור"
-                title="עריכת קישור הכפתור"
+                label="קישור (לאן הכפתור מוביל)"
+                title="עריכת קישור הכפתור (לאן הכפתור מוביל)"
                 icon={<LinkIcon className="w-4 h-4" />}
                 onToggle={() => toggleHeaderField(component.id, "button-url")}
                 onClose={closeHeaderField}
@@ -1749,6 +1932,29 @@ export function PageContent({
                     handlePropsChange(component.id, {
                       ...component.props,
                       url: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("button-image-url")}
+                label="קישור לתמונה"
+                title="עריכת תמונת הכפתור"
+                icon={<ThumbnailIcon className="w-4 h-4" />}
+                onToggle={() =>
+                  toggleHeaderField(component.id, "button-image-url")
+                }
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.imageUrl ?? ""}
+                  placeholder="https://... (SharePoint או תמונה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      imageUrl: event.target.value,
                     })
                   }
                 />
@@ -1774,12 +1980,23 @@ export function PageContent({
                   />
                 )}
                 {isVideo && (
-                  <HeaderOpenUrlButton
-                    url={component.props.url}
-                    label="פתח וידאו"
-                    missingLabel="אין קישור לוידאו"
-                    icon={<LinkIcon className="w-4 h-4" />}
-                  />
+                  <>
+                    <HeaderCopyButton
+                      copied={copiedComponentId === component.id}
+                      disabled={!component.props.url?.trim()}
+                      disabledLabel="אין קישור לוידאו"
+                      label="העתק קישור"
+                      onCopy={() =>
+                        handleCopy(headerCopyPayload(component), component.id)
+                      }
+                    />
+                    <HeaderOpenUrlButton
+                      url={component.props.url}
+                      label="פתח וידאו"
+                      missingLabel="אין קישור לוידאו"
+                      icon={<LinkIcon className="w-4 h-4" />}
+                    />
+                  </>
                 )}
                 {isImage && (
                   <HeaderOpenUrlButton
@@ -1806,45 +2023,30 @@ export function PageContent({
                   </>
                 )}
                 {isButton && (
-                  <HeaderOpenUrlButton
-                    url={component.props.url}
-                    label="פתח קישור"
-                    missingLabel="אין קישור לכפתור"
-                    icon={<LinkIcon className="w-4 h-4" />}
-                  />
+                  <>
+                    <HeaderOpenUrlButton
+                      url={component.props.imageUrl}
+                      label="פתח תמונה"
+                      missingLabel="אין קישור לתמונה"
+                      icon={<ThumbnailIcon className="w-4 h-4" />}
+                    />
+                    <HeaderOpenUrlButton
+                      url={component.props.url}
+                      label="פתח קישור"
+                      missingLabel="אין קישור לכפתור"
+                      icon={<LinkIcon className="w-4 h-4" />}
+                    />
+                  </>
                 )}
               </div>
             )}
             {isImplement && !hasImplementOpenUrls && (
-              <button
-                type="button"
-                className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"
-                title="העתק"
-                aria-label={
-                  copiedComponentId === component.id ? "הועתק" : "העתק"
-                }
-                onClick={() =>
+              <HeaderCopyButton
+                copied={copiedComponentId === component.id}
+                onCopy={() =>
                   handleCopy(headerCopyPayload(component), component.id)
                 }
-              >
-                <CopyIcon
-                  className={`w-4 h-4 transition-opacity duration-fast ${
-                    copiedComponentId === component.id
-                      ? "opacity-0"
-                      : "opacity-100"
-                  }`}
-                />
-                <span
-                  className={`absolute inset-0 flex items-center justify-center text-[11px] font-medium leading-none transition-opacity duration-fast pointer-events-none ${
-                    copiedComponentId === component.id
-                      ? "opacity-100"
-                      : "opacity-0"
-                  }`}
-                  aria-hidden={copiedComponentId !== component.id}
-                >
-                  הועתק
-                </span>
-              </button>
+              />
             )}
             {editable && (
               <>
@@ -1964,6 +2166,9 @@ export function PageContent({
             />
           </div>
         )}
+        {editable && !isHome && components !== null && (
+          <SaveTemplateButton components={components} defaultName={page.title} />
+        )}
         {editable && (
           <div className="shrink-0 flex items-center">
             <PageWorkflowStatusToggle
@@ -2014,6 +2219,7 @@ export function PageContent({
               }
               onAdd={handleAddPageComment}
               onSetResolved={handleSetPageCommentResolved}
+              onEdit={handleEditPageComment}
               onDelete={handleDeletePageComment}
               ariaLabel="הערות לעמוד"
               className="mb-0"
@@ -2070,10 +2276,14 @@ export function PageContent({
                     onReorder={(reordered) => {
                       handleReorder([...reordered, ...pinned]);
                     }}
-                    renderItem={(component, handle) =>
-                      renderComponentCard(component, handle)
-                    }
+                    renderItem={(component, handle) => (
+                      <>
+                        {renderInserter(content.indexOf(component), components)}
+                        {renderComponentCard(component, handle)}
+                      </>
+                    )}
                   />
+                  {pinned.length > 0 && renderInserter(content.length, components)}
                   <SortableList
                     items={pinned}
                     onReorder={(reordered) => {
@@ -2097,50 +2307,8 @@ export function PageContent({
           )}
 
           {editable && (
-            <div className="relative z-0 mt-3 rounded-[16px] border border-dashed border-[#B7D0E8] bg-[#F0F5FA] px-4 pb-5 pt-7">
-              <div
-                className="pointer-events-none absolute left-1/2 top-0 z-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D4E5F5] text-[#0F6CBF]"
-                aria-hidden
-              >
-                <PlusIcon className="w-4 h-4" />
-              </div>
-
-              <div className="flex flex-col gap-5">
-                <div>
-                  <span className="mb-3 block text-center text-sm font-semibold text-[#1B3A5C]">
-                    רכיבי תוכן
-                  </span>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    {MAIN_COMPONENT_TYPES.map((type) => (
-                      <AddComponentTile key={type} type={type} onAdd={handleAdd} />
-                    ))}
-                  </div>
-                </div>
-
-                {!isHome && (
-                  <div>
-                    <div className="mb-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                      <span className="text-sm font-semibold text-[#1B3A5C]">פעילויות</span>
-                      {components.some((c) => ACTIVITY_TYPES.has(c.type)) && (
-                        <span className="inline-flex items-center gap-1 text-xs text-surface-500">
-                          <LockIcon className="w-3.5 h-3.5 shrink-0" />
-                          כבר יש פעילות בעמוד. ניתן להוסיף רק סוג פעילות אחד בעמוד
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                      {ACTIVITY_COMPONENT_TYPES.map((type) => (
-                        <AddComponentTile
-                          key={type}
-                          type={type}
-                          disabled={!canAddActivityType(type, components, isHome)}
-                          onAdd={handleAdd}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="mt-3">
+              {renderPicker(components.length, true, components)}
             </div>
           )}
         </>

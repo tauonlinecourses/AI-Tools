@@ -40,7 +40,7 @@ Moodle page content is tag-soup HTML (banner image, Panopto/YouTube iframes, Gen
 | Other lone `<img>` | `image` | `imageUrl` |
 | Panopto / YouTube / SharePoint / Vimeo iframe | `video` | `url`, `provider`, optional `title` |
 | Other iframe (Genially, Canva, ThingLink, Padlet, Miro, …) | `interactive_unit` | `fileUrl` = iframe src (iframe `title`/`alt` are **not** copied to `notes`) — CB preview embeds the iframe live |
-| Compact `<a href><img></a>` CTA (תמליל, Frame, ≤400×120 chip) | `button` | `text` from `alt`, `url` from href, `align: center` |
+| Compact `<a href><img></a>` CTA (תמליל, Frame, ≤400×120 chip) | `button` | `text` from `alt`, `url` from href, `imageUrl` from img src, `align: center` |
 | Linked image labeled הפניה / ציר זמן / אינטראקטיב | `interactive_unit` | `imageUrl` + `fileUrl` (clickable thumbnail; no notes from alt) |
 | Larger linked preview image (PDF / resource thumb) | `text_unit` | `imageUrl`, `fileUrl` (href) |
 | Linked image whose href is Genially/Canva/… | `interactive_unit` | `imageUrl` + `fileUrl` |

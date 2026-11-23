@@ -12,7 +12,7 @@ Mark items `[x]` when done. Add new items under the right section; keep notes sh
 - [x] Course shell — edit / implement / preview modes + sidebar tree
 - [x] Sections & pages — CRUD, DnD reorder, Hebrew RTL chrome
 - [x] Course home page ("עמוד ראשי") — ensure on create/load, rename only
-- [x] Course overview (`?view=overview`) — sidebar סקירת קורס; structure counts/averages + page-type / workflow / implement charts (home stays default landing)
+- [x] Course overview (`?view=overview`) — sidebar דשבורד הקורס; structure counts/averages + page-type / workflow / implement charts (home stays default landing)
 - [x] Component types — banner, video, text, question
 - [x] Implementation status — derived timestamps, rollups, mark / cycle status (manual cycle: לא הוטמע ↔ הוטמע only; עבר שינוי is automatic)
 - [x] Preview embeds — YouTube / Panopto / other via `videoEmbed.ts`

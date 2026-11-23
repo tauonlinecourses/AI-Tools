@@ -297,7 +297,7 @@ type Classified =
   | { kind: "video"; url: string; title?: string }
   | { kind: "interactive"; url: string; imageUrl?: string; title?: string }
   | { kind: "text_unit"; imageUrl: string; fileUrl: string; alt?: string }
-  | { kind: "button"; text: string; url: string }
+  | { kind: "button"; text: string; url: string; imageUrl?: string }
   | { kind: "text"; html: string }
   | { kind: "skip" };
 
@@ -433,7 +433,7 @@ function classifySegment(
 
       // Compact image CTAs (תמליל / Frame chips) → CB button (label from alt)
       if (looksLikeImageButton(src, alt, width, height)) {
-        return { kind: "button", text: label, url: href || "" };
+        return { kind: "button", text: label, url: href || "", imageUrl: src };
       }
 
       // Linked thumbnail that opens Genially / Canva / … → interactive unit
@@ -464,7 +464,12 @@ function classifySegment(
       }
       // Orphan button-sized image without a link — still a button (no URL yet)
       if (looksLikeImageButton(src, alt, width, height)) {
-        return { kind: "button", text: alt.trim() || "כפתור", url: "" };
+        return {
+          kind: "button",
+          text: alt.trim() || "כפתור",
+          url: "",
+          imageUrl: src,
+        };
       }
       return { kind: "image", imageUrl: src };
     }
@@ -556,7 +561,12 @@ export function splitMoodleHtmlToComponents(html: string): MappedComponent[] {
         });
         break;
       case "button":
-        push(out, "button", { text: c.text, url: c.url, align: "center" });
+        push(out, "button", {
+          text: c.text,
+          url: c.url,
+          align: "center",
+          imageUrl: c.imageUrl ?? "",
+        });
         break;
     }
   }
