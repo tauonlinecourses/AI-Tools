@@ -3,6 +3,7 @@ import { Card, Spinner } from "@workspace/ui";
 import type {
   BlockProps,
   ButtonAlign,
+  CommentMention,
   ComponentComment,
   ComponentType,
   CourseViewMode,
@@ -38,6 +39,7 @@ import { BlockComments } from "./BlockComments";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { AutoGrowTextField, NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
+import { stripTrailingPeriod } from "../lib/questionText";
 import { validatePageQuestions } from "../lib/questionValidation";
 import {
   PageImplementationStatusToggle,
@@ -48,7 +50,9 @@ import {
   statusHeaderClass,
 } from "./StatusBadge";
 import {
-  AlignIcon,
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
   BannerIcon,
   ButtonIcon,
   ChevronLeftIcon,
@@ -78,6 +82,7 @@ import {
   componentOf,
   lockReason,
   pushRecent,
+  pushRecentTemplate,
   questionTypeOf,
   type PickerType,
   templateLockReason,
@@ -97,15 +102,28 @@ type HeaderField =
   | "image-image-url"
   | "text-unit-image-url"
   | "text-unit-file-url"
-  | "button-text"
-  | "button-align"
-  | "button-url";
+  | "button-url"
+  | "button-image-url";
 
-const BUTTON_ALIGN_OPTIONS: { value: ButtonAlign; label: string }[] = [
-  { value: "right", label: "ימין" },
-  { value: "center", label: "מרכז" },
-  { value: "left", label: "שמאל" },
-];
+/** Cycle order for the button align header toggle (icon updates to match). */
+const BUTTON_ALIGN_CYCLE: ButtonAlign[] = ["center", "right", "left"];
+
+const BUTTON_ALIGN_LABEL: Record<ButtonAlign, string> = {
+  center: "מרכז",
+  right: "ימין",
+  left: "שמאל",
+};
+
+function nextButtonAlign(current: ButtonAlign): ButtonAlign {
+  const i = BUTTON_ALIGN_CYCLE.indexOf(current);
+  return BUTTON_ALIGN_CYCLE[(i < 0 ? 0 : i + 1) % BUTTON_ALIGN_CYCLE.length];
+}
+
+function buttonAlignIcon(align: ButtonAlign, className = "w-4 h-4") {
+  if (align === "left") return <AlignLeftIcon className={className} />;
+  if (align === "right") return <AlignRightIcon className={className} />;
+  return <AlignCenterIcon className={className} />;
+}
 
 /** Shared max length for video title and button label. */
 const SHORT_LABEL_MAX_LENGTH = 38;
@@ -222,6 +240,58 @@ function HeaderOpenUrlButton({
   );
 }
 
+/** Implement-mode header copy control with brief "הועתק" feedback. */
+function HeaderCopyButton({
+  copied,
+  disabled,
+  disabledLabel,
+  label = "העתק",
+  onCopy,
+}: {
+  copied: boolean;
+  disabled?: boolean;
+  disabledLabel?: string;
+  label?: string;
+  onCopy: () => void;
+}) {
+  if (disabled) {
+    return (
+      <span
+        role="button"
+        aria-disabled="true"
+        aria-label={disabledLabel ?? "אין קישור להעתקה"}
+        title={disabledLabel ?? "אין קישור להעתקה"}
+        className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-surface-300 cursor-not-allowed"
+      >
+        <CopyIcon className="w-4 h-4" />
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"
+      title={label}
+      aria-label={copied ? "הועתק" : label}
+      onClick={onCopy}
+    >
+      <CopyIcon
+        className={`w-4 h-4 transition-opacity duration-fast ${
+          copied ? "opacity-0" : "opacity-100"
+        }`}
+      />
+      <span
+        className={`absolute inset-0 flex items-center justify-center text-[11px] font-medium leading-none transition-opacity duration-fast pointer-events-none ${
+          copied ? "opacity-100" : "opacity-0"
+        }`}
+        aria-hidden={!copied}
+      >
+        הועתק
+      </span>
+    </button>
+  );
+}
+
 /** Clipboard payload for the implement-mode header copy button (by block type). */
 function headerCopyPayload(component: PageComponent): ClipboardPayload {
   switch (component.type) {
@@ -235,7 +305,9 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
     case "interactive_video":
       return { plain: component.props.url ?? "" };
     case "question":
-      return { plain: component.props.prompt ?? "" };
+      return {
+        plain: stripTrailingPeriod(component.props.prompt ?? ""),
+      };
     case "image":
       return { plain: component.props.imageUrl ?? "" };
     case "text_unit":
@@ -386,7 +458,7 @@ function defaultProps(type: ComponentType): BlockProps {
     case "interactive_unit":
       return { imageUrl: "", fileUrl: "" };
     case "button":
-      return { text: "", align: "center", url: "" };
+      return { text: "", align: "center", url: "", imageUrl: "" };
     case "word_cloud":
       return { centerWord: "" };
     case "notes_board":
@@ -906,6 +978,7 @@ export function PageContent({
       return;
     }
     setPickerAt(null);
+    pushRecentTemplate(template.id);
 
     const firstPinnedIdx = list.findIndex((c) => PINNED_BOTTOM_TYPES.has(c.type));
     const contentEnd = firstPinnedIdx === -1 ? list.length : firstPinnedIdx;
@@ -972,7 +1045,6 @@ export function PageContent({
           }
         })()
       );
-      // Templates don't count toward "recently used" (only blocks added one at a time).
       onContentChange();
       onStatusChange();
     } catch (e) {
@@ -1169,11 +1241,17 @@ export function PageContent({
     }
   }
 
-  async function handleAddComment(componentId: string, body: string) {
+  async function handleAddComment(
+    componentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
     setError(null);
     try {
       await waitForInsert(componentId);
-      const created = await trackSave(api.addComment(componentId, mode, body));
+      const created = await trackSave(
+        api.addComment(componentId, mode, body, mentions)
+      );
       setCommentsByComponent((prev) => {
         const next = new Map(prev);
         const list = [...(next.get(componentId) ?? []), created];
@@ -1208,6 +1286,33 @@ export function PageContent({
     }
   }
 
+  async function handleEditComment(
+    componentId: string,
+    commentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.updateComment(commentId, body, mentions)
+      );
+      setCommentsByComponent((prev) => {
+        const next = new Map(prev);
+        const list = next.get(componentId);
+        if (!list) return prev;
+        next.set(
+          componentId,
+          list.map((c) => (c.id === updated.id ? updated : c))
+        );
+        return next;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
   async function handleDeleteComment(componentId: string, commentId: string) {
     setError(null);
     try {
@@ -1229,10 +1334,15 @@ export function PageContent({
     }
   }
 
-  async function handleAddPageComment(body: string) {
+  async function handleAddPageComment(
+    body: string,
+    mentions: CommentMention[]
+  ) {
     setError(null);
     try {
-      const created = await trackSave(api.addPageComment(page.id, mode, body));
+      const created = await trackSave(
+        api.addPageComment(page.id, mode, body, mentions)
+      );
       setPageComments((prev) => [...prev, created]);
       onCommentsChange?.();
     } catch (e) {
@@ -1254,6 +1364,25 @@ export function PageContent({
         prev.map((c) => (c.id === updated.id ? updated : c))
       );
       onCommentsChange?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  async function handleEditPageComment(
+    commentId: string,
+    body: string,
+    mentions: CommentMention[]
+  ) {
+    setError(null);
+    try {
+      const updated = await trackSave(
+        api.updatePageComment(commentId, body, mentions)
+      );
+      setPageComments((prev) =>
+        prev.map((c) => (c.id === updated.id ? updated : c))
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       throw e;
@@ -1282,8 +1411,13 @@ export function PageContent({
         onToggle={() =>
           setOpenCommentId((prev) => (prev === componentId ? null : componentId))
         }
-        onAdd={(body) => handleAddComment(componentId, body)}
+        onAdd={(body, mentions) =>
+          handleAddComment(componentId, body, mentions)
+        }
         onSetResolved={handleSetCommentResolved}
+        onEdit={(commentId, body, mentions) =>
+          handleEditComment(componentId, commentId, body, mentions)
+        }
         onDelete={(commentId) => handleDeleteComment(componentId, commentId)}
       >
         {block}
@@ -1427,12 +1561,13 @@ export function PageContent({
     const isLinkUnit =
       component.type === "text_unit" || component.type === "interactive_unit";
     const isButton = component.type === "button";
+    const buttonAlign: ButtonAlign = component.props.align ?? "center";
     const flushBody = isVideo || isBanner || isImage || isLinkUnit;
     /** Edit-mode URL/title field icons next to the type label. */
     const showHeaderMediaControls =
       editable &&
       (isBanner || isVideo || isImage || isLinkUnit || isButton);
-    /** Implement-mode open-URL icons on the visual-left actions (no copy for these). */
+    /** Implement-mode open-URL icons on the visual-left actions (video also gets copy-link). */
     const hasImplementOpenUrls =
       isBanner || isVideo || isImage || isLinkUnit || isButton;
     const fieldIsOpen = (field: HeaderField) =>
@@ -1677,70 +1812,25 @@ export function PageContent({
           )}
           {editable && isButton && (
             <div className="flex items-center gap-1">
-              <HeaderFieldPopover
-                open={fieldIsOpen("button-text")}
-                label="טקסט הכפתור"
-                title="עריכת טקסט הכפתור"
-                icon={<PencilIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "button-text")}
-                onClose={closeHeaderField}
+              <button
+                type="button"
+                className="p-1.5 text-surface-500 hover:bg-surface-200 hover:text-surface-900 transition-colors duration-fast"
+                title={`יישור: ${BUTTON_ALIGN_LABEL[buttonAlign]} (לחצו לשינוי)`}
+                aria-label={`יישור נוכחי ${BUTTON_ALIGN_LABEL[buttonAlign]}. לחצו לשינוי יישור`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handlePropsChange(component.id, {
+                    ...component.props,
+                    align: nextButtonAlign(buttonAlign),
+                  });
+                }}
               >
-                <AutoGrowTextField
-                  autoFocus
-                  maxLength={SHORT_LABEL_MAX_LENGTH}
-                  value={component.props.text ?? ""}
-                  placeholder="כפתור"
-                  onChange={(event) =>
-                    handlePropsChange(component.id, {
-                      ...component.props,
-                      text: event.target.value.slice(0, SHORT_LABEL_MAX_LENGTH),
-                    })
-                  }
-                />
-              </HeaderFieldPopover>
-              <HeaderFieldPopover
-                open={fieldIsOpen("button-align")}
-                label="יישור"
-                title="עריכת יישור הכפתור"
-                icon={<AlignIcon className="w-4 h-4" />}
-                onToggle={() => toggleHeaderField(component.id, "button-align")}
-                onClose={closeHeaderField}
-              >
-                <div
-                  className="inline-flex w-full rounded border border-surface-200 overflow-hidden"
-                  role="group"
-                  aria-label="יישור כפתור"
-                >
-                  {BUTTON_ALIGN_OPTIONS.map((opt) => {
-                    const selected =
-                      (component.props.align ?? "center") === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={`flex-1 px-3 h-9 text-sm font-semibold transition-colors duration-fast ${
-                          selected
-                            ? "bg-surface-900 text-white"
-                            : "bg-white text-surface-700 hover:bg-surface-50"
-                        }`}
-                        aria-pressed={selected}
-                        onClick={() =>
-                          handlePropsChange(component.id, {
-                            ...component.props,
-                            align: opt.value,
-                          })
-                        }
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </HeaderFieldPopover>
+                {buttonAlignIcon(buttonAlign)}
+              </button>
               <HeaderFieldPopover
                 open={fieldIsOpen("button-url")}
-                label="קישור"
-                title="עריכת קישור הכפתור"
+                label="קישור (לאן הכפתור מוביל)"
+                title="עריכת קישור הכפתור (לאן הכפתור מוביל)"
                 icon={<LinkIcon className="w-4 h-4" />}
                 onToggle={() => toggleHeaderField(component.id, "button-url")}
                 onClose={closeHeaderField}
@@ -1754,6 +1844,29 @@ export function PageContent({
                     handlePropsChange(component.id, {
                       ...component.props,
                       url: event.target.value,
+                    })
+                  }
+                />
+              </HeaderFieldPopover>
+              <HeaderFieldPopover
+                open={fieldIsOpen("button-image-url")}
+                label="קישור לתמונה"
+                title="עריכת תמונת הכפתור"
+                icon={<ThumbnailIcon className="w-4 h-4" />}
+                onToggle={() =>
+                  toggleHeaderField(component.id, "button-image-url")
+                }
+                onClose={closeHeaderField}
+              >
+                <TextField
+                  dir="ltr"
+                  autoFocus
+                  value={component.props.imageUrl ?? ""}
+                  placeholder="https://... (SharePoint או תמונה)"
+                  onChange={(event) =>
+                    handlePropsChange(component.id, {
+                      ...component.props,
+                      imageUrl: event.target.value,
                     })
                   }
                 />
@@ -1779,12 +1892,23 @@ export function PageContent({
                   />
                 )}
                 {isVideo && (
-                  <HeaderOpenUrlButton
-                    url={component.props.url}
-                    label="פתח וידאו"
-                    missingLabel="אין קישור לוידאו"
-                    icon={<LinkIcon className="w-4 h-4" />}
-                  />
+                  <>
+                    <HeaderCopyButton
+                      copied={copiedComponentId === component.id}
+                      disabled={!component.props.url?.trim()}
+                      disabledLabel="אין קישור לוידאו"
+                      label="העתק קישור"
+                      onCopy={() =>
+                        handleCopy(headerCopyPayload(component), component.id)
+                      }
+                    />
+                    <HeaderOpenUrlButton
+                      url={component.props.url}
+                      label="פתח וידאו"
+                      missingLabel="אין קישור לוידאו"
+                      icon={<LinkIcon className="w-4 h-4" />}
+                    />
+                  </>
                 )}
                 {isImage && (
                   <HeaderOpenUrlButton
@@ -1811,45 +1935,30 @@ export function PageContent({
                   </>
                 )}
                 {isButton && (
-                  <HeaderOpenUrlButton
-                    url={component.props.url}
-                    label="פתח קישור"
-                    missingLabel="אין קישור לכפתור"
-                    icon={<LinkIcon className="w-4 h-4" />}
-                  />
+                  <>
+                    <HeaderOpenUrlButton
+                      url={component.props.imageUrl}
+                      label="פתח תמונה"
+                      missingLabel="אין קישור לתמונה"
+                      icon={<ThumbnailIcon className="w-4 h-4" />}
+                    />
+                    <HeaderOpenUrlButton
+                      url={component.props.url}
+                      label="פתח קישור"
+                      missingLabel="אין קישור לכפתור"
+                      icon={<LinkIcon className="w-4 h-4" />}
+                    />
+                  </>
                 )}
               </div>
             )}
             {isImplement && !hasImplementOpenUrls && (
-              <button
-                type="button"
-                className="relative flex items-center justify-center shrink-0 min-w-[2.75rem] h-7 px-1.5 text-current transition-opacity duration-fast opacity-60 hover:opacity-100"
-                title="העתק"
-                aria-label={
-                  copiedComponentId === component.id ? "הועתק" : "העתק"
-                }
-                onClick={() =>
+              <HeaderCopyButton
+                copied={copiedComponentId === component.id}
+                onCopy={() =>
                   handleCopy(headerCopyPayload(component), component.id)
                 }
-              >
-                <CopyIcon
-                  className={`w-4 h-4 transition-opacity duration-fast ${
-                    copiedComponentId === component.id
-                      ? "opacity-0"
-                      : "opacity-100"
-                  }`}
-                />
-                <span
-                  className={`absolute inset-0 flex items-center justify-center text-[11px] font-medium leading-none transition-opacity duration-fast pointer-events-none ${
-                    copiedComponentId === component.id
-                      ? "opacity-100"
-                      : "opacity-0"
-                  }`}
-                  aria-hidden={copiedComponentId !== component.id}
-                >
-                  הועתק
-                </span>
-              </button>
+              />
             )}
             {editable && (
               <>
@@ -2035,6 +2144,7 @@ export function PageContent({
               }
               onAdd={handleAddPageComment}
               onSetResolved={handleSetPageCommentResolved}
+              onEdit={handleEditPageComment}
               onDelete={handleDeletePageComment}
               ariaLabel="הערות לעמוד"
               className="mb-0"

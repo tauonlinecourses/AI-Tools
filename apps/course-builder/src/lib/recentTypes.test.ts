@@ -39,3 +39,24 @@ describe("recently used component types", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("recently used templates", () => {
+  it("keeps newest first, without duplicates, capped at 5", async () => {
+    const { pushRecentTemplate, readRecentTemplateIds } = await load();
+    for (const id of ["a", "b", "c", "d", "e", "b", "f"]) {
+      pushRecentTemplate(id);
+    }
+    expect(readRecentTemplateIds()).toEqual(["f", "b", "e", "d", "c"]);
+  });
+
+  it("resolves known templates and skips missing ids", async () => {
+    const { resolveRecentTemplates, TEMPLATES } = await load();
+    const known = TEMPLATES.slice(0, 2);
+    expect(
+      resolveRecentTemplates(
+        ["missing", known[1].id, known[0].id, "also-missing"],
+        known,
+      ).map((t) => t.id),
+    ).toEqual([known[1].id, known[0].id]);
+  });
+});

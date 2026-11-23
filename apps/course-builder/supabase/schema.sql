@@ -67,7 +67,10 @@ create table component_comments (
   id uuid primary key default gen_random_uuid(),
   component_id uuid not null references components(id) on delete cascade,
   author_role text not null check (author_role in ('edit', 'implement', 'review')),
+  author_user_id uuid references profiles(id) on delete set null,
+  author_display_name text,               -- snapshot at post time
   body text not null,
+  mentions jsonb not null default '[]'::jsonb, -- [{ user_id, display_name }]
   resolved_at timestamptz,                -- null = open
   created_at timestamptz default now()
 );
@@ -77,7 +80,10 @@ create table page_comments (
   id uuid primary key default gen_random_uuid(),
   page_id uuid not null references pages(id) on delete cascade,
   author_role text not null check (author_role in ('edit', 'implement', 'review')),
+  author_user_id uuid references profiles(id) on delete set null,
+  author_display_name text,               -- snapshot at post time
   body text not null,
+  mentions jsonb not null default '[]'::jsonb, -- [{ user_id, display_name }]
   resolved_at timestamptz,                -- null = open
   created_at timestamptz default now()
 );

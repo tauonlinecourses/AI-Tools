@@ -9,7 +9,10 @@ import {
   componentOf,
   lockReason,
   readRecent,
+  readRecentTemplateIds,
+  resolveRecentTemplates,
   subscribeRecent,
+  subscribeRecentTemplates,
   searchCatalog,
   suggestionsAfter,
   suggestTemplates,
@@ -63,13 +66,13 @@ const SEPARATOR = 1 + 12 * 2; // 1px line + gap-x-3 on each side
 /** Tile caption: wrap to 2 lines so longer names show without widening tiles (keeps quick-bar count). */
 const tileLabel = "w-full text-balance break-words text-surface-800 line-clamp-2";
 
-/** Recently used tiles in the quick bar (beside recommended templates). */
+/** Recently used tiles in the quick bar (beside recent / fallback templates). */
 const QUICK_RECENT_MAX = 5;
-/** Recommended templates shown in the quick bar. */
+/** Always this many templates in the quick bar (recent + recommended fillers). */
 const QUICK_TEMPLATE_MAX = 2;
 
 /**
- * Quick bar layout: how many recent tiles fit next to the recommended templates,
+ * Quick bar layout: how many recent tiles fit next to the template tiles,
  * and one shared tile width that makes the row end flush (no leftover gap).
  * When space runs out, recent tiles drop first.
  */
@@ -95,10 +98,11 @@ const tileBtnOk = "hover:border-surface-200 hover:bg-surface-50 focus-visible:bg
 const tileBtnLocked = "cursor-not-allowed opacity-45";
 
 /**
- * Add-component menu: opens as a quick bar (recommended templates for this spot +
- * recently used types) that expands into search, a category rail and the full catalog.
- * Chrome matches site panels (surface borders, sharp control radii, blue accent);
- * category colors stay on icons, dots, and template previews.
+ * Add-component menu: opens as a quick bar (exactly 2 templates — latest used,
+ * padded with recommended for this spot — + recently used types) that expands into
+ * search, a category rail and the full catalog. Chrome matches site panels (surface
+ * borders, sharp control radii, blue accent); category colors stay on icons, dots,
+ * and template previews.
  */
 export function ComponentPicker({
   prevType,
@@ -136,6 +140,10 @@ export function ComponentPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const recent = useSyncExternalStore(subscribeRecent, readRecent);
+  const recentTemplateIds = useSyncExternalStore(
+    subscribeRecentTemplates,
+    readRecentTemplateIds,
+  );
   const userTemplates = useUserTemplates();
   const quickRowRef = useRef<HTMLDivElement>(null);
   const [quickWidth, setQuickWidth] = useState(0);
@@ -153,7 +161,26 @@ export function ComponentPicker({
   }, [expanded]);
 
   const suggestions = suggestionsAfter(prevType);
-  const quickTemplates = suggestTemplates(prevType, components, isHome, QUICK_TEMPLATE_MAX);
+  const mine = userTemplates.templates;
+  /** Always exactly `QUICK_TEMPLATE_MAX`: latest used first, then recommended fillers. */
+  const quickTemplates = useMemo(() => {
+    const recent = resolveRecentTemplates(recentTemplateIds, [...mine, ...TEMPLATES]).slice(
+      0,
+      QUICK_TEMPLATE_MAX,
+    );
+    if (recent.length >= QUICK_TEMPLATE_MAX) return recent;
+    const seen = new Set(recent.map((t) => t.id));
+    const fillers = suggestTemplates(
+      prevType,
+      components,
+      isHome,
+      QUICK_TEMPLATE_MAX,
+    ).filter((t) => !seen.has(t.id));
+    return [...recent, ...fillers].slice(0, QUICK_TEMPLATE_MAX);
+  }, [recentTemplateIds, mine, prevType, components, isHome]);
+  const usingRecentTemplates = recentTemplateIds.some((id) =>
+    quickTemplates.some((t) => t.id === id),
+  );
   const reason = (t: PickerType) => lockReason(componentOf(t), components, isHome);
   const results = useMemo(() => searchCatalog(query), [query]);
 
@@ -397,7 +424,6 @@ export function ComponentPicker({
 
   const gridClass = "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2";
   const subHeading = "mb-1.5 text-[11.5px] font-semibold text-surface-500";
-  const mine = userTemplates.templates;
 
   /**
    * "My templates" above the built-in ones. `showEmptyHint` explains how to make one
@@ -540,7 +566,11 @@ export function ComponentPicker({
           <div className="flex shrink-0 flex-col gap-0.5">
             <span className="flex items-center gap-1 px-1.5 text-[11.5px] text-surface-500">
               <LayersIcon />
-              {prevType ? `תבניות מומלצות אחרי ${typeLabel(prevType)}` : "תבניות לפתיחת עמוד"}
+              {usingRecentTemplates
+                ? "תבניות אחרונות"
+                : prevType
+                  ? `תבניות מומלצות אחרי ${typeLabel(prevType)}`
+                  : "תבניות לפתיחת עמוד"}
             </span>
             <div className="flex gap-0.5">{quickTemplates.map(templateSlot)}</div>
           </div>

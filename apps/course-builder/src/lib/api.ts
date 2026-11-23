@@ -2,9 +2,11 @@ import { supabase } from "./supabase";
 import type {
   BlockProps,
   CommentAuthorRole,
+  CommentMention,
   ComponentComment,
   ComponentType,
   Course,
+  CourseBuilderUser,
   CourseListItem,
   CourseTree,
   ImplementationStatus,
@@ -22,6 +24,11 @@ import {
   computeCourseOverviewStats,
   type CourseOverviewStats,
 } from "./courseOverviewStats";
+import {
+  mentionsIncludeUser,
+  normalizeMentions,
+  sanitizeMentions,
+} from "./commentMentions";
 
 export type { CourseOverviewStats };
 
@@ -1098,33 +1105,56 @@ export interface PageCommentCounts {
   open: number;
   /** Resolved comments on the page. */
   resolved: number;
+  /**
+   * True when the given viewer is @mentioned in at least one unresolved
+   * comment on the page (block or page-header). Used for purple sidebar badge.
+   */
+  mentionedOpen: boolean;
 }
 
 /**
  * Open + resolved comment counts per page (block comments + page-header comments).
  * Pages with zero comments of either kind are omitted from the map.
+ * Pass `viewerUserId` so `mentionedOpen` reflects @mentions of the signed-in user.
  */
 export async function getCommentCountsByPage(
-  pageIds: string[]
+  pageIds: string[],
+  viewerUserId?: string | null
 ): Promise<Map<string, PageCommentCounts>> {
   const counts = new Map<string, PageCommentCounts>();
   if (pageIds.length === 0) return counts;
 
-  function bump(pageId: string, resolvedAt: string | null) {
-    const entry = counts.get(pageId) ?? { open: 0, resolved: 0 };
+  function bump(
+    pageId: string,
+    resolvedAt: string | null,
+    mentions: unknown
+  ) {
+    const entry = counts.get(pageId) ?? {
+      open: 0,
+      resolved: 0,
+      mentionedOpen: false,
+    };
     if (resolvedAt) entry.resolved += 1;
-    else entry.open += 1;
+    else {
+      entry.open += 1;
+      if (
+        viewerUserId &&
+        mentionsIncludeUser(normalizeMentions(mentions), viewerUserId)
+      ) {
+        entry.mentionedOpen = true;
+      }
+    }
     counts.set(pageId, entry);
   }
 
   const [blockResult, pageResult] = await Promise.all([
     supabase
       .from("component_comments")
-      .select("id, resolved_at, components!inner(page_id)")
+      .select("id, resolved_at, mentions, components!inner(page_id)")
       .in("components.page_id", pageIds),
     supabase
       .from("page_comments")
-      .select("id, resolved_at, page_id")
+      .select("id, resolved_at, mentions, page_id")
       .in("page_id", pageIds),
   ]);
   if (blockResult.error) fail("Loading comment counts", blockResult.error);
@@ -1132,12 +1162,91 @@ export async function getCommentCountsByPage(
 
   for (const row of blockResult.data ?? []) {
     const pageId = (row.components as unknown as { page_id: string }).page_id;
-    bump(pageId, row.resolved_at);
+    bump(pageId, row.resolved_at, row.mentions);
   }
   for (const row of pageResult.data ?? []) {
-    bump(row.page_id, row.resolved_at);
+    bump(row.page_id, row.resolved_at, row.mentions);
   }
   return counts;
+}
+
+const COMMENT_COLUMNS =
+  "id, component_id, author_role, author_user_id, author_display_name, body, mentions, resolved_at, created_at";
+const PAGE_COMMENT_COLUMNS =
+  "id, page_id, author_role, author_user_id, author_display_name, body, mentions, resolved_at, created_at";
+
+function asNullableString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function toComponentComment(row: Record<string, unknown>): ComponentComment {
+  return {
+    id: row.id as string,
+    component_id: row.component_id as string,
+    author_role: row.author_role as CommentAuthorRole,
+    author_user_id: asNullableString(row.author_user_id),
+    author_display_name: asNullableString(row.author_display_name),
+    body: row.body as string,
+    mentions: normalizeMentions(row.mentions),
+    resolved_at: (row.resolved_at as string | null) ?? null,
+    created_at: row.created_at as string,
+  };
+}
+
+function toPageComment(row: Record<string, unknown>): PageComment {
+  return {
+    id: row.id as string,
+    page_id: row.page_id as string,
+    author_role: row.author_role as CommentAuthorRole,
+    author_user_id: asNullableString(row.author_user_id),
+    author_display_name: asNullableString(row.author_display_name),
+    body: row.body as string,
+    mentions: normalizeMentions(row.mentions),
+    resolved_at: (row.resolved_at as string | null) ?? null,
+    created_at: row.created_at as string,
+  };
+}
+
+/** Signed-in author snapshot for new comments (own profile via RLS). */
+async function resolveCommentAuthor(): Promise<{
+  author_user_id: string | null;
+  author_display_name: string | null;
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) return { author_user_id: null, author_display_name: null };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const fromProfile =
+    typeof profile?.display_name === "string"
+      ? profile.display_name.trim()
+      : "";
+  const fromEmail =
+    typeof user.email === "string" ? user.email.split("@")[0]?.trim() : "";
+  const author_display_name = fromProfile || fromEmail || null;
+
+  return { author_user_id: user.id, author_display_name };
+}
+
+/** Approved users with course-builder access (for @mention autocomplete). */
+export async function listCourseBuilderUsers(): Promise<CourseBuilderUser[]> {
+  const { data, error } = await supabase.rpc("list_tool_users", {
+    p_tool_id: "course-builder",
+  });
+  if (error) fail("Loading course-builder users", error);
+  return (data ?? []).map((row: { id: string; display_name: string | null }) => ({
+    id: row.id,
+    display_name: (row.display_name ?? "").trim() || row.id,
+  }));
 }
 
 /**
@@ -1150,39 +1259,38 @@ export async function listCommentsForPage(
 ): Promise<ComponentComment[]> {
   const { data, error } = await supabase
     .from("component_comments")
-    .select("id, component_id, author_role, body, resolved_at, created_at, components!inner(page_id)")
+    .select(`${COMMENT_COLUMNS}, components!inner(page_id)`)
     .eq("components.page_id", pageId)
     .order("created_at", { ascending: true });
   if (error) fail("Loading comments", error);
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    component_id: row.component_id,
-    author_role: row.author_role,
-    body: row.body,
-    resolved_at: row.resolved_at,
-    created_at: row.created_at,
-  })) as ComponentComment[];
+  return (data ?? []).map((row) => toComponentComment(row as Record<string, unknown>));
 }
 
 export async function addComment(
   componentId: string,
   authorRole: CommentAuthorRole,
-  body: string
+  body: string,
+  mentions: CommentMention[] = []
 ): Promise<ComponentComment> {
   const trimmed = body.trim();
   if (!trimmed) fail("Adding comment", { message: "body is empty" });
+  const cleanMentions = sanitizeMentions(trimmed, mentions);
+  const author = await resolveCommentAuthor();
 
   const { data, error } = await supabase
     .from("component_comments")
     .insert({
       component_id: componentId,
       author_role: authorRole,
+      author_user_id: author.author_user_id,
+      author_display_name: author.author_display_name,
       body: trimmed,
+      mentions: cleanMentions,
     })
-    .select()
+    .select(COMMENT_COLUMNS)
     .single();
   if (error) fail("Adding comment", error);
-  return data as ComponentComment;
+  return toComponentComment(data as Record<string, unknown>);
 }
 
 /** Resolve (resolved=true) or reopen (resolved=false). */
@@ -1194,10 +1302,30 @@ export async function setCommentResolved(
     .from("component_comments")
     .update({ resolved_at: resolved ? new Date().toISOString() : null })
     .eq("id", commentId)
-    .select()
+    .select(COMMENT_COLUMNS)
     .single();
   if (error) fail("Updating comment resolve", error);
-  return data as ComponentComment;
+  return toComponentComment(data as Record<string, unknown>);
+}
+
+/** Update comment body + mentions. Does not bump components.updated_at or course.updated_at. */
+export async function updateComment(
+  commentId: string,
+  body: string,
+  mentions: CommentMention[] = []
+): Promise<ComponentComment> {
+  const trimmed = body.trim();
+  if (!trimmed) fail("Updating comment", { message: "body is empty" });
+  const cleanMentions = sanitizeMentions(trimmed, mentions);
+
+  const { data, error } = await supabase
+    .from("component_comments")
+    .update({ body: trimmed, mentions: cleanMentions })
+    .eq("id", commentId)
+    .select(COMMENT_COLUMNS)
+    .single();
+  if (error) fail("Updating comment", error);
+  return toComponentComment(data as Record<string, unknown>);
 }
 
 /** Hard-delete a comment. Does not bump components.updated_at or course.updated_at. */
@@ -1218,32 +1346,38 @@ export async function deleteComment(commentId: string): Promise<void> {
 export async function listPageComments(pageId: string): Promise<PageComment[]> {
   const { data, error } = await supabase
     .from("page_comments")
-    .select("id, page_id, author_role, body, resolved_at, created_at")
+    .select(PAGE_COMMENT_COLUMNS)
     .eq("page_id", pageId)
     .order("created_at", { ascending: true });
   if (error) fail("Loading page comments", error);
-  return (data ?? []) as PageComment[];
+  return (data ?? []).map((row) => toPageComment(row as Record<string, unknown>));
 }
 
 export async function addPageComment(
   pageId: string,
   authorRole: CommentAuthorRole,
-  body: string
+  body: string,
+  mentions: CommentMention[] = []
 ): Promise<PageComment> {
   const trimmed = body.trim();
   if (!trimmed) fail("Adding page comment", { message: "body is empty" });
+  const cleanMentions = sanitizeMentions(trimmed, mentions);
+  const author = await resolveCommentAuthor();
 
   const { data, error } = await supabase
     .from("page_comments")
     .insert({
       page_id: pageId,
       author_role: authorRole,
+      author_user_id: author.author_user_id,
+      author_display_name: author.author_display_name,
       body: trimmed,
+      mentions: cleanMentions,
     })
-    .select()
+    .select(PAGE_COMMENT_COLUMNS)
     .single();
   if (error) fail("Adding page comment", error);
-  return data as PageComment;
+  return toPageComment(data as Record<string, unknown>);
 }
 
 export async function setPageCommentResolved(
@@ -1254,10 +1388,30 @@ export async function setPageCommentResolved(
     .from("page_comments")
     .update({ resolved_at: resolved ? new Date().toISOString() : null })
     .eq("id", commentId)
-    .select()
+    .select(PAGE_COMMENT_COLUMNS)
     .single();
   if (error) fail("Updating page comment resolve", error);
-  return data as PageComment;
+  return toPageComment(data as Record<string, unknown>);
+}
+
+/** Update page-header comment body + mentions. Does not bump pages.updated_at or course.updated_at. */
+export async function updatePageComment(
+  commentId: string,
+  body: string,
+  mentions: CommentMention[] = []
+): Promise<PageComment> {
+  const trimmed = body.trim();
+  if (!trimmed) fail("Updating page comment", { message: "body is empty" });
+  const cleanMentions = sanitizeMentions(trimmed, mentions);
+
+  const { data, error } = await supabase
+    .from("page_comments")
+    .update({ body: trimmed, mentions: cleanMentions })
+    .eq("id", commentId)
+    .select(PAGE_COMMENT_COLUMNS)
+    .single();
+  if (error) fail("Updating page comment", error);
+  return toPageComment(data as Record<string, unknown>);
 }
 
 export async function deletePageComment(commentId: string): Promise<void> {

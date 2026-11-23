@@ -231,12 +231,20 @@ export interface TextUnitProps extends NotesProps {
 }
 
 export interface ButtonBlockProps {
-  /** Visible button label. */
+  /**
+   * Optional label (legacy / MBZ import). Not editable in the UI — display
+   * falls back to "כפתור" when empty; also used as image alt text.
+   */
   text?: string;
   /** Physical left / center / right alignment of the button in the row. */
   align?: ButtonAlign;
-  /** When set, clicking the button opens this URL in a new tab. */
+  /** When set, clicking the button / image opens this URL in a new tab. */
   url?: string;
+  /**
+   * Optional SharePoint / image URL. When it paints, the image replaces the
+   * primary-button placeholder; click still follows `url` when set.
+   */
+  imageUrl?: string;
 }
 
 export type BlockProps = BannerProps &
@@ -292,16 +300,33 @@ export interface CourseListItem extends Course {
   pageCount: number;
 }
 
-/** View role that authored a comment (no personal names — MVP has no auth). */
+/** View role that authored a comment (role label; personal identity is via @mentions). */
 export type CommentAuthorRole = CourseViewMode;
+
+/** Stable @mention snapshot stored on a comment (display_name at tag time). */
+export interface CommentMention {
+  user_id: string;
+  display_name: string;
+}
 
 /** Shared fields for block / page Word-style comment threads. */
 export interface ThreadComment {
   id: string;
   author_role: CommentAuthorRole;
+  /** Signed-in user who posted (null on legacy comments). */
+  author_user_id: string | null;
+  /** Display name snapshot at post time (null on legacy comments → fall back to role label). */
+  author_display_name: string | null;
   body: string;
+  mentions: CommentMention[];
   resolved_at: string | null;
   created_at: string;
+}
+
+/** Approved platform user who can be @mentioned in course-builder comments. */
+export interface CourseBuilderUser {
+  id: string;
+  display_name: string;
 }
 
 export interface ComponentComment extends ThreadComment {

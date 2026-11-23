@@ -36,6 +36,8 @@ import { exportCourseBackup } from "../lib/courseBackup";
 import { exportCourseMbz, pickOriginalMbzFile } from "../lib/mbzExport";
 import { getCourseMbzSource } from "../lib/mbzStorage";
 import type { CourseMbzSource } from "../lib/mbzTypes";
+import { getPlatformSession } from "@workspace/auth/client";
+import type { PageCommentCounts } from "../lib/api";
 
 interface CourseShellProps {
   mode: CourseViewMode;
@@ -173,8 +175,9 @@ export function CourseShell({ mode }: CourseShellProps) {
   } | null>(null);
   const [pageTypes, setPageTypes] = useState<Map<string, PageType>>(new Map());
   const [commentCounts, setCommentCounts] = useState<
-    Map<string, { open: number; resolved: number }>
+    Map<string, PageCommentCounts>
   >(new Map());
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [exportingBackup, setExportingBackup] = useState(false);
   const [exportingMbz, setExportingMbz] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -213,10 +216,27 @@ export function CourseShell({ mode }: CourseShellProps) {
   const refreshCommentCounts = useCallback(() => {
     if (!tree) return;
     api
-      .getCommentCountsByPage(tree.pages.map((p) => p.id))
+      .getCommentCountsByPage(
+        tree.pages.map((p) => p.id),
+        viewerUserId
+      )
       .then(setCommentCounts)
       .catch(() => undefined);
-  }, [tree]);
+  }, [tree, viewerUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPlatformSession()
+      .then((session) => {
+        if (!cancelled) setViewerUserId(session?.user?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setViewerUserId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     refreshRollups();
@@ -749,7 +769,12 @@ export function CourseShell({ mode }: CourseShellProps) {
     const openComments = pageComments?.open ?? 0;
     const resolvedComments = pageComments?.resolved ?? 0;
     const commentCount = openComments > 0 ? openComments : resolvedComments;
-    const commentTone = openComments > 0 ? "open" : "resolved";
+    const commentTone: "open" | "resolved" | "mention" =
+      openComments > 0
+        ? pageComments?.mentionedOpen
+          ? "mention"
+          : "open"
+        : "resolved";
     const workflowSwatchClass =
       page.workflow_status === "ready_for_implementation"
         ? "bg-emerald-400/40"
@@ -834,32 +859,38 @@ export function CourseShell({ mode }: CourseShellProps) {
         )}
         {commentCount > 0 && (
           <span
-            className={`inline-grid place-items-center shrink-0 size-3.5 rounded-full text-[9px] font-bold leading-none tabular-nums ${
+            className={`inline-flex items-center justify-center shrink-0 size-3.5 rounded-full text-[9px] font-bold leading-none tabular-nums ${
               commentCount > 9 ? "w-auto min-w-3.5 px-1" : ""
             } ${
               isSelected
-                ? commentTone === "open"
-                  ? "bg-white text-[#0F6CBF]"
-                  : "bg-white/85 text-surface-600"
-                : commentTone === "open"
-                  ? "bg-[#0F6CBF] text-white"
-                  : "bg-surface-300 text-white"
+                ? commentTone === "mention"
+                  ? "bg-white text-[#7C3AED]"
+                  : commentTone === "open"
+                    ? "bg-white text-[#0F6CBF]"
+                    : "bg-white/85 text-surface-600"
+                : commentTone === "mention"
+                  ? "bg-[#7C3AED] text-white"
+                  : commentTone === "open"
+                    ? "bg-[#0F6CBF] text-white"
+                    : "bg-surface-300 text-white"
             }`}
             dir="ltr"
             title={
-              commentTone === "open"
-                ? `${commentCount} הערות פתוחות על העמוד`
-                : `${commentCount} הערות שנפתרו על העמוד`
+              commentTone === "mention"
+                ? `${commentCount} הערות פתוחות על העמוד (תויגת)`
+                : commentTone === "open"
+                  ? `${commentCount} הערות פתוחות על העמוד`
+                  : `${commentCount} הערות שנפתרו על העמוד`
             }
             aria-label={
-              commentTone === "open"
-                ? `${commentCount} הערות פתוחות`
-                : `${commentCount} הערות שנפתרו`
+              commentTone === "mention"
+                ? `${commentCount} הערות פתוחות (תויגת)`
+                : commentTone === "open"
+                  ? `${commentCount} הערות פתוחות`
+                  : `${commentCount} הערות שנפתרו`
             }
           >
-            <span className="block translate-y-[0.5px]">
-              {commentCount > 99 ? "99+" : commentCount}
-            </span>
+            {commentCount > 99 ? "99+" : commentCount}
           </span>
         )}
         {showRollups && rollupLabel(pageRollup, isSelected)}

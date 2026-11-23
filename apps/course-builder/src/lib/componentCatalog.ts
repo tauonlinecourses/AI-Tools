@@ -61,7 +61,7 @@ export const CATALOG: CatalogItem[] = [
   { type: "video", label: "וידאו", category: "media", description: "סרטון מיוטיוב או מקובץ", keywords: "video movie youtube סרטון סרט" },
   { type: "interactive_video", label: "וידאו אינטרקטיבי", category: "inter", description: "וידאו עם שאלות לאורך הצפייה", keywords: "interactive video h5p סרטון סרט שאלות אינטראקטיבי" },
   { type: "interactive_unit", label: "יחידה אינטראקטיבית", category: "inter", description: "יחידת לימוד אינטראקטיבית", keywords: "interactive unit h5p" },
-  { type: "button", label: "כפתור", category: "inter", description: "קישור או מעבר בלחיצה", keywords: "button link cta קישור" },
+  { type: "button", label: "כפתור", category: "inter", description: "קישור או מעבר בלחיצה, עם תמונה אופציונלית", keywords: "button link cta קישור תמונה" },
   { type: "question_single", label: QUESTION_TYPE_LABEL.single_choice, category: "quiz", description: "תשובה נכונה אחת מתוך כמה אפשרויות", keywords: "question quiz single choice mcq שאלה חד ברירה אמריקאית מבחן בוחן" },
   { type: "question_multiple", label: QUESTION_TYPE_LABEL.multiple_choice, category: "quiz", description: "כמה תשובות נכונות מתוך האפשרויות", keywords: "question quiz multiple choice checkbox שאלה רב ברירה מבחן בוחן" },
   { type: "question_yes_no", label: QUESTION_TYPE_LABEL.yes_no, category: "quiz", description: "התלמידים בוחרים נכון או לא נכון", keywords: "question quiz true false yes no שאלה נכון לא נכון מבחן בוחן" },
@@ -195,6 +195,89 @@ export function subscribeRecent(listener: () => void): () => void {
     recentListeners.delete(listener);
     if (recentListeners.size === 0) window.removeEventListener("storage", onStorage);
   };
+}
+
+const RECENT_TEMPLATE_KEY = "course-builder:recent-template-ids";
+const RECENT_TEMPLATE_MAX = 5;
+
+/*
+ * Recently used templates (this browser only). Same store pattern as component
+ * types so the quick bar updates live after each template insert.
+ */
+let recentTemplateCache: string[] | null = null;
+const recentTemplateListeners = new Set<() => void>();
+
+function loadRecentTemplateIds(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_TEMPLATE_KEY) ?? "[]");
+    return Array.isArray(raw)
+      ? raw.filter((id): id is string => typeof id === "string" && id.length > 0).slice(0, RECENT_TEMPLATE_MAX)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Newest first. Same array until the list changes. */
+export function readRecentTemplateIds(): string[] {
+  recentTemplateCache ??= loadRecentTemplateIds();
+  return recentTemplateCache;
+}
+
+function notifyRecentTemplates() {
+  recentTemplateListeners.forEach((l) => l());
+}
+
+/** Record a template the user inserted from the picker. */
+export function pushRecentTemplate(id: string): void {
+  if (!id) return;
+  recentTemplateCache = [id, ...readRecentTemplateIds().filter((x) => x !== id)].slice(
+    0,
+    RECENT_TEMPLATE_MAX,
+  );
+  try {
+    localStorage.setItem(RECENT_TEMPLATE_KEY, JSON.stringify(recentTemplateCache));
+  } catch {
+    /* storage unavailable: the list still updates for this session */
+  }
+  notifyRecentTemplates();
+}
+
+function onTemplateStorage(e: StorageEvent) {
+  if (e.key !== RECENT_TEMPLATE_KEY && e.key !== null) return;
+  recentTemplateCache = null;
+  notifyRecentTemplates();
+}
+
+/** For `useSyncExternalStore(subscribeRecentTemplates, readRecentTemplateIds)`. */
+export function subscribeRecentTemplates(listener: () => void): () => void {
+  if (recentTemplateListeners.size === 0) {
+    window.addEventListener("storage", onTemplateStorage);
+  }
+  recentTemplateListeners.add(listener);
+  return () => {
+    recentTemplateListeners.delete(listener);
+    if (recentTemplateListeners.size === 0) {
+      window.removeEventListener("storage", onTemplateStorage);
+    }
+  };
+}
+
+/**
+ * Resolve stored template ids against the known catalog (user + built-in).
+ * Skips deleted / unknown ids; preserves newest-first order.
+ */
+export function resolveRecentTemplates(
+  ids: string[],
+  known: ComponentTemplate[],
+): ComponentTemplate[] {
+  const byId = new Map(known.map((t) => [t.id, t]));
+  const out: ComponentTemplate[] = [];
+  for (const id of ids) {
+    const t = byId.get(id);
+    if (t) out.push(t);
+  }
+  return out;
 }
 
 export interface ComponentTemplate {

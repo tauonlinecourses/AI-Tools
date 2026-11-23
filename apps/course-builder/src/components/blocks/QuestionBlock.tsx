@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { CourseViewMode, QuestionOption, QuestionProps, QuestionType } from "../../lib/types";
+import { stripTrailingPeriod } from "../../lib/questionText";
 import { CheckIcon, CopyIcon, PlusIcon, XIcon } from "../icons";
 import { AutoGrowTextField, Field } from "./fields";
 
@@ -22,31 +23,45 @@ const YES_NO_OPTIONS: QuestionOption[] = [
   { id: "__incorrect", text: "לא נכון" },
 ];
 
-const COPIED_FEEDBACK_MS = 2000;
+const COPIED_FEEDBACK_MS = 1000;
 
 function QuestionCopyButton({
-  copied,
+  active,
+  flashing,
   onCopy,
   title,
 }: {
-  copied: boolean;
+  /** Last used copy control in this question — black; others stay grey. */
+  active: boolean;
+  /** Brief **הועתק** label after a copy. */
+  flashing: boolean;
   onCopy: () => void;
   title: string;
 }) {
   return (
     <button
       type="button"
-      className="relative flex items-center justify-center shrink-0 w-11 h-5 text-surface-400 hover:text-surface-900 transition-colors duration-fast"
+      className={`relative flex items-center justify-center shrink-0 w-11 h-5 transition-colors duration-fast ${
+        active
+          ? "text-surface-900"
+          : "text-surface-400 hover:text-surface-900"
+      }`}
       title={title}
-      aria-label={copied ? "הועתק" : title}
+      aria-label={flashing ? "הועתק" : title}
+      aria-pressed={active}
       onClick={onCopy}
     >
       <CopyIcon
-        className={`w-3.5 h-3.5 transition-opacity duration-fast ${copied ? "opacity-0" : "opacity-100"}`}
+        strokeWidth={active ? 2.75 : 2}
+        className={`w-3.5 h-3.5 transition-opacity duration-fast ${
+          flashing ? "opacity-0" : "opacity-100"
+        }`}
       />
       <span
-        className={`absolute inset-0 flex items-center justify-center text-[10px] leading-none text-surface-400 transition-opacity duration-fast pointer-events-none ${copied ? "opacity-100" : "opacity-0"}`}
-        aria-hidden={!copied}
+        className={`absolute inset-0 flex items-center justify-center text-xs leading-none transition-opacity duration-fast pointer-events-none ${
+          flashing ? "opacity-100" : "opacity-0"
+        }`}
+        aria-hidden={!flashing}
       >
         הועתק
       </span>
@@ -62,8 +77,11 @@ export function QuestionBlock({
   onAddQuestion,
 }: Props) {
   const radioGroup = useId();
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const copiedTimer = useRef<number | null>(null);
+  /** Last in-body copy in this question — stays black until another item here is copied. */
+  const [lastCopiedKey, setLastCopiedKey] = useState<string | null>(null);
+  /** Brief **הועתק** flash key (~1s). */
+  const [flashCopiedKey, setFlashCopiedKey] = useState<string | null>(null);
+  const flashTimer = useRef<number | null>(null);
   const questionType: QuestionType = props.questionType ?? "single_choice";
   const isYesNo = questionType === "yes_no";
   const isMultiple = questionType === "multiple_choice";
@@ -76,7 +94,7 @@ export function QuestionBlock({
 
   useEffect(() => {
     return () => {
-      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      if (flashTimer.current) window.clearTimeout(flashTimer.current);
     };
   }, []);
 
@@ -84,15 +102,15 @@ export function QuestionBlock({
     if (explanation.trim()) setShowExplanation(true);
   }, [explanation]);
 
-  function showCopiedFeedback(key: string) {
-    setCopiedKey(key);
-    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
-    copiedTimer.current = window.setTimeout(() => setCopiedKey(null), COPIED_FEEDBACK_MS);
-  }
-
   function handleCopy(key: string, text: string) {
     onCopyOption?.(text);
-    showCopiedFeedback(key);
+    setLastCopiedKey(key);
+    setFlashCopiedKey(key);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => {
+      setFlashCopiedKey(null);
+      flashTimer.current = null;
+    }, COPIED_FEEDBACK_MS);
   }
 
   const correctIds: Set<string> = new Set(
@@ -102,26 +120,36 @@ export function QuestionBlock({
   );
 
   if (!editable) {
+    /** Implement only: drop trailing sentence periods for display + clipboard. */
+    const forImplement = mode === "implement";
+    const displayPrompt = forImplement
+      ? stripTrailingPeriod(props.prompt ?? "")
+      : (props.prompt ?? "");
+
     return (
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-2">
           <AutoGrowTextField
             readOnly
-            value={props.prompt ?? ""}
+            value={displayPrompt}
             placeholder="ללא שאלה"
             className="flex-1 min-w-0 font-semibold border-transparent px-0"
           />
           {onCopyOption && (
             <QuestionCopyButton
-              copied={copiedKey === "prompt"}
+              active={lastCopiedKey === "prompt"}
+              flashing={flashCopiedKey === "prompt"}
               title="העתק שאלה"
-              onCopy={() => handleCopy("prompt", props.prompt ?? "")}
+              onCopy={() => handleCopy("prompt", displayPrompt)}
             />
           )}
         </div>
         <div className="flex flex-col gap-1.5">
           {options.map((opt) => {
             const correct = correctIds.has(opt.id);
+            const displayText = forImplement
+              ? stripTrailingPeriod(opt.text ?? "")
+              : (opt.text ?? "");
             return (
               <div
                 key={opt.id}
@@ -134,7 +162,7 @@ export function QuestionBlock({
                 {correct && <CheckIcon className="w-3.5 h-3.5 shrink-0" />}
                 <AutoGrowTextField
                   readOnly
-                  value={opt.text}
+                  value={displayText}
                   placeholder="אפשרות ריקה"
                   className={`flex-1 min-w-0 border-transparent bg-transparent px-0 ${
                     correct ? "font-medium" : ""
@@ -142,9 +170,10 @@ export function QuestionBlock({
                 />
                 {onCopyOption && (
                   <QuestionCopyButton
-                    copied={copiedKey === opt.id}
+                    active={lastCopiedKey === opt.id}
+                    flashing={flashCopiedKey === opt.id}
                     title="העתק אפשרות"
-                    onCopy={() => handleCopy(opt.id, opt.text ?? "")}
+                    onCopy={() => handleCopy(opt.id, displayText)}
                   />
                 )}
               </div>
@@ -165,7 +194,8 @@ export function QuestionBlock({
               />
               {onCopyOption && (
                 <QuestionCopyButton
-                  copied={copiedKey === "explanation"}
+                  active={lastCopiedKey === "explanation"}
+                  flashing={flashCopiedKey === "explanation"}
                   title="העתק הסבר"
                   onCopy={() => handleCopy("explanation", explanation)}
                 />
