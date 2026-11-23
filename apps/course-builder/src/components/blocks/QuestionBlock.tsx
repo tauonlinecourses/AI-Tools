@@ -120,11 +120,9 @@ export function QuestionBlock({
   );
 
   if (!editable) {
-    /** Implement only: drop trailing sentence periods for display + clipboard. */
+    /** Implement only: drop trailing sentence periods on answers (not the prompt). */
     const forImplement = mode === "implement";
-    const displayPrompt = forImplement
-      ? stripTrailingPeriod(props.prompt ?? "")
-      : (props.prompt ?? "");
+    const displayPrompt = props.prompt ?? "";
 
     return (
       <div className="flex flex-col gap-3">

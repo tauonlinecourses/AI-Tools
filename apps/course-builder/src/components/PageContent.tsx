@@ -38,7 +38,6 @@ import { BlockComments } from "./BlockComments";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { AutoGrowTextField, NotesDisplay, TextField } from "./blocks/fields";
 import { detectVideoProvider } from "../lib/videoEmbed";
-import { stripTrailingPeriod } from "../lib/questionText";
 import { validatePageQuestions } from "../lib/questionValidation";
 import {
   PageImplementationStatusToggle,
@@ -305,7 +304,7 @@ function headerCopyPayload(component: PageComponent): ClipboardPayload {
       return { plain: component.props.url ?? "" };
     case "question":
       return {
-        plain: stripTrailingPeriod(component.props.prompt ?? ""),
+        plain: component.props.prompt ?? "",
       };
     case "image":
       return { plain: component.props.imageUrl ?? "" };

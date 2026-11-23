@@ -20,14 +20,16 @@ function justifyClass(align: ButtonAlign): string {
  * Content button preview. Alignment, link, and optional image URL are edited
  * from the card header popovers in PageContent (edit mode only); label is not
  * editable (fixed "כפתור" unless imported `text` is set). When `imageUrl`
- * paints, the image replaces the primary-button chrome; click still opens
- * `url` when set.
+ * paints, the image replaces the primary-button chrome. In implement, click
+ * opens the image URL; in edit/review, click opens the button `url` when set.
  */
-export function ButtonBlock({ props }: Props) {
+export function ButtonBlock({ props, mode }: Props) {
   const align: ButtonAlign = props.align ?? "center";
   const label = props.text?.trim() || "כפתור";
   const href = props.url?.trim() || undefined;
   const imageHref = props.imageUrl?.trim() || undefined;
+  const imageClickHref =
+    mode === "implement" ? imageHref : href;
   const [imgStatus, setImgStatus] = useState<"none" | "loading" | "loaded" | "error">(
     imageHref ? "loading" : "none"
   );
@@ -91,12 +93,12 @@ export function ButtonBlock({ props }: Props) {
 
   return (
     <div className={`flex w-full ${justifyClass(align)}`} dir="ltr">
-      {showImage && href ? (
+      {showImage && imageClickHref ? (
         <a
-          href={href}
+          href={imageClickHref}
           target="_blank"
           rel="noreferrer"
-          title="פתח קישור"
+          title={mode === "implement" ? "פתח תמונה" : "פתח קישור"}
           className="inline-block max-w-full hover:opacity-90 transition-opacity duration-fast"
         >
           {body}
