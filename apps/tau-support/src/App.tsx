@@ -9,12 +9,14 @@ import {
 import { HomeDashboard } from "./components/HomeDashboard";
 import { EmailQuestionPage } from "./components/EmailQuestionPage";
 import { QuestionsDashboardLazy } from "./components/QuestionsDashboardLazy";
+import { AddCourseForm, toCourseEntry } from "./components/AddCourseForm";
 import { InfoDocEditor } from "./components/InfoDocEditor";
 import { InfoDocsSidebar } from "./components/InfoDocsSidebar";
 import { InfoDocView } from "./components/InfoDocView";
 import { LoadThreadsButton } from "./components/LoadThreadsButton";
 import { ThreadCard } from "./components/ThreadCard";
 import { fetchForumThreads, fetchLmsLogin, hasReusableSession, type LmsSessionCredentials } from "./lib/api";
+import { createCourse, listCourseCatalog } from "./lib/courseCatalog";
 import { embedInfoDocs } from "./lib/infoDocEmbed";
 import {
   createInfoDoc,
@@ -66,7 +68,12 @@ import {
   type CheckAllSummary,
   type LastCheckAllRun,
 } from "./lib/checkAllRun";
-import { COURSES, findCourseById } from "./lib/courses";
+import {
+  BUNDLED_COURSES,
+  findCourseById,
+  setRuntimeCourseCatalog,
+  type CourseEntry,
+} from "./lib/courses";
 import {
   countNewAcrossStore,
   countNewForCourse,
@@ -200,7 +207,7 @@ function courseDisplayName(courseId: string): string {
 }
 
 function unansweredFirstCourseIds(
-  courses: typeof COURSES,
+  courses: CourseEntry[],
   store: ThreadStore
 ): string[] {
   const withUnanswered: string[] = [];
@@ -263,6 +270,11 @@ export default function App() {
   const [emailMode, setEmailMode] = useState(false);
   // Opening a /dashboard link starts on the dashboard.
   const [dashboardMode, setDashboardMode] = useState(isDashboardUrl);
+  /** Seed + UI-added courses (Supabase merge on load). */
+  const [courses, setCourses] = useState<CourseEntry[]>(BUNDLED_COURSES);
+  const [addCourseMode, setAddCourseMode] = useState(false);
+  const [addCourseBusy, setAddCourseBusy] = useState(false);
+  const [addCourseError, setAddCourseError] = useState<string | null>(null);
   const [infoDocs, setInfoDocs] = useState<InfoDoc[]>([]);
   const [infoDocsLoading, setInfoDocsLoading] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -296,11 +308,29 @@ export default function App() {
   const checkAllTabIdRef = useRef(newCheckAllTabId());
   /** Threads with an in-flight אין צורך במענה / seen write — skip focus overwrite. */
   const pendingUiFlagThreadIdsRef = useRef(new Set<string>());
-  const checkAllCourses = useMemo(() => checkAllCourseList(COURSES), []);
+  const checkAllCourses = useMemo(() => checkAllCourseList(courses), [courses]);
+
+  useEffect(() => {
+    setRuntimeCourseCatalog(courses);
+  }, [courses]);
 
   useEffect(() => {
     saveThreadStore(threadStore);
   }, [threadStore]);
+
+  // Merge bundled courses.json with rows saved in Supabase (UI-added courses).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await listCourseCatalog();
+      if (cancelled || !result.courses?.length) return;
+      setCourses(result.courses);
+      setRuntimeCourseCatalog(result.courses);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Supabase is the durable inbox source of truth across browsers.
   // localStorage is only a write-through cache + offline paint / offline fallback.
@@ -849,6 +879,8 @@ export default function App() {
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
+    setAddCourseMode(false);
+    setAddCourseError(null);
     setInfoDocEditMode(null);
     setSelectedId(courseId);
   }, [clearSearch]);
@@ -858,6 +890,8 @@ export default function App() {
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
+    setAddCourseMode(false);
+    setAddCourseError(null);
     setInfoDocEditMode(null);
     setSelectedId(null);
   }, [clearSearch]);
@@ -867,9 +901,60 @@ export default function App() {
     setEmailMode(false);
     setDashboardMode(false);
     setDocsMode(false);
+    setAddCourseMode(false);
+    setAddCourseError(null);
     setInfoDocEditMode(null);
     setSelectedId(INBOX_SELECTION);
   }, [clearSearch]);
+
+  const handleAddCourse = useCallback(() => {
+    clearSearch();
+    setEmailMode(false);
+    setDashboardMode(false);
+    setDocsMode(false);
+    setInfoDocEditMode(null);
+    setAddCourseError(null);
+    setAddCourseMode(true);
+    setSelectedId(null);
+  }, [clearSearch]);
+
+  const handleCancelAddCourse = useCallback(() => {
+    setAddCourseMode(false);
+    setAddCourseError(null);
+    setAddCourseBusy(false);
+  }, []);
+
+  const handleSaveCourse = useCallback(
+    async (input: {
+      id: string;
+      name: string;
+      nameHe?: string;
+      forumCategory: string;
+      forumTopicId?: string;
+    }) => {
+      setAddCourseBusy(true);
+      setAddCourseError(null);
+      try {
+        const result = await createCourse(input, { requireNew: true });
+        if (!result.ok || !result.course) {
+          setAddCourseError(result.message ?? "הוספת הקורס נכשלה");
+          return;
+        }
+        const created = result.course;
+        setCourses((prev) => {
+          if (prev.some((c) => c.id === created.id)) return prev;
+          const next = [...prev, toCourseEntry(created)];
+          setRuntimeCourseCatalog(next);
+          return next;
+        });
+        setAddCourseMode(false);
+        setSelectedId(created.id);
+      } finally {
+        setAddCourseBusy(false);
+      }
+    },
+    []
+  );
 
   const handleRefresh = useCallback(() => {
     if (!selectedId || selectedId === INBOX_SELECTION) return;
@@ -981,7 +1066,7 @@ export default function App() {
       checkAllInFlightRef.current = true;
 
       const sidebarOrderIds = unansweredFirstCourseIds(
-        COURSES,
+        courses,
         threadStoreRef.current
       );
       const queue = sidebarOrderIds
@@ -1209,7 +1294,7 @@ export default function App() {
         }
       }
     },
-    [checkAllCourses, cookieAuthFrom, persistCursor, pollCourse]
+    [checkAllCourses, cookieAuthFrom, courses, persistCursor, pollCourse]
   );
 
   const ensureSearchHitInStore = useCallback(
@@ -1405,6 +1490,8 @@ export default function App() {
         clearSearch();
         setEmailMode(false);
         setDashboardMode(false);
+        setAddCourseMode(false);
+        setAddCourseError(null);
         setSelectedId(null);
         setSelectedTopicId(null);
         setInfoDocEditMode(null);
@@ -1423,6 +1510,8 @@ export default function App() {
         clearSearch();
         setDocsMode(false);
         setDashboardMode(false);
+        setAddCourseMode(false);
+        setAddCourseError(null);
         setInfoDocEditMode(null);
         setInfoDocError(null);
         setSelectedId(null);
@@ -1437,6 +1526,8 @@ export default function App() {
       if (next) {
         clearSearch();
         setDocsMode(false);
+        setAddCourseMode(false);
+        setAddCourseError(null);
         setEmailMode(false);
         setInfoDocEditMode(null);
         setInfoDocError(null);
@@ -1613,7 +1704,7 @@ export default function App() {
   }
 
   const sidebarCache: Record<string, CourseCacheEntry> = {};
-  for (const course of COURSES) {
+  for (const course of courses) {
     const bucket = getCourseBucket(threadStore, course.id);
     const entries = Object.values(bucket.threads);
     const sync = syncByCourse[course.id];
@@ -1668,6 +1759,8 @@ export default function App() {
     setDocsMode(false);
     setEmailMode(false);
     setDashboardMode(false);
+    setAddCourseMode(false);
+    setAddCourseError(null);
     setInfoDocEditMode(null);
 
     const requestId = ++searchRequestIdRef.current;
@@ -2075,12 +2168,13 @@ export default function App() {
               />
             ) : (
               <CourseSidebar
-                courses={COURSES}
+                courses={courses}
                 selectedId={selectedId}
                 cache={sidebarCache}
                 inboxNewCount={inboxNewCount}
                 onSelectInbox={handleSelectInbox}
                 onSelect={handleSelectCourse}
+                onAddCourse={handleAddCourse}
                 frozenCourseIds={checkAllFrozenOrder}
                 checkAll={
                   checkAllProgress
@@ -2222,6 +2316,25 @@ export default function App() {
                   <QuestionsDashboardLazy />
                 ) : emailMode ? (
                   <EmailQuestionPage />
+                ) : addCourseMode ? (
+                  !isSupabaseConfigured ? (
+                    <div
+                      dir="rtl"
+                      className="p-4 text-right text-sm text-surface-600"
+                    >
+                      הוספת קורסים דורשת Supabase. הגדירו{" "}
+                      <span dir="ltr">VITE_SUPABASE_URL</span> ו-{" "}
+                      <span dir="ltr">VITE_SUPABASE_ANON_KEY</span>, והריצו את{" "}
+                      <span dir="ltr">012_courses_forum_topic_id.sql</span>.
+                    </div>
+                  ) : (
+                    <AddCourseForm
+                      busy={addCourseBusy}
+                      error={addCourseError}
+                      onSave={handleSaveCourse}
+                      onCancel={handleCancelAddCourse}
+                    />
+                  )
                 ) : showingHome ? (
                   <HomeDashboard
                     stats={homeStats}

@@ -183,14 +183,76 @@ export function InfoDocEditor({
     })();
   }, [title]);
 
-  const insertHtmlAtCursor = useCallback((html: string) => {
+  /** Capture the caret before React re-renders or async paste work. */
+  const captureEditorSelection = useCallback((): Range | null => {
     const el = editorRef.current;
-    if (!el) return;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer)) return null;
+    return range.cloneRange();
+  }, []);
+
+  const restoreEditorSelection = useCallback((range: Range | null) => {
+    const el = editorRef.current;
+    if (!el || !range) return;
     el.focus();
-    const ok = document.execCommand("insertHTML", false, html);
-    if (!ok) {
-      el.innerHTML = `${el.innerHTML}${html}`;
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []);
+
+  const insertHtmlAtCursor = useCallback(
+    (html: string, savedRange?: Range | null) => {
+      const el = editorRef.current;
+      if (!el || !html) return;
+      el.focus();
+      if (savedRange) restoreEditorSelection(savedRange);
+
+      if (document.execCommand("insertHTML", false, html)) return;
+
+      // execCommand can fail after async work; insert at the saved/current range.
+      const sel = window.getSelection();
+      const range =
+        savedRange ??
+        (sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null);
+      if (range && el.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        const template = document.createElement("template");
+        template.innerHTML = html;
+        const frag = template.content;
+        const last = frag.lastChild;
+        range.insertNode(frag);
+        if (last) {
+          const after = document.createRange();
+          after.setStartAfter(last);
+          after.collapse(true);
+          sel?.removeAllRanges();
+          sel?.addRange(after);
+        }
+        return;
+      }
+
+      // Last resort only when there is no usable caret.
+      el.insertAdjacentHTML("beforeend", html);
+    },
+    [restoreEditorSelection]
+  );
+
+  const plainTextToHtml = useCallback((plain: string): string => {
+    const escaped = plain
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    // Single-line (or soft breaks): keep inline so mid-paragraph paste stays intact.
+    if (!/\n\n/.test(escaped)) {
+      return escaped.replace(/\n/g, "<br>");
     }
+    return escaped
+      .split(/\n{2,}/)
+      .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+      .join("");
   }, []);
 
   const handlePaste = useCallback(
@@ -201,6 +263,9 @@ export function InfoDocEditor({
       const imageBlob = extractImageBlob(data);
       const html = data.getData("text/html");
       const plain = data.getData("text/plain");
+      // Must capture before preventDefault + any setState (uploading would
+      // briefly clear contentEditable and drop the caret).
+      const savedRange = captureEditorSelection();
 
       // Pure image paste (screenshot) — no meaningful Docs HTML.
       const htmlLooksLikeDocs =
@@ -228,7 +293,8 @@ export function InfoDocEditor({
               return;
             }
             insertHtmlAtCursor(
-              `<img src="${result.publicUrl}" alt="" loading="lazy" />`
+              `<img src="${result.publicUrl}" alt="" loading="lazy" />`,
+              savedRange
             );
           } finally {
             setUploading(false);
@@ -239,21 +305,27 @@ export function InfoDocEditor({
 
       if (htmlLooksLikeDocs && html) {
         e.preventDefault();
-        setUploading(true);
         setUploadError(null);
+        const cleanedSync = sanitizeInfoDocHtml(html);
+        const needsImageUpload = /src\s*=\s*["']data:image\//i.test(cleanedSync);
+
+        // Sync path: keep the caret and insert immediately (most Docs/Word pastes).
+        if (!needsImageUpload) {
+          const cleaned =
+            cleanedSync.trim() ||
+            (plain.trim() ? sanitizeInfoDocHtml(plainTextToHtml(plain)) : "");
+          insertHtmlAtCursor(cleaned, savedRange);
+          return;
+        }
+
+        setUploading(true);
         void (async () => {
           try {
-            let cleaned = sanitizeInfoDocHtml(html);
-            cleaned = await replaceDataImagesWithUploads(cleaned);
+            let cleaned = await replaceDataImagesWithUploads(cleanedSync);
             if (!cleaned.trim() && plain.trim()) {
-              cleaned = sanitizeInfoDocHtml(
-                plain
-                  .split(/\n{2,}/)
-                  .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-                  .join("")
-              );
+              cleaned = sanitizeInfoDocHtml(plainTextToHtml(plain));
             }
-            insertHtmlAtCursor(cleaned);
+            insertHtmlAtCursor(cleaned, savedRange);
           } finally {
             setUploading(false);
           }
@@ -261,21 +333,13 @@ export function InfoDocEditor({
         return;
       }
 
-      // Plain text: preserve newlines as paragraphs/breaks.
+      // Plain text: preserve newlines; stay inline when there is no blank line.
       if (plain && !htmlLooksLikeDocs) {
         e.preventDefault();
-        const escaped = plain
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-        const asHtml = escaped
-          .split(/\n{2,}/)
-          .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-          .join("");
-        insertHtmlAtCursor(asHtml);
+        insertHtmlAtCursor(plainTextToHtml(plain), savedRange);
       }
     },
-    [insertHtmlAtCursor]
+    [captureEditorSelection, insertHtmlAtCursor, plainTextToHtml]
   );
 
   const handleSave = useCallback(() => {
@@ -418,7 +482,9 @@ export function InfoDocEditor({
           role="textbox"
           aria-multiline
           aria-label="תוכן הנושא"
-          contentEditable={!busy && !uploading && !suggestBusy}
+          // Keep editable while an image upload runs — toggling contentEditable
+          // off would drop the caret and make paste append at the end.
+          contentEditable={!busy && !suggestBusy}
           suppressContentEditableWarning
           dir="rtl"
           onPaste={handlePaste}

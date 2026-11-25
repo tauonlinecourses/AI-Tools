@@ -391,6 +391,8 @@ export async function syncCourseThreadsToSupabase(
 
   try {
     const course = findCourseById(courseId);
+    // Do not write forum_topic_id here — createCourse owns that column, and
+    // omitting it keeps poll sync working before migration 012 is applied.
     const courseRow: CourseRow = {
       id: courseId,
       name: course?.name ?? courseId,

@@ -67,10 +67,18 @@ platform.
   the web UI and Vercel API routes. Supports incremental polls via `since` +
   `knownThreads` (hydrate only new/updated ids). Exports
   `loginWithEnvCredentials` for one-shot password login.
-- `../src/lib/courses.json` — Course catalog (`id`, `name`, optional `nameHe`,
-  **`forumCategory`**, optional **`forumTopicId`**) used by the course hub sidebar. Edit this JSON file to
-  add courses and set each course’s technical-help forum name.
-- `../src/lib/courses.ts` — Thin helpers that load `courses.json`.
+- `../src/lib/courses.json` — Bundled course seed (`id`, `name`, optional `nameHe`,
+  **`forumCategory`**, optional **`forumTopicId`**). Still the default catalog
+  shipped with the app; UI-added courses are stored in Supabase `courses` and
+  merged on load.
+- `../src/lib/courses.ts` — `BUNDLED_COURSES`, runtime catalog
+  (`setRuntimeCourseCatalog` / `findCourseById`), and `mergeCourseCatalog`.
+- `../src/lib/courseCatalog.ts` — BFF `listCourseCatalog` / `createCourse`
+  (validate Open edX id, upsert into `courses` including optional
+  `forum_topic_id`).
+- `../src/components/AddCourseForm.tsx` — **הוספת קורס** form (sidebar +).
+- `../supabase/migrations/012_courses_forum_topic_id.sql` — adds
+  `courses.forum_topic_id` (required for UI create when a topic id is set).
 - `../src/lib/threadStore.ts` — In-memory inbox + `localStorage` write-through
   cache (`tau-support-thread-store-v1`): per-course `lastCheckedAt` watermark,
   thread map, merge/upsert, retention cap, and per-thread `noAnswerNeeded`
@@ -204,9 +212,14 @@ platform.
   `category-test-results/` and score with `category-test:score`.
 - `../src/components/QuestionsDashboard.tsx` / `QuestionMap3D.tsx` — **דשבורד**
   header toggle: stat tiles, categories chart, per-category question lists
-  (newest first; expand chevron on the visual left of each RTL row) and a
-  lazy-loaded 3D map colored by category (a click opens that category).
-  Filters by course, category and date.
+  (newest first; expand chevron on the visual left of each RTL row), a
+  monthly bar chart (default solid totals; header toggle **לפי קטגוריה** /
+  **לפי קורס** stacks each bar by category or course — category colors from
+  `categoryColors.ts`, course colors from `courseColors.ts`; total labeled
+  on top), and a lazy-loaded 3D map colored by category (a click opens that
+  category). Filters by course, category and date.
+- `../src/lib/courseColors.ts` — stable per-course palette for the monthly
+  chart's **לפי קורס** stack (indexed by `courses.json` order).
 - `../src/components/InfoDocsSidebar.tsx` — Topic list sidebar shown when
   **מסמך מידע שימושי** mode is on (**הוספת נושא**).
 - `../src/components/InfoDocView.tsx` — Read-only topic body (via
@@ -214,7 +227,9 @@ platform.
   **דוגמאות לשאלות** box is collapsed by default (title only); click to expand.
 - `../src/components/InfoDocEditor.tsx` — Title + body + common-questions
   editor; body grows with content (no inner scroll — same page scroll as
-  view); paste-only image upload (Ctrl+V → Storage → `![](url)` at caret);
+  view); paste-only image upload (Ctrl+V → Storage → `<img>` at caret;
+  text/Docs paste keeps the caret — selection is saved before async work so
+  mid-body paste does not append at the end);
   **הצע שאלות לדוגמה** fills questions via RAG + chat.
 - `../src/lib/lastCheckAllSync.ts` — Upsert / hydrate / prefer-newer helpers
   for that singleton.
@@ -256,16 +271,17 @@ RTL split layout inspired by the campus IL forum list:
   hidden from the sidebar UI (settings menu still exists).
   The scrollable list starts with **פיד של כל הקורסים** (global inbox) plus all
   courses from
-  `src/lib/courses.json` (`id`, `name`, optional `nameHe`, **`forumCategory`**,
-  optional **`forumTopicId`**).
-  Add courses by editing that JSON file. Each course’s technical-help forum
-  name (`forumCategory`, matching the campus IL URL after `/category/`) can
-  differ per course and is used when polling (not shown on the sidebar row).
-  When **`forumTopicId`** is set, polls filter by that Open edX topic id
-  directly and **skip** the flaky `/course_topics/` lookup. Otherwise, if the
-  configured name is missing in that course, polling also tries
-  **פורום בעיות טכניות** and **בעיות טכניות**, and uses whichever name
-  matches for topic filtering and thread URLs.
+  the runtime catalog (bundled `courses.json` merged with Supabase `courses`).
+  Use **הוספת קורס** in the sidebar to add a course from the UI (Open edX id,
+  English/Hebrew names, forum category, optional topic id) — persisted in
+  Supabase and available after reload. You can still edit `courses.json` for
+  the shipped seed. Each course’s technical-help forum name (`forumCategory`,
+  matching the campus IL URL after `/category/`) can differ per course and is
+  used when polling (not shown on the sidebar row). When **`forumTopicId`** is
+  set, polls filter by that Open edX topic id directly and **skip** the flaky
+  `/course_topics/` lookup. Otherwise, if the configured name is missing in
+  that course, polling also tries **פורום בעיות טכניות** and **בעיות טכניות**,
+  and uses whichever name matches for topic filtering and thread URLs.
   Inbox and course rows show **חדש** counts from the local store. Courses with
   unanswered threads (`unansweredCount > 0`) are sorted to the **top** of the
   list; remaining courses keep their original `courses.json` order. **בדוק הכל** /
@@ -692,7 +708,8 @@ before the first sync. If columns are missing on an existing project, also apply
 `002_courses_last_checked_at.sql`, `003_thread_ui_state.sql`,
 `004_last_check_all.sql`, `005_kb_chunks.sql`, `006_info_docs.sql`,
 `007_info_doc_common_questions.sql`, `009_info_doc_pinned.sql`,
-`010_question_dashboard.sql`, and/or `011_question_categories.sql`.
+`010_question_dashboard.sql`, `011_question_categories.sql`, and/or
+`012_courses_forum_topic_id.sql` (needed before **הוספת קורס** with a topic id).
 
 ### Load behavior
 

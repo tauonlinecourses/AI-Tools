@@ -18,12 +18,13 @@ create extension if not exists vector with schema extensions;  -- kb_chunks embe
 -- TABLES
 -- ============================================================
 
--- Course catalog mirror (id = Open edX course key from courses.json).
+-- Course catalog mirror (id = Open edX course key from courses.json / UI).
 create table if not exists courses (
   id             text primary key,
   name           text not null,
   name_he        text,
   forum_category text,
+  forum_topic_id text,                 -- optional; skips flaky /course_topics/
   last_checked_at timestamptz,         -- poll watermark (incremental since=)
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()

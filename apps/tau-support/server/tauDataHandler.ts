@@ -21,6 +21,7 @@ import {
   setInfoDocPinned,
   updateInfoDoc,
 } from "../src/lib/infoDocs.js";
+import { createCourse, listCourseCatalog } from "../src/lib/courseCatalog.js";
 import { uploadPastedImage } from "../src/lib/infoDocImages.js";
 import { findSimilarQa } from "../src/lib/kbSearch.js";
 import {
@@ -72,6 +73,21 @@ export async function runTauDataAction(
           p?.threadId as string,
           p?.ui as never,
           p?.fallback as never
+        );
+      case "listCourseCatalog":
+        return await listCourseCatalog();
+      case "createCourse":
+        return await createCourse(
+          {
+            id: String(p?.id ?? ""),
+            name: String(p?.name ?? ""),
+            nameHe:
+              typeof p?.nameHe === "string" ? p.nameHe : undefined,
+            forumCategory: String(p?.forumCategory ?? ""),
+            forumTopicId:
+              typeof p?.forumTopicId === "string" ? p.forumTopicId : undefined,
+          },
+          { requireNew: p?.requireNew !== false }
         );
       case "listInfoDocs":
         return await listInfoDocs();

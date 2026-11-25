@@ -30,6 +30,8 @@ interface CourseSidebarProps {
   inboxNewCount: number;
   onSelectInbox: () => void;
   onSelect: (courseId: string) => void;
+  /** Opens the add-course form in the main pane. */
+  onAddCourse?: () => void;
   /** Snapshot of sidebar order for the duration of a check-all run. */
   frozenCourseIds?: string[] | null;
   checkAll?: CheckAllSidebarState | null;
@@ -68,6 +70,7 @@ export function CourseSidebar({
   inboxNewCount,
   onSelectInbox,
   onSelect,
+  onAddCourse,
   frozenCourseIds,
   checkAll,
 }: CourseSidebarProps) {
@@ -113,6 +116,22 @@ export function CourseSidebar({
       dir="rtl"
       className="relative z-10 flex w-full shrink-0 flex-col border-surface-200 bg-white md:w-[34%] md:border-e md:shadow-[-3px_0_4px_-2px_rgba(0,0,0,0.12)]"
     >
+      {onAddCourse ? (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-surface-200 px-3 py-2.5">
+          <p className="text-sm font-semibold text-surface-900">קורסים</p>
+          <button
+            type="button"
+            onClick={onAddCourse}
+            className="inline-flex h-8 items-center gap-1 rounded-control border border-surface-200 bg-white px-2.5 text-xs font-semibold text-surface-800 shadow-sm transition-colors hover:bg-sky-50 hover:text-sky-950"
+            title="הוספת קורס"
+          >
+            <span aria-hidden className="text-base leading-none">
+              +
+            </span>
+            הוספת קורס
+          </button>
+        </div>
+      ) : null}
       <ul className="min-h-0 flex-1 overflow-y-auto">
         <li className="border-b border-surface-200">
           <button

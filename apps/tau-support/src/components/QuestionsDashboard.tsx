@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
+  BarStack,
   CartesianGrid,
   Cell,
   LabelList,
@@ -12,8 +13,13 @@ import {
   type YAxisTickContentProps,
 } from "recharts";
 import { Button, Spinner } from "@workspace/ui";
-import { categoryColor } from "../lib/categoryColors";
-import { COURSES, courseLabel } from "../lib/courses";
+import { CATEGORY_COLORS, categoryColor } from "../lib/categoryColors";
+import { courseColor } from "../lib/courseColors";
+import {
+  courseLabel,
+  findCourseById,
+  getRuntimeCourseCatalog,
+} from "../lib/courses";
 import {
   DASHBOARD_FORMAT_VERSION,
   type DashboardPoint,
@@ -43,8 +49,14 @@ function formatDate(iso: string | null): string {
 }
 
 function courseName(courseId: string): string {
-  const course = COURSES.find((c) => c.id === courseId);
+  const course = findCourseById(courseId);
   return course ? courseLabel(course) : courseId;
+}
+
+/** Short label for chart tooltips (Hebrew title when present). */
+function shortCourseName(courseId: string): string {
+  const course = findCourseById(courseId);
+  return course?.nameHe || course?.name || courseId;
 }
 
 interface CategoryGroup {
@@ -88,14 +100,56 @@ function firstQuestionDate(points: DashboardPoint[]): string {
   return Number.isFinite(min) ? toDateInputValue(min) : "";
 }
 
+/** One month's bar: total + a count per series key (category or course). */
 interface MonthCount {
   label: string;
   questions: number;
+  [seriesKey: string]: string | number;
 }
 
-/** Questions per calendar month, oldest first, with empty months kept as 0. */
-function countByMonth(points: DashboardPoint[]): MonthCount[] {
-  const counts = new Map<string, number>();
+interface MonthlyBreakdown {
+  rows: MonthCount[];
+  /** Series keys present in the data, in a stable stack order. */
+  series: string[];
+}
+
+const CATEGORY_ORDER = Object.keys(CATEGORY_COLORS);
+function courseOrderIds(): string[] {
+  return getRuntimeCourseCatalog().map((c) => c.id);
+}
+
+/** Fixed list first, then any leftover names (e.g. older snapshots). */
+function orderedCategories(names: Iterable<string>): string[] {
+  const present = new Set(names);
+  const ordered = CATEGORY_ORDER.filter((c) => present.has(c));
+  for (const name of present) {
+    if (!CATEGORY_COLORS[name]) ordered.push(name);
+  }
+  return ordered;
+}
+
+/** Catalog order first, then any course ids not in the runtime catalog. */
+function orderedCourses(ids: Iterable<string>): string[] {
+  const present = new Set(ids);
+  const catalogOrder = courseOrderIds();
+  const ordered = catalogOrder.filter((id) => present.has(id));
+  for (const id of present) {
+    if (!catalogOrder.includes(id)) ordered.push(id);
+  }
+  return ordered;
+}
+
+/**
+ * Questions per calendar month, oldest first, with empty months kept as 0.
+ * `seriesOf` chooses the stack key (category name or course id).
+ */
+function countByMonth(
+  points: DashboardPoint[],
+  seriesOf: (point: DashboardPoint) => string,
+  orderSeries: (names: Iterable<string>) => string[]
+): MonthlyBreakdown {
+  const counts = new Map<string, Map<string, number>>();
+  const seenSeries = new Set<string>();
   let first: Date | null = null;
   let last: Date | null = null;
   for (const p of points) {
@@ -103,26 +157,118 @@ function countByMonth(points: DashboardPoint[]): MonthCount[] {
     const d = new Date(p.createdAt);
     if (Number.isNaN(d.getTime())) continue;
     const key = `${d.getFullYear()}-${d.getMonth()}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    let bySeries = counts.get(key);
+    if (!bySeries) {
+      bySeries = new Map();
+      counts.set(key, bySeries);
+    }
+    const seriesKey = seriesOf(p);
+    bySeries.set(seriesKey, (bySeries.get(seriesKey) ?? 0) + 1);
+    seenSeries.add(seriesKey);
     if (!first || d < first) first = d;
     if (!last || d > last) last = d;
   }
-  if (!first || !last) return [];
+  if (!first || !last) return { rows: [], series: [] };
 
-  const out: MonthCount[] = [];
+  const series = orderSeries(seenSeries);
+  const rows: MonthCount[] = [];
   const cursor = new Date(first.getFullYear(), first.getMonth(), 1);
   const end = new Date(last.getFullYear(), last.getMonth(), 1);
   while (cursor <= end) {
-    out.push({
+    const bySeries = counts.get(`${cursor.getFullYear()}-${cursor.getMonth()}`);
+    const row: MonthCount = {
       label: cursor.toLocaleDateString("he-IL", { month: "short", year: "2-digit" }),
-      questions: counts.get(`${cursor.getFullYear()}-${cursor.getMonth()}`) ?? 0,
-    });
+      questions: 0,
+    };
+    for (const seriesKey of series) {
+      const n = bySeries?.get(seriesKey) ?? 0;
+      row[seriesKey] = n;
+      row.questions += n;
+    }
+    rows.push(row);
     cursor.setMonth(cursor.getMonth() + 1);
   }
-  return out;
+  return { rows, series };
 }
 
-function MonthlyChart({ data, color }: { data: MonthCount[]; color: string }) {
+function MonthlyTooltip({
+  active,
+  payload,
+  label,
+  colorFor,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{
+    name?: string | number;
+    value?: number | string;
+    dataKey?: string | number;
+  }>;
+  label?: string | number;
+  colorFor: (seriesKey: string) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const items = payload
+    .filter((entry) => typeof entry.value === "number" && entry.value > 0)
+    .map((entry) => ({
+      key: String(entry.dataKey ?? entry.name ?? ""),
+      name: String(entry.name ?? entry.dataKey ?? ""),
+      count: entry.value as number,
+    }))
+    .sort((a, b) => b.count - a.count);
+  if (items.length === 0) return null;
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  return (
+    <div
+      dir="rtl"
+      className="rounded-md border border-surface-200 bg-white px-3 py-2 text-sm shadow-sm"
+    >
+      <p className="mb-1 font-semibold text-surface-900">{label}</p>
+      <ul className="space-y-0.5">
+        {items.map((item) => (
+          <li key={item.key} className="flex items-center gap-2 text-surface-900">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ backgroundColor: colorFor(item.key) }}
+            />
+            <span className="min-w-0 flex-1 truncate">{item.name}</span>
+            <span className="shrink-0 tabular-nums text-surface-600">{item.count}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 border-t border-surface-200 pt-1 text-surface-600">
+        סה״כ {total}
+      </p>
+    </div>
+  );
+}
+
+type MonthlyView = "total" | "byCategory" | "byCourse";
+
+function monthTotalLabel(value: unknown): string {
+  return typeof value === "number" && value > 0 ? String(value) : "";
+}
+
+function MonthlyChart({
+  data,
+  series,
+  view,
+  color,
+  colorFor,
+  seriesName,
+}: {
+  data: MonthCount[];
+  series: string[];
+  view: MonthlyView;
+  /** Solid-bar fill when view is "total". */
+  color: string;
+  colorFor: (seriesKey: string) => string;
+  /** Display name for a stack segment (tooltip). */
+  seriesName: (seriesKey: string) => string;
+}) {
+  // Labels sit on the last series; its zero-height segment still rides the stack top.
+  const labelSeries = series[series.length - 1];
+  const stacked = view === "byCategory" || view === "byCourse";
   return (
     // LTR so time runs left to right, oldest month first.
     <div dir="ltr" className="w-full [&_*:focus]:outline-none">
@@ -142,16 +288,172 @@ function MonthlyChart({ data, color }: { data: MonthCount[]; color: string }) {
             axisLine={false}
             tick={{ fill: "#52514e", fontSize: 12 }}
           />
-          <Tooltip
-            cursor={{ fill: "#f2f1ec" }}
-            formatter={(value) => [String(value), "שאלות"]}
-          />
-          <Bar dataKey="questions" fill={color} radius={[4, 4, 0, 0]} maxBarSize={40}>
-            <LabelList dataKey="questions" position="top" fill="#52514e" fontSize={11} />
-          </Bar>
+          {stacked ? (
+            <>
+              <Tooltip
+                cursor={{ fill: "#f2f1ec" }}
+                content={<MonthlyTooltip colorFor={colorFor} />}
+              />
+              {/* Clips the whole column so the top stays rounded for any top segment. */}
+              <BarStack radius={[4, 4, 0, 0]}>
+                {series.map((seriesKey) => (
+                  <Bar
+                    key={seriesKey}
+                    dataKey={seriesKey}
+                    name={seriesName(seriesKey)}
+                    fill={colorFor(seriesKey)}
+                    maxBarSize={40}
+                    isAnimationActive={false}
+                  >
+                    {seriesKey === labelSeries ? (
+                      <LabelList
+                        dataKey="questions"
+                        position="top"
+                        fill="#52514e"
+                        fontSize={11}
+                        formatter={monthTotalLabel}
+                      />
+                    ) : null}
+                  </Bar>
+                ))}
+              </BarStack>
+            </>
+          ) : (
+            <>
+              <Tooltip
+                cursor={{ fill: "#f2f1ec" }}
+                formatter={(value) => [String(value), "שאלות"]}
+              />
+              <Bar
+                dataKey="questions"
+                fill={color}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={40}
+                isAnimationActive={false}
+              >
+                <LabelList
+                  dataKey="questions"
+                  position="top"
+                  fill="#52514e"
+                  fontSize={11}
+                  formatter={monthTotalLabel}
+                />
+              </Bar>
+            </>
+          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+/**
+ * Owns the סה״כ / לפי קטגוריה / לפי קורס toggle so flipping it does not
+ * re-render sibling charts (Recharts would replay their label animations).
+ */
+function MonthlyChartSection({
+  points,
+  categoryFilter,
+  courseFilter,
+}: {
+  points: DashboardPoint[];
+  categoryFilter: string;
+  courseFilter: string;
+}) {
+  const [monthlyView, setMonthlyView] = useState<MonthlyView>("total");
+  const monthlyData = useMemo(
+    () =>
+      monthlyView === "byCourse"
+        ? countByMonth(points, (p) => p.courseId, orderedCourses)
+        : countByMonth(points, (p) => p.category, orderedCategories),
+    [points, monthlyView]
+  );
+
+  return (
+    <section className="rounded-control border border-surface-200 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="min-w-0 flex-1 font-semibold text-surface-900">
+          שאלות לפי חודש
+          {categoryFilter !== ALL ? (
+            <span className="font-normal text-surface-600">
+              {" "}
+              · {categoryFilter}
+            </span>
+          ) : null}
+        </h2>
+        <div
+          className="flex shrink-0 items-center overflow-hidden rounded-md border border-surface-200 bg-surface-50 text-xs"
+          role="group"
+          aria-label="תצוגת גרף חודשי"
+        >
+          <button
+            type="button"
+            onClick={() => setMonthlyView("total")}
+            className={`px-2.5 py-1.5 transition-colors ${
+              monthlyView === "total"
+                ? "bg-white font-semibold text-surface-900 shadow-sm"
+                : "text-surface-600 hover:text-surface-900"
+            }`}
+          >
+            סה״כ
+          </button>
+          <button
+            type="button"
+            onClick={() => setMonthlyView("byCategory")}
+            className={`border-r border-surface-200 px-2.5 py-1.5 transition-colors ${
+              monthlyView === "byCategory"
+                ? "bg-white font-semibold text-surface-900 shadow-sm"
+                : "text-surface-600 hover:text-surface-900"
+            }`}
+          >
+            לפי קטגוריה
+          </button>
+          <button
+            type="button"
+            onClick={() => setMonthlyView("byCourse")}
+            className={`border-r border-surface-200 px-2.5 py-1.5 transition-colors ${
+              monthlyView === "byCourse"
+                ? "bg-white font-semibold text-surface-900 shadow-sm"
+                : "text-surface-600 hover:text-surface-900"
+            }`}
+          >
+            לפי קורס
+          </button>
+        </div>
+      </div>
+      {monthlyData.rows.length > 0 ? (
+        <>
+          <MonthlyChart
+            data={monthlyData.rows}
+            series={monthlyData.series}
+            view={monthlyView}
+            color={
+              categoryFilter !== ALL
+                ? categoryColor(categoryFilter)
+                : courseFilter !== ALL
+                  ? courseColor(courseFilter)
+                  : "#0284c7"
+            }
+            colorFor={monthlyView === "byCourse" ? courseColor : categoryColor}
+            seriesName={
+              monthlyView === "byCourse" ? shortCourseName : (key) => key
+            }
+          />
+          {monthlyView === "byCategory" ? (
+            <p className="mt-2 text-xs text-surface-600">
+              כל עמודה מפוצלת לפי קטגוריה (אותם צבעים כמו בטבלת הקטגוריות).
+            </p>
+          ) : null}
+          {monthlyView === "byCourse" ? (
+            <p className="mt-2 text-xs text-surface-600">
+              כל עמודה מפוצלת לפי קורס.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-sm text-surface-600">אין נתונים להצגה.</p>
+      )}
+    </section>
   );
 }
 
@@ -228,6 +530,7 @@ function CategoryChart({
           barSize={20}
           radius={[4, 0, 0, 4]}
           cursor="pointer"
+          isAnimationActive={false}
           onClick={(_entry, index) => {
             const row = data[index];
             if (row) onSelect(row.category);
@@ -503,8 +806,6 @@ export function QuestionsDashboard() {
     [filteredPoints]
   );
 
-  const monthlyData = useMemo(() => countByMonth(visiblePoints), [visiblePoints]);
-
   if (loading) {
     return (
       <div className="flex justify-center p-12">
@@ -700,27 +1001,11 @@ export function QuestionsDashboard() {
             </section>
           </div>
 
-          <section className="rounded-control border border-surface-200 p-4">
-            <h2 className="mb-3 font-semibold text-surface-900">
-              שאלות לפי חודש
-              {categoryFilter !== ALL ? (
-                <span className="font-normal text-surface-600">
-                  {" "}
-                  · {categoryFilter}
-                </span>
-              ) : null}
-            </h2>
-            {monthlyData.length > 0 ? (
-              <MonthlyChart
-                data={monthlyData}
-                color={
-                  categoryFilter === ALL ? "#0284c7" : categoryColor(categoryFilter)
-                }
-              />
-            ) : (
-              <p className="text-sm text-surface-600">אין נתונים להצגה.</p>
-            )}
-          </section>
+          <MonthlyChartSection
+            points={visiblePoints}
+            categoryFilter={categoryFilter}
+            courseFilter={courseFilter}
+          />
 
           <section className="overflow-hidden rounded-control border border-surface-200">
             <h2 className="border-b border-surface-200 px-4 py-3 font-semibold text-surface-900">
