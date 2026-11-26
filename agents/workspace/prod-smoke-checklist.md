@@ -17,6 +17,7 @@ Live prod hosts (from hub `tools.config.ts`):
 | Virtual Support | `https://ai-tools-virtual-support.vercel.app` |
 | MBZ Explorer | Hub path `/mbz-explorer` (same origin as hub) |
 | Dictionary Tool | Hub path `/dictionary-tool` (same origin as hub) |
+| Video Transcriber | Hub path `/video-transcriber` (same origin as hub) |
 
 ---
 
@@ -24,13 +25,18 @@ Live prod hosts (from hub `tools.config.ts`):
 
 Do these in the dashboards; the repo cannot apply them for you.
 
-### A1. Course-Builder Supabase — migration `011`
+### A1. Course-Builder Supabase — confirm live schema (ref `qpctlsahnyarmrmeplpl`)
 
-1. Open the **Course-Builder** Supabase project → SQL Editor (or CLI).
-2. Apply [`apps/course-builder/supabase/migrations/011_tool_access_requires_approved.sql`](../../apps/course-builder/supabase/migrations/011_tool_access_requires_approved.sql).
-3. Confirm `user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`.
+Dashboard: https://supabase.com/dashboard/project/qpctlsahnyarmrmeplpl
 
-Also confirm earlier auth migrations (`007`–`010`) are already on the live DB.
+**Already verified live (2026-11-26)** — see [security.md § Migrations](./security.md#migrations-repo-files--live-dbs). Re-check after any manual SQL / new migration:
+
+1. `user_allowed_tools` filters `profiles.status = 'approved'` ([`011_tool_access_requires_approved.sql`](../../apps/course-builder/supabase/migrations/011_tool_access_requires_approved.sql)).
+2. `group_tools` CHECK allows `dictionary-tool`, `virtual-support`, `video-transcriber` (`012` / `014` / `019`).
+3. MBZ tables use authenticated-only RLS ([`020_mbz_authenticated_only.sql`](../../apps/course-builder/supabase/migrations/020_mbz_authenticated_only.sql)) — no anon policies on `course_mbz_*`.
+4. Admin slug is still `admin-all-tools` (`013`).
+
+On a **new** environment only: apply repo migrations in order from `apps/course-builder/supabase/migrations/` (`007`–`011` auth first, then tool seeds, then app data).
 
 ### A2. Supabase Auth URL configuration (Course-Builder project)
 
@@ -43,28 +49,37 @@ Authentication → URL configuration:
 
 Invite and password-recovery emails both use `/auth/set-password`.
 
-### A3. Vercel Shared env (all four live projects)
+### A3. Vercel Shared env (five live projects)
 
 For **hub**, **video-curator**, **course-builder**, **tau-support**, **virtual-support**:
 
 | Variable | Projects | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | All that call `/api/chat` | Team Shared; server only — never `VITE_` |
+| `OPENAI_API_KEY` | All that call `/api/chat` (and VS `/api/ask`) | Team Shared; server only — never `VITE_` |
 | `VITE_PLATFORM_SUPABASE_URL` / `VITE_PLATFORM_SUPABASE_ANON_KEY` | All | Course-Builder project |
-| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` (+ URL/anon if used server-side) | Hub, Tau | Handoff / entitlement RPCs |
+| `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` (+ URL/anon if used server-side) | Hub, Tau, Virtual Support | Handoff / entitlement RPCs |
 | `TAU_SUPABASE_SERVICE_ROLE_KEY` (+ Tau URL) | Tau only | BFF; never `VITE_` |
+| `VS_SUPABASE_URL` / `VS_SUPABASE_SERVICE_ROLE_KEY` | Virtual Support only | BFF data/ask; never `VITE_` for the service role |
 | `LMS_*` | Tau only | As needed |
 
 Checks:
 
 - [ ] No `VITE_OPENAI_API_KEY` or `VITE_*` service_role anywhere
-- [ ] Shared env **linked** to each project; **Redeploy** all four after linking/changing
+- [ ] Shared env **linked** to each project; **Redeploy** all five after linking/changing
 - [ ] Each app Root Directory = `apps/<name>`; SPA rewrite present (`"/((?!api/).*)" → "/index.html"`)
-- [ ] Hub [`tools.config.ts`](../../apps/hub/src/tools.config.ts) `url` values match live hosts
+- [ ] Hub [`tools.config.ts`](../../apps/hub/src/tools.config.ts) `url` / `hubPath` values match live hosts
 
-### A4. Tau data plane
+### A4. Tau + Virtual Support data planes
 
-- [ ] Tau migration `008_lock_anon_access.sql` applied (anon policies locked)
+**Tau-Support** (ref `gfatxeznxjplrljcohog`, https://supabase.com/dashboard/project/gfatxeznxjplrljcohog) — **verified live 2026-11-26** through repo `012`:
+
+- [ ] RLS enabled on public tables; **no** `anon`/`authenticated` policies (BFF / service_role only) — `008_lock_anon_access.sql`
+- [ ] Feature columns/tables present when using those features: `info_docs.pinned` (`009`), question dashboard tables (`010`), `question_embeddings.category` (`011`), `courses.forum_topic_id` (`012`)
+
+**Virtual Support** (ref `qzjaymstjgwguagqtdit`, https://supabase.com/dashboard/project/qzjaymstjgwguagqtdit) — **not verified via agent MCP** (permission denied). Confirm in the dashboard:
+
+- [ ] Migrations `001_init` → `002_hybrid_search` → `003_ask_log` → `004_ask_metrics` applied
+- [ ] RLS locked (no anon/authenticated data policies); BFF uses `VS_SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
@@ -77,7 +92,8 @@ PowerShell examples (adjust hosts if URLs change):
 foreach ($base in @(
   "https://ai-tools-tauonline.vercel.app",
   "https://ai-tools-video-curator.vercel.app",
-  "https://ai-tools-tau-support.vercel.app"
+  "https://ai-tools-tau-support.vercel.app",
+  "https://ai-tools-virtual-support.vercel.app"
 )) {
   try {
     Invoke-WebRequest -Method POST -Uri "$base/api/chat" `
@@ -101,6 +117,7 @@ try {
 - [ ] Hub `/api/chat` without auth → `401`
 - [ ] Video Curator `/api/chat` without auth → `401`
 - [ ] Tau Support `/api/chat` without auth → `401`
+- [ ] Virtual Support `/api/chat` without auth → `401`
 - [ ] Tau `/api/app-login` → `410`
 
 ---
@@ -111,7 +128,7 @@ Use an **approved** user with known group entitlements.
 
 ### Auth & catalog
 
-- [ ] Hub login works; catalog shows only tools the user is entitled to
+- [ ] Hub login works; **full catalog** is visible; tools the user lacks entitlement for are dimmed / not openable (not hidden)
 - [ ] Pending user sees pending status (no tool handoff)
 - [ ] Rejected user cannot open tools
 
@@ -120,14 +137,16 @@ Use an **approved** user with known group entitlements.
 - [ ] From hub, open Video Curator → lands signed-in (SPA rewrite; `/auth/callback` works)
 - [ ] From hub, open Course Builder → signed-in
 - [ ] From hub, open Tau Support → signed-in
+- [ ] From hub, open Virtual Support → signed-in
 - [ ] Paste a standalone tool URL while **signed out** → redirect to hub login with `returnUrl`
 - [ ] Paste a tool URL while signed in **without** that tool’s entitlement → hub home
 - [ ] Hub-hosted MBZ Explorer `/mbz-explorer` respects entitlement (no access → hub home)
 - [ ] Hub-hosted Dictionary Tool `/dictionary-tool` respects entitlement (no access → hub home)
+- [ ] Hub-hosted Video Transcriber `/video-transcriber` respects entitlement (no access → hub home); entitled users see the SharePoint install guide
 
 ### AI & admin
 
-- [ ] One AI action succeeds in an entitled tool (e.g. video-curator segment or tau draft)
+- [ ] One AI action succeeds in an entitled tool (e.g. video-curator segment, tau draft, or virtual-support Ask)
 - [ ] Optional: POST `/api/chat` with allowed auth but disallowed `model` → `400`
 - [ ] Admin: invite **or** approve a pending user once (email/SMTP limits apply)
 

@@ -30,7 +30,7 @@ Shared component library. Continues in [05-packages-ui-layout.md](./05-packages-
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "@workspace/config": "file:../config",
+    "@workspace/config": "workspace:*",
     "@types/react": "^18.0.0",
     "typescript": "^5.0.0"
   }

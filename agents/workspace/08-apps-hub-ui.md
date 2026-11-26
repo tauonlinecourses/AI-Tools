@@ -22,7 +22,7 @@ Continues Step 5 from [07-apps-hub-config.md](./07-apps-hub-config.md).
 
 - `react-router-dom` wraps the app in `main.tsx` (`BrowserRouter`).
 - `App.tsx` routes `/` → `<HubPage locale="he" />` and `/en` → `<HubPage locale="en" />`. Legacy `/he` redirects to `/`.
-- Header language switcher: Hebrew page links to `/en` (label **English**); English page links to `/` (label **עברית**). Currently **hidden** via `SHOW_LANG_SWITCHER = false` in `App.tsx` (set to `true` to bring it back); `/en` route still works.
+- Header language switcher: Hebrew page links to `/en` (label **English**); English page links to `/` (label **עברית**). Currently **hidden** via `SHOW_LANG_SWITCHER = false` in `HubPage.tsx` (set to `true` to bring it back); `/en` route still works.
 - On mount / locale change, `HubPage` sets `document.documentElement.lang` + `dir`, `document.title`, and `persistHubLocale(locale)` so tool headers match.
 - Tool cards use `toolHrefWithLocale(tool, locale)` (`?lang=he` / `?lang=en`) so `PageLayout` on tool apps shows the matching Hebrew/English hub chrome.
 - Vercel SPA rewrite in `apps/hub/vercel.json` so `/en` serves `index.html`.
@@ -82,9 +82,9 @@ Shared launcher UI driven by `locale`:
 - **Dictionary Tool host / route** — same pattern at `/dictionary-tool/*` (`DictionaryToolHost`, entitlement id `dictionary-tool`).
 - **Video Transcriber host / route** — same pattern at `/video-transcriber/*` (`VideoTranscriberHost`, entitlement id `video-transcriber`). Guide-only page (`src/pages/VideoTranscriberPage.tsx`): Hebrew title + description header, install steps, then a centered SharePoint folder button; no zip in the hub repo.
 
-### Admin page (`/admin`, `/en/admin`)
+### Admin page (`/admin`, `/en/admin`, `/admin/docs`, `/en/admin/docs`)
 
-`apps/hub/src/components/AdminPage.tsx` — Admin-group-only management UI. Uses shared `PageLayout` strip header (בית / Hub + tool name + strip logo), same as the other tools; `hubUrl` points at `/` or `/en`. Soft hub background (`SoftPageBg`) sits behind a transparent `PageLayout` shell (`className="bg-transparent"`).
+`apps/hub/src/components/AdminPage.tsx` — Admin-group-only management UI. Uses shared `PageLayout` strip header (בית / Hub + tool name + strip logo), same as the other tools; `hubUrl` points at `/` or `/en`. Soft hub background (`SoftPageBg`) sits behind a transparent `PageLayout` shell (`className="bg-transparent"`). Routes `/admin/docs` and `/en/admin/docs` mount the same page with `initialTab="docs"` so the Tool docs tab is bookmarkable.
 
 `AdminPage.tsx` owns the state (users, groups, filters, sort, which modal is open, `actionBusyId`), loading, reject/remove handlers, and the auth gate. Presentational pieces live in `src/components/admin/`:
 
@@ -96,6 +96,7 @@ Shared launcher UI driven by `locale`:
 | `UsersToolbar.tsx` | Team/status filters, sort buttons, **Create user** button; exports `SortKey`, `StatusFilter` |
 | `UsersTable.tsx` | Users table (or empty state) with Approve / Reject / Edit / Remove row actions |
 | `GroupsTab.tsx` | **New team** button + groups table with Edit / Edit members |
+| `ToolDocsTab.tsx` / `toolDocs.ts` | **Docs** tab — per-tool documentation content for admins |
 | `GroupEditorModal.tsx`, `UserGroupsModal.tsx`, `GroupMembersModal.tsx`, `InviteUserModal.tsx`, `ApproveUserModal.tsx` | One file per modal; each calls its `src/lib/adminApi.ts` helper and reports back via `onSaved` |
 
 Each modal still has its own open-state flag in `AdminPage` (not a single "active modal" state).
@@ -105,6 +106,7 @@ Each modal still has its own open-state flag in `AdminPage` (not a single "activ
 | Gate | Client: redirect/deny if not signed in, not approved, or not `isAdmin`. Server: `/api/admin` requires Bearer JWT + Admin group membership (service_role checks). |
 | Users tab | Table of Auth users (email, display name from email local-part, **status**, groups). Filter by group and status; sort by email or groups. **Create user** modal: step 1 email + groups + create; step 2 user properties + invite URL **Copy**, or **Send invite email** (mutually exclusive for the live token — email clears the copyable link). Pending: **Approve** / **Reject**. Approved: **Edit** groups. Every row (except self): **Remove** permanently deletes the Auth user (`removeUser`; confirm dialog; cannot remove your own account). |
 | Groups tab | Table of groups (name, slug, tools, member count). Create / edit name, slug, description, and tool checkboxes (`createGroup` / `updateGroup`). Checkboxes are only `PLATFORM_TOOL_IDS` minus `tool-starter`. On update, the API **preserves** any existing `group_tools` rows whose `tool_id` is not in this branch’s `PLATFORM_TOOL_IDS` (unknown/WIP ids from other branches) so admin edits do not wipe them. **Edit members** opens checkboxes to set who belongs to that group (`setGroupMembers`). |
+| Docs tab | `ToolDocsTab` — tool documentation for admins. Switching to Docs updates the URL to `/admin/docs` (or `/en/admin/docs`); other tabs use `/admin` / `/en/admin`. |
 
 API: `GET/POST /api/admin` (`apps/hub/api/admin.ts`) — `GET ?resource=users|groups`; `POST` dispatches `body.action` through the `ADMIN_ACTIONS` map (`createGroup`, `updateGroup`, `setUserGroups`, `setGroupMembers`, `inviteUser`, `sendInviteEmail`, `approveUser`, `rejectUser`, `removeUser`; own-property lookup, so unknown names such as `toString` get the 400 "action must be …" error). Bodies are coerced field-by-field (`String(...)`, `Array.isArray(...)`); no schema validation yet. Public `GET/POST /api/register` (`apps/hub/api/register.ts`).
 

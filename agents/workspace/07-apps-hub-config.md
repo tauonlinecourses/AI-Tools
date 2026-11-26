@@ -15,35 +15,41 @@ Hub launcher wiring. UI continues in [08-apps-hub-ui.md](./08-apps-hub-ui.md).
 
 ### `apps/hub/package.json`
 
+Shape of the real file (see source for the full dependency list — hub also pulls MBZ/Dictionary libs such as `jszip`, `shiki`, `fflate`):
+
 ```json
 {
   "name": "hub",
   "private": true,
   "version": "0.0.1",
-  "type": "module",
   "scripts": {
     "dev":        "vite",
     "build":      "tsc && vite build",
-    "lint":       "eslint . --ext ts,tsx",
+    "lint":       "eslint .",
     "type-check": "tsc --noEmit",
+    "test":       "vitest run",
     "preview":    "vite preview"
   },
   "dependencies": {
-    "@workspace/ui":     "file:../../packages/ui",
-    "react":             "^18.2.0",
-    "react-dom":         "^18.2.0",
-    "react-router-dom":  "^6"
+    "@supabase/supabase-js": "^2.49.1",
+    "@workspace/ai-client":  "workspace:*",
+    "@workspace/auth":       "workspace:*",
+    "@workspace/ui":         "workspace:*",
+    "react":                 "^18.2.0",
+    "react-dom":             "^18.2.0",
+    "react-router-dom":      "^6.30.6"
   },
   "devDependencies": {
-    "@workspace/config": "file:../../packages/config",
-    "@types/react":      "^18.2.0",
-    "@types/react-dom":  "^18.2.0",
+    "@workspace/config":    "workspace:*",
+    "@types/react":         "^18.2.0",
+    "@types/react-dom":     "^18.2.0",
+    "@vercel/node":         "^3.2.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer":      "^10.4.0",
-    "postcss":           "^8.4.0",
-    "tailwindcss":       "^3.4.0",
-    "typescript":        "^5.0.0",
-    "vite":              "^5.0.0"
+    "autoprefixer":         "^10.4.0",
+    "postcss":              "^8.4.0",
+    "tailwindcss":          "^3.4.0",
+    "typescript":           "^5.0.0",
+    "vite":                 "^5.0.0"
   }
 }
 ```
@@ -163,6 +169,16 @@ export const tools: Tool[] = [
     category:    "Video",
   },
   {
+    id:          "course-builder",
+    name:        "Course Builder",
+    description: "Author course structure and page content; review view for Moodle/edX implementers.",
+    url:         "https://ai-tools-course-builder.vercel.app",
+    devUrl:      "http://localhost:5176",
+    icon:        "book",
+    status:      "beta",
+    category:    "Education",
+  },
+  {
     id:          "mbz-explorer",
     name:        "MBZ Explorer",
     description: "Inspect Moodle .mbz course backups — structure, activities, and decoded content.",
@@ -172,9 +188,29 @@ export const tools: Tool[] = [
     category:    "Tech",
   },
   {
+    id:          "tau-support",
+    name:        "TAU Support",
+    description: "AI-powered support assistant for TAU staff and students.",
+    url:         "https://ai-tools-tau-support.vercel.app",
+    devUrl:      "http://localhost:5178",
+    icon:        "page-question",
+    status:      "beta",
+    category:    "Education",
+  },
+  {
+    id:          "virtual-support",
+    name:        "Virtual Support",
+    description: "Organization knowledge base with grounded Q&A over staff documents.",
+    url:         "https://ai-tools-virtual-support.vercel.app",
+    devUrl:      "http://localhost:5180",
+    icon:        "library",
+    status:      "beta",
+    category:    "Education",
+  },
+  {
     id:          "dictionary-tool",
     name:        "Dictionary Tool",
-    description: "Convert an Excel glossary into Moodle-importable XML.",
+    description: "Convert an Excel glossary (term + definition) into Moodle-importable XML.",
     hubPath:     "/dictionary-tool",
     icon:        "book",
     status:      "beta",
@@ -191,6 +227,8 @@ export const tools: Tool[] = [
   },
 ];
 ```
+
+Keep this excerpt in sync with `apps/hub/src/tools.config.ts` (helpers `toolIsOpenable`, `toolHref`, `toolHrefWithLocale`, `findToolForReturnUrl` live in the same file).
 
 
 

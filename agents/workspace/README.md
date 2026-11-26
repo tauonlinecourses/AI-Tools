@@ -35,6 +35,7 @@ Each section file has Previous / Next links at the top.
 | [ai-api-flow.md](./ai-api-flow.md) | Understand or harden the AI request flow | End-to-end `/api/chat` flow diagram, why it's secure, production roadmap (auth, rate limiting, cost caps) |
 | [security.md](./security.md) | Auth, RLS, Supabase, API hardening | Hub Platform Auth (Course-Builder DB), groups/tools, handoff, Tau BFF, env matrix |
 | [prod-smoke-checklist.md](./prod-smoke-checklist.md) | After deploy / env / migration | Live ops (you) + curl + browser smoke for internal prod |
+| [secure-ai-client.md](./secure-ai-client.md) | *(archived)* | Historical AI-client migration checklist — use `06` + `ai-api-flow` instead |
 
 ---
 
@@ -77,7 +78,8 @@ Assign the next free port when adding a tool.
 ## Related paths in the repo
 
 - Live (Vercel) apps: `apps/hub`, `apps/video-curator`, `apps/course-builder`, `apps/tau-support`, `apps/virtual-support`
-- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool` (`hubPath` in `tools.config.ts`)
+- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool`; Video Transcriber guide page in hub → `/video-transcriber` (`hubPath` in `tools.config.ts`)
 - Scaffold only: `apps/tool-starter` (not listed on the hub)
-- Shared: `packages/config`, `packages/ui`, `packages/ai-client`, `packages/auth`, `packages/dev-api` (dev-only: serves `api/*.ts` under `vite dev`; see `10`)
-- Root project overview: [`../../README.md`](../../README.md)
+- Shared: `packages/config`, `packages/ui`, `packages/ai-client`, `packages/auth`, `packages/mbz-parser`, `packages/dev-api` (dev-only: serves `api/*.ts` under `vite dev`; see `10`)
+- Root product overview (hub + tools): [`../../README.md`](../../README.md)
+- Root technical / development guide: [`../../DEVELOPMENT.md`](../../DEVELOPMENT.md)

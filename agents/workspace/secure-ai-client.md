@@ -1,5 +1,17 @@
 # Secure AI Client — Agent Implementation Guide
 
+> **Archived / historical.** This guide describes the one-time refactor that introduced
+> `@workspace/ai-client`. Do **not** follow it as the live architecture — package names,
+> Platform Auth headers, and local `/api` serving have moved on.
+>
+> **Current source of truth:**
+> - [06-packages-ai-client.md](./06-packages-ai-client.md) — package layout, `useAI` / `aiChat`, vercel bridge
+> - [ai-api-flow.md](./ai-api-flow.md) — end-to-end `/api/chat` flow + production roadmap
+> - [10-run-deploy-conventions.md](./10-run-deploy-conventions.md) — `packages/dev-api` under `vite dev`
+> - [security.md](./security.md) — Platform JWT + tool entitlement on chat routes
+>
+> Keep this file only as a historical checklist of the original migration steps.
+
 ## Goal
 
 Refactor the monorepo so that the OpenAI API key is **never exposed in the browser bundle**.

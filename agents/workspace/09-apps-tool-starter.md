@@ -52,15 +52,15 @@ New tools copied from the starter also need an `eslint.config.mjs` (see [03-pack
     "lint":       "eslint ."
   },
   "dependencies": {
-    "@workspace/ui":        "file:../../packages/ui",
-    "@workspace/ai-client": "file:../../packages/ai-client",
-    "@workspace/auth":      "file:../../packages/auth",
+    "@workspace/ui":        "workspace:*",
+    "@workspace/ai-client": "workspace:*",
+    "@workspace/auth":      "workspace:*",
     "react":                "^18.2.0",
     "react-dom":            "^18.2.0"
   },
   "devDependencies": {
     "@vercel/node":         "^3.2.0",
-    "@workspace/config":    "file:../../packages/config",
+    "@workspace/config":    "workspace:*",
     "@types/react":         "^18.2.0",
     "@types/react-dom":     "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
@@ -179,7 +179,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 );
 ```
 
-Also add `"@workspace/auth": "workspace:*"` to `dependencies` in `package.json`.
+`@workspace/auth` is already listed as `"workspace:*"` in the starter `dependencies` above.
 
 ### `apps/tool-starter/src/App.tsx`
 

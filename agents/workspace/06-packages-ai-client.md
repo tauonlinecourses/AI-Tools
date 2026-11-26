@@ -220,5 +220,5 @@ Any app whose `api/chat.ts` re-exports `@workspace/ai-client/vercel` (and any co
 importing `@workspace/ai-client/client`) must declare the dependency:
 
 ```json
-"@workspace/ai-client": "file:../../packages/ai-client"
+"@workspace/ai-client": "workspace:*"
 ```

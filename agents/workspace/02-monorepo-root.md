@@ -26,7 +26,7 @@ Create the root `package.json`:
   },
   "devDependencies": {
     "eslint": "^9.39.4",
-    "turbo": "^2.0.0",
+    "turbo": "^2.1.3",
     "vitest": "^3.2.4"
   },
   "engines": {
@@ -73,7 +73,7 @@ Every app and package exposes the same scripts so the root `turbo` commands cove
 |---|---|---|
 | `type-check` | `tsc --noEmit` (video-curator: `tsc -b`) | All workspaces, including `packages/ui`, `auth`, `ai-client` |
 | `lint` | `eslint .` | Each workspace has `eslint.config.mjs` → `createConfig()` from `@workspace/config/eslint` |
-| `test` | `vitest run` | Only workspaces with tests: `packages/auth`, `packages/ai-client`, `packages/dev-api`, `course-builder`, `tau-support`, `video-curator` |
+| `test` | `vitest run` | Workspaces with tests: `packages/auth`, `packages/ai-client`, `packages/dev-api`, `packages/mbz-parser`, `hub`, `course-builder`, `tau-support`, `video-curator`, `virtual-support` |
 
 - `eslint` and `vitest` are installed once at the root; plugins live in `packages/config`.
 - Tests live next to the code as `src/**/*.test.ts`. Each tested workspace has its own `vitest.config.ts` so Vitest does **not** load the dev-API plugin from `vite.config.ts`. Mock modules that create a Supabase client at import time (`vi.mock("./supabase")`).
@@ -84,7 +84,7 @@ Every app and package exposes the same scripts so the root `turbo` commands cove
 Create `.env.example` at root. The key must **never** be prefixed with `VITE_` — that
 would expose it in the browser bundle. All AI calls go through serverless `api/chat.ts`
 (see [06-packages-ai-client.md](./06-packages-ai-client.md) and
-[secure-ai-client.md](./secure-ai-client.md)):
+[ai-api-flow.md](./ai-api-flow.md)):
 
 ```env
 # Used by Vercel serverless functions (api/chat.ts) and local vercel dev.

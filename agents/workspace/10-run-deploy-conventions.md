@@ -81,7 +81,7 @@ Create one Vercel project per app. For each app:
 
 Each app’s `vercel.json` includes an `ignoreCommand` so builds still run when `pnpm-lock.yaml`, `packages/ui`, `packages/config`, `packages/ai-client`, or `packages/auth` change (Vercel Root Directory alone would otherwise skip those commits). Lockfile-only fixes must be listed there or installs stay broken while Vercel skips the deploy. After changing Hub nav URLs in `packages/ui/src/hub.ts`, redeploy every tool app (or push a commit that touches that app / shared packages).
 
-Shared packages are referenced with `file:../../packages/...` (not `workspace:*`) so Vercel’s occasional `npm install` for serverless functions still works — no Corepack env var needed per project.
+Shared packages are referenced with **`workspace:*`** in every app/package `package.json` (never `file:`). Vercel builds use `pnpm install` from the monorepo root (`vercel.json` install/build commands); `@workspace/auth` and `@workspace/ai-client` are built to CJS `dist/` before the app so serverless functions do not import raw `.ts`.
 
 **Vercel `api/` TypeScript rules:** Vercel typechecks serverless files with NodeNext (not the Vite `bundler` tsconfig). Handlers must import `VercelRequest` / `VercelResponse` from `@vercel/node` (add it as a devDependency) and may need `/// <reference types="node" />`. Relative ESM imports need an explicit `.js` extension (e.g. `from '../server/foo.js'` even when the source file is `.ts`). Catch blocks should narrow `unknown` with `instanceof Error` before reading `.message`.
 

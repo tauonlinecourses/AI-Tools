@@ -12,7 +12,7 @@
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub). Each new code deletes expired rows, which still hold session tokens; `used_at` is an audit field and does not block reuse. Handoff requires approved status.
 - **Ended logins**: sign-out is global, so a tab can hold a login Auth has already ended. The hub then shows its login page with a sign-in-again notice. Standalone tools show a banner from `ToolAuthGate` and wait for a click, so unsaved work is not lost to an automatic redirect; their `authFetch` calls stay pending from that point, so no screen shows an auth error behind the banner.
 - **Direct tool links** (bookmark / pasted URL): each standalone app wraps UI in `ToolAuthGate`. **Not signed in** (no Platform session on the tool origin) → redirect to hub login with `?returnUrl=<tool URL>`. **Signed in without that tool’s group entitlement or not approved** → redirect to hub home (catalog). After hub login (or when already signed in on the hub), `returnUrl` is resolved only against known catalog origins/`hubPath`s using the provider’s already-loaded `allowedToolIds` (no extra RPC); entitled users are handed off (or navigated in-app for hub-hosted tools); others stay on the hub. `assertToolAccess` is a single `user_has_tool_access` RPC (approval is enforced inside that RPC). After a successful hub handoff callback, `ToolAuthGate` skips a second entitlement check (mint already verified access); APIs still enforce via `requireToolAccessFromRequest`.
-- **Hub-hosted** tools (`hubPath`, e.g. MBZ Explorer at `/mbz-explorer`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route (and approved gate). Unsigned → login; signed-in without entitlement → redirect to hub home.
+- **Hub-hosted** tools (`hubPath`: MBZ Explorer `/mbz-explorer`, Dictionary Tool `/dictionary-tool`, Video Transcriber `/video-transcriber`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route (and approved gate). Unsigned → login; signed-in without entitlement → redirect to hub home.
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login). Migration `016_course_mbz_roundtrip.sql` gave `anon` full access to `course_mbz_sources`, `course_mbz_bindings` and the `course-mbz` bucket; **apply `020_mbz_authenticated_only.sql`** to remove it. "Authenticated" means any logged-in account, not only approved Course Builder users.
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
@@ -90,12 +90,19 @@ Invite create/copy link: keep Supabase’s official `action_link` token and only
 
 ## Permission groups (Course-Builder `groups` / `group_tools`)
 
-| Name | Slug | Tools | Notes |
-|---|---|---|---|
-| Admin | `admin-all-tools` (legacy: `Admin (all tools)`) | `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `video-curator`, `dictionary-tool` | Also unlocks hub **User admin** (`/admin`). `isAdminGroupSlug` accepts both forms. |
-| צוות מערכות למידה | `learning-systems-team` | `tau-support`, `course-builder`, `virtual-support` | |
+Hub tool access for a user = union of all groups they belong to via `group_members`. Constants: `ADMIN_GROUP_SLUG` (`admin-all-tools`) and `PLATFORM_TOOL_IDS` in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`). Group **tool lists are edited in Hub Admin** and can drift from migration seed SQL — treat the table below as a **live snapshot**, not an immutable seed.
 
-Hub tool access for a user = union of all groups they belong to via `group_members`. Constant: `ADMIN_GROUP_SLUG` (`admin-all-tools`) in `@workspace/auth` (`src/constants.ts`, re-exported from `@workspace/auth/server`).
+**Live snapshot (Course-Builder prod, 2026-11-26):**
+
+| Slug | Tools (live) | Notes |
+|---|---|---|
+| `admin-all-tools` | `course-builder`, `dictionary-tool`, `mbz-explorer`, `tau-support`, `video-curator`, `video-transcriber`, `virtual-support` | Unlocks hub **User admin** (`/admin`). `isAdminGroupSlug` also accepts legacy `Admin (all tools)`. |
+| `learning-systems-team` | `course-builder`, `dictionary-tool`, `tau-support`, `video-transcriber` | Does **not** currently include `virtual-support` (that lives on `virtual-tau` + Admin). |
+| `ai-tools-team` | `course-builder`, `dictionary-tool`, `mbz-explorer`, `video-curator`, `video-transcriber` | |
+| `online-courses-developing` | `course-builder`, `dictionary-tool`, `video-transcriber` | |
+| `virtual-tau` | `dictionary-tool`, `video-transcriber`, `virtual-support` | |
+
+`group_tools.tool_id` check constraint (live) allows: `video-curator`, `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `tool-starter`, `dictionary-tool`, `video-transcriber` (matches `PLATFORM_TOOL_IDS`).
 
 ## Ops — onboard a user
 
@@ -118,18 +125,70 @@ where g.slug = 'learning-systems-team'  -- or 'admin-all-tools'
 on conflict do nothing;
 ```
 
-4. Set hub/tool env vars; set `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` on hub (and tau) Vercel projects.
-5. Apply migration `010_profile_status.sql` on Course-Builder. Also apply `013_normalize_admin_group_slug.sql` if the Admin group slug was rewritten by the hub Admin UI.
+4. Set hub/tool env vars; set `PLATFORM_SUPABASE_SERVICE_ROLE_KEY` on hub (and tau / VS server) Vercel projects.
+5. On a **new** Course-Builder DB only: apply Platform Auth migrations through `011` (and tool seeds `012`/`014`/`019` as needed). Live prod already has these — see Migrations below. If Admin slug was rewritten by the hub UI, apply `013_normalize_admin_group_slug.sql`.
 
 ### Local Windows + corporate TLS proxy
 
 Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS inspection often breaks Node (`SELF_SIGNED_CERT_IN_CHAIN` / `fetch failed`) while browser login still works. Local hub/tau `vite.config.ts` imports `packages/auth/src/devTls.ts`, which sets `NODE_TLS_REJECT_UNAUTHORIZED=0` on Windows (override with `PLATFORM_STRICT_TLS=1`). Production Vercel is unaffected. The other apps (video-curator, course-builder, mbz-explorer, tool-starter) do not import it, so on such a network their local `/api/*` calls with a token return 503 "Cannot reach Platform Auth from the local server (TLS/proxy)…". Install `win-ca` / set `NODE_EXTRA_CA_CERTS`, or import `devTls` in that app's config.
 
-## Migrations
+## Migrations (repo files ↔ live DBs)
 
-- Course-Builder: `007_platform_auth_groups.sql` (applied), ops note in `008_ops_seed_shared_staff.sql`, `009_seed_learning_systems_team.sql` (צוות מערכות למידה → tau-support + course-builder), `010_profile_status.sql` (`profiles.status`, `requested_group_id`, reviewed fields + `handle_new_user` metadata), `011_tool_access_requires_approved.sql` (`user_allowed_tools` / `user_has_tool_access` require `profiles.status = 'approved'`), `012_add_dictionary_tool.sql` (extends `group_tools` check to include `dictionary-tool` + keep production `virtual-support`; seeds `dictionary-tool` on staff/admin groups), `013_normalize_admin_group_slug.sql` (pins Admin slug to `admin-all-tools` after hub UI `slugify` rewrote `Admin (all tools)`), `014_seed_virtual_support_groups.sql` (grants `virtual-support` to Admin / learning-systems / all-staff)
-- Tau-Support: `008_lock_anon_access.sql` (applied)
-- Virtual-Support: `001_init.sql` (folders, documents, doc_chunks, match RPC, doc-images bucket; RLS locked)
+Repo SQL lives under each app’s `supabase/migrations/`. Many historical changes were applied in the SQL editor, so Supabase Dashboard **Migration History is incomplete** — prefer schema probes over `list_migrations`. Project refs (also in hub `toolDocs.ts`):
+
+| App DB | Supabase project ref | MCP / agent access |
+|---|---|---|
+| Course-Builder (Platform Auth + CB data) | `qpctlsahnyarmrmeplpl` | Verified |
+| Tau-Support | `gfatxeznxjplrljcohog` | Verified |
+| Virtual Support | `qzjaymstjgwguagqtdit` | **Not verified** (no MCP permission for this project) |
+
+### Course-Builder — live-verified (2026-11-26)
+
+**Platform Auth / entitlements (present on live):**
+
+| Repo file | Live evidence |
+|---|---|
+| `007_platform_auth_groups.sql` | `profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`; RPCs `user_allowed_tools` / `user_has_tool_access` / `handle_new_user` |
+| `010_profile_status.sql` | `profiles.status`, `requested_group_id`, `reviewed_at`, `reviewed_by` |
+| `011_tool_access_requires_approved.sql` | `user_allowed_tools` filters `p.status = 'approved'` (enforced via that helper; `user_has_tool_access` delegates to it) |
+| `012` / `014` / `019` tool allowlist + seeds | `group_tools` CHECK includes `dictionary-tool`, `virtual-support`, `video-transcriber`; those tool ids are seeded on groups (see snapshot above). Admin slug is `admin-all-tools` (`013`) |
+| `008_ops_seed_shared_staff.sql` / `009_seed_learning_systems_team.sql` | Ops/seed notes — group memberships and tool lists may have been edited since |
+
+**App data (present on live):**
+
+| Repo file(s) | Live evidence |
+|---|---|
+| `016` + **`020_mbz_authenticated_only.sql`** | Tables `course_mbz_sources` / `course_mbz_bindings` exist; RLS policies are `authenticated_all` only (no anon) |
+| `013_section_videos_folder.sql` | `sections.videos_folder_url` |
+| `015` / `023` / `024` comments | `page_comments` (+ `mentions`, author identity cols); `component_comments.author_display_name` |
+| `021_section_banner_url.sql` | `sections.banner_image_url` |
+| `022_user_templates.sql` | `user_templates` table |
+| `005_page_workflow_status.sql` | `pages.workflow_status` |
+| `014_page_number_label.sql` | Drops `pages.number_label` if present (live has no `number_label` — consistent) |
+| `017` / `018` MBZ backends | Supporting MBZ round-trip; see course-builder agents docs |
+
+Full ordered list: `apps/course-builder/supabase/migrations/` (`001`–`024`).
+
+### Tau-Support — live-verified (2026-11-26)
+
+RLS is **enabled** on all public tables; **`pg_policies` is empty** (deny-by-default for anon/authenticated — BFF uses `service_role`). That is the intended outcome of `008_lock_anon_access.sql`.
+
+| Repo file | Live evidence |
+|---|---|
+| `001_init.sql` | `courses`, `threads`, `messages`, `qa_pairs` |
+| `002_courses_last_checked_at.sql` | `courses.last_checked_at` |
+| `003_thread_ui_state.sql` | Thread UI columns (inbox flags) |
+| `004_last_check_all.sql` | `last_check_all` |
+| `005_kb_chunks.sql` | `kb_chunks` |
+| `006_info_docs.sql` / `007_info_doc_common_questions.sql` / `009_info_doc_pinned.sql` | `info_docs` with `common_questions`, `pinned` |
+| `008_lock_anon_access.sql` | RLS on, no policies |
+| `010_question_dashboard.sql` | `question_embeddings`, `question_dashboard_snapshot` |
+| `011_question_categories.sql` | `question_embeddings.category`, `category_key` |
+| `012_courses_forum_topic_id.sql` | `courses.forum_topic_id` |
+
+### Virtual Support — repo only (not live-verified)
+
+Expected files (apply in order on project `qzjaymstjgwguagqtdit`): `001_init.sql` (folders, documents, doc_chunks, match RPC, doc-images bucket; RLS locked), `002_hybrid_search.sql`, `003_ask_log.sql`, `004_ask_metrics.sql`. Re-check in the Supabase SQL editor or grant the agent MCP access to that project before treating them as applied.
 
 ## Access-control audit (what blocks unauthenticated / unauthorized use)
 
@@ -139,6 +198,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 | Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin`. Group tool edits only assign `PLATFORM_TOOL_IDS`; unknown/WIP tool ids already on a group are preserved. |
 | Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
 | Hub `/dictionary-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `dictionary-tool` |
+| Hub `/video-transcriber/*` | `ApprovedOnly` + `allowedToolIds` includes `video-transcriber` (guide page in hub; no separate app package) |
 | Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |
 | `returnUrl` after login | Only catalog origins / `hubPath`s; uses provider `allowedToolIds` (mint still enforces on handoff) |
 | Tool `/api/*` (chat, embed, lms, tau-data, youtube-transcript, …) | Bearer Platform JWT + `user_has_tool_access(toolId)` (RPC requires approved) |
@@ -146,7 +206,7 @@ Hub handoff (`/api/auth-handoff`) verifies JWTs from **Node**. Corporate TLS ins
 | Course-Builder data | Same Platform JWT; authenticated RLS |
 | Legacy `POST /api/app-login` (tau-support) | **Retired** (`410`) — does not unlock the app |
 
-**Apply migration `011`** on the Course-Builder Supabase project so RPC entitlement helpers enforce approved status at the database layer.
+**Live (2026-11-26):** migration `011` behavior is present on Course-Builder (`user_allowed_tools` filters `profiles.status = 'approved'`). Re-apply from repo only if a new environment is missing it.
 
 ## Later
 
