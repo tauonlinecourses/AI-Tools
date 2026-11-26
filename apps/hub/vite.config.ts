@@ -8,6 +8,7 @@ import { same, vercelApiPlugin } from "../../packages/dev-api/src/index";
 const hubDir = path.dirname(fileURLToPath(import.meta.url));
 const mbzSrc = path.resolve(hubDir, "../mbz-explorer/src");
 const dictionarySrc = path.resolve(hubDir, "../dictionary-tool/src");
+const drupalSrc = path.resolve(hubDir, "../drupal-tool/src");
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -43,6 +44,7 @@ export default defineConfig(({ mode }) => {
         // Allow hub to compile hub-hosted sibling tools.
         "mbz-explorer": mbzSrc,
         "dictionary-tool": dictionarySrc,
+        "drupal-tool": drupalSrc,
       },
     },
     server: {

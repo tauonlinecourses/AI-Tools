@@ -3,6 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src", "../mbz-explorer/src", "../dictionary-tool/src"],
+  "include": ["src", "../mbz-explorer/src", "../dictionary-tool/src", "../drupal-tool/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

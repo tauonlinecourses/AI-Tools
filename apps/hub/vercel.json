@@ -3,7 +3,7 @@
   "buildCommand": "cd ../.. && pnpm --filter @workspace/auth build && pnpm --filter @workspace/ai-client build && pnpm build --filter hub",
   "outputDirectory": "dist",
   "regions": ["dub1"],
-  "ignoreCommand": "sh ../../scripts/vercel-ignore.sh ../mbz-explorer ../dictionary-tool ../../packages/mbz-parser",
+  "ignoreCommand": "sh ../../scripts/vercel-ignore.sh ../mbz-explorer ../dictionary-tool ../drupal-tool ../../packages/mbz-parser",
   "headers": [
     {
       "source": "/(.*)",

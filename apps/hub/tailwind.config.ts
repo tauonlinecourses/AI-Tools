@@ -8,6 +8,7 @@ const config: Config = {
     "./src/**/*.{ts,tsx}",
     "../mbz-explorer/src/**/*.{ts,tsx}", // hub-hosted MBZ tool
     "../dictionary-tool/src/**/*.{ts,tsx}", // hub-hosted dictionary tool
+    "../drupal-tool/src/**/*.{ts,tsx}", // hub-hosted Drupal helper
     "../../packages/ui/src/**/*.{ts,tsx}",  // include shared components
   ],
 };

@@ -201,4 +201,28 @@ export const toolDetails: Record<string, ToolDetails> = {
       },
     },
   },
+  "drupal-tool": {
+    addedAt:   "2026-11-26",
+    updatedAt: "2026-11-26",
+    copy: {
+      en: {
+        about:
+          "Component bank for direct paste into Drupal, plus an image generator matched to Drupal site designs.",
+        features: [
+          "Drupal-ready component snippets (planned)",
+          "One-click copy to clipboard (planned)",
+          "Image generator aligned to site designs (planned)",
+        ],
+      },
+      he: {
+        about:
+          "בנק רכיבים להעתקה ישירה לדרופל ומחולל תמונות להתאמה לעיצובים של האתר בדרופל.",
+        features: [
+          "רכיבים מוכנים לדרופל (מתוכנן)",
+          "העתקה ללוח בלחיצה (מתוכנן)",
+          "מחולל תמונות מותאם לעיצוב האתר (מתוכנן)",
+        ],
+      },
+    },
+  },
 };

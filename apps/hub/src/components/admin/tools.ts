@@ -14,6 +14,7 @@ const TOOL_LABELS: Record<string, { he: string; en: string }> = {
   "virtual-support": { he: "מדריכים - Virtual TAU", en: "Virtual Support" },
   "dictionary-tool": { he: "מילון מונחים", en: "Dictionary Tool" },
   "video-transcriber": { he: "מתמלל וידאו", en: "Video Transcriber" },
+  "drupal-tool": { he: "כלי עזר לדרופל", en: "Drupal Helper" },
 };
 
 export function toolLabel(locale: Locale, toolId: string): string {

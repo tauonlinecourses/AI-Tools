@@ -21,7 +21,7 @@ A Turborepo monorepo containing:
 - Multiple **tool apps** under `apps/` — React apps, one per tool (plus `tool-starter` scaffold)
 - Shared **packages** — design system, UI, Platform auth, AI client, MBZ parser, and local API helper
 
-**Standalone** tools (video-curator, course-builder, tau-support, virtual-support) each deploy to their own Vercel project. **Hub-hosted** tools (MBZ Explorer, Dictionary Tool) ship inside the hub Vercel project via Vite aliases; **Video Transcriber** is a guide-only route implemented in the hub itself. Every app shares the same design language via shared packages.
+**Standalone** tools (video-curator, course-builder, tau-support, virtual-support) each deploy to their own Vercel project. **Hub-hosted** tools (MBZ Explorer, Dictionary Tool, Drupal Helper) ship inside the hub Vercel project via Vite aliases; **Video Transcriber** is a guide-only route implemented in the hub itself. Every app shares the same design language via shared packages.
 
 ---
 
@@ -109,11 +109,15 @@ workspace/
 │   │   ├── agents/                 ← Per-tool agent docs + Moodle XML fixture
 │   │   └── …                       Local Vite port 5179 — Excel glossary → Moodle XML (client-side)
 │   │
+│   ├── drupal-tool/                ← Drupal Helper (hub-hosted at /drupal-tool; no separate Vercel)
+│   │   ├── agents/                 ← mvp-spec.md (scaffold; beta)
+│   │   └── …                       Local Vite port 5181 — component bank + image generator (planned)
+│   │
 │   └── (hub only) video-transcriber ← Guide page at /video-transcriber (no apps/video-transcriber package)
 │                                       SharePoint install steps; entitlement id video-transcriber
 │
-│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · dictionary-tool 5179 · virtual-support 5180
-│   Hub lists live/beta tools only (not tool-starter). DEV → each tool’s `devUrl`; production → `url`. Hub-hosted tools use `hubPath`.
+│   Local Vite ports (strict): hub 5173 · video-curator 5174 · tool-starter 5175 · course-builder 5176 · mbz-explorer 5177 · tau-support 5178 · dictionary-tool 5179 · virtual-support 5180 · drupal-tool 5181
+│   Hub lists live/beta/coming-soon tools (not tool-starter). DEV → each tool’s `devUrl`; production → `url`. Hub-hosted tools use `hubPath`.
 │
 ├── packages/
 │   ├── config/                     ← Shared Tailwind + TypeScript + ESLint configs

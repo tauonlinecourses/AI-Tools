@@ -124,6 +124,16 @@ export const tools: Tool[] = [
     status:      "live",
     category:    "Video",
   },
+  {
+    id:          "drupal-tool",
+    name:        "Drupal Helper",
+    description: "Component bank for direct paste into Drupal, plus an image generator matched to Drupal site designs.",
+    // Hosted inside the hub Vercel project (not a separate app deploy).
+    hubPath:     "/drupal-tool",
+    icon:        "zip",
+    status:      "beta",
+    category:    "Tech",
+  },
 ];
 
 /**

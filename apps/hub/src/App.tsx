@@ -4,6 +4,7 @@ import { HubPage } from "./components/HubPage";
 import { ApprovedOnly } from "./components/ApprovedOnly";
 import { MbzExplorerHost } from "./components/MbzExplorerHost";
 import { DictionaryToolHost } from "./components/DictionaryToolHost";
+import { DrupalToolHost } from "./components/DrupalToolHost";
 import { VideoTranscriberHost } from "./components/VideoTranscriberHost";
 import { AdminPage } from "./components/AdminPage";
 import { RegisterPage } from "./components/RegisterPage";
@@ -12,6 +13,7 @@ import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { ChangePasswordPage } from "./components/ChangePasswordPage";
 import { MBZ_BASE } from "../../mbz-explorer/src/paths";
 import { DICTIONARY_BASE } from "../../dictionary-tool/src/paths";
+import { DRUPAL_BASE } from "../../drupal-tool/src/paths";
 
 const VIDEO_TRANSCRIBER_BASE = "/video-transcriber";
 
@@ -71,6 +73,14 @@ export default function App() {
           element={
             <ApprovedOnly locale="he">
               <DictionaryToolHost locale="he" />
+            </ApprovedOnly>
+          }
+        />
+        <Route
+          path={`${DRUPAL_BASE}/*`}
+          element={
+            <ApprovedOnly locale="he">
+              <DrupalToolHost locale="he" />
             </ApprovedOnly>
           }
         />

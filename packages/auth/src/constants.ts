@@ -23,6 +23,7 @@ export const PLATFORM_TOOL_IDS = [
   "tool-starter",
   "dictionary-tool",
   "video-transcriber",
+  "drupal-tool",
 ] as const;
 
 export type PlatformToolId = (typeof PLATFORM_TOOL_IDS)[number];

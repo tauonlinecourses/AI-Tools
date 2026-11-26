@@ -70,6 +70,7 @@ Each section file has Previous / Next links at the top.
 | tau-support | 5178 |
 | dictionary-tool | 5179 |
 | virtual-support | 5180 |
+| drupal-tool | 5181 |
 
 Assign the next free port when adding a tool.
 
@@ -78,7 +79,7 @@ Assign the next free port when adding a tool.
 ## Related paths in the repo
 
 - Live (Vercel) apps: `apps/hub`, `apps/video-curator`, `apps/course-builder`, `apps/tau-support`, `apps/virtual-support`
-- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool`; Video Transcriber guide page in hub → `/video-transcriber` (`hubPath` in `tools.config.ts`)
+- Hub-hosted (no separate Vercel): `apps/mbz-explorer` → `/mbz-explorer`; `apps/dictionary-tool` → `/dictionary-tool`; `apps/drupal-tool` → `/drupal-tool`; Video Transcriber guide page in hub → `/video-transcriber` (`hubPath` in `tools.config.ts`)
 - Scaffold only: `apps/tool-starter` (not listed on the hub)
 - Shared: `packages/config`, `packages/ui`, `packages/ai-client`, `packages/auth`, `packages/mbz-parser`, `packages/dev-api` (dev-only: serves `api/*.ts` under `vite dev`; see `10`)
 - Root product overview (hub + tools): [`../../README.md`](../../README.md)

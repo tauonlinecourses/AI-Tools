@@ -273,4 +273,24 @@ export const TOOL_DOCS: ToolDoc[] = [
 ├── pages/VideoTranscriberPage.tsx       ← קישור SharePoint והוראות התקנה
 └── components/VideoTranscriberHost.tsx  ← בדיקת הרשאה`,
   },
+  {
+    id: "drupal-tool",
+    nameHe: "כלי עזר לדרופל (Drupal Helper)",
+    purpose:
+      "בנק רכיבים להעתקה ישירה לדרופל ומחולל תמונות להתאמה לעיצובים של האתר בדרופל.",
+    workflow: [
+      "בוחרים רכיב מבנק הרכיבים ומעתיקים לדרופל (מתוכנן).",
+      "מייצרים תמונות מותאמות לעיצוב האתר (מתוכנן).",
+    ],
+    liveUrl: `${HUB_URL}/drupal-tool`,
+    hosting: "מתארח בתוך הרכזת (אין פרויקט Vercel נפרד).",
+    vercelProjectUrl: HUB_VERCEL_PROJECT,
+    repoPath: "apps/drupal-tool",
+    databases: [],
+    structure: `apps/drupal-tool/
+├── agents/           ← mvp-spec.md
+└── src/
+    ├── App.tsx       ← מעטפת UI עם מצייני מקום
+    └── paths.ts      ← /drupal-tool`,
+  },
 ];

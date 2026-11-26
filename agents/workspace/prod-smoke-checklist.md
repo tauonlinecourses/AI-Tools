@@ -17,6 +17,7 @@ Live prod hosts (from hub `tools.config.ts`):
 | Virtual Support | `https://ai-tools-virtual-support.vercel.app` |
 | MBZ Explorer | Hub path `/mbz-explorer` (same origin as hub) |
 | Dictionary Tool | Hub path `/dictionary-tool` (same origin as hub) |
+| Drupal Helper | Hub path `/drupal-tool` (same origin as hub) |
 | Video Transcriber | Hub path `/video-transcriber` (same origin as hub) |
 
 ---
@@ -32,7 +33,7 @@ Dashboard: https://supabase.com/dashboard/project/qpctlsahnyarmrmeplpl
 **Already verified live (2026-11-26)** — see [security.md § Migrations](./security.md#migrations-repo-files--live-dbs). Re-check after any manual SQL / new migration:
 
 1. `user_allowed_tools` filters `profiles.status = 'approved'` ([`011_tool_access_requires_approved.sql`](../../apps/course-builder/supabase/migrations/011_tool_access_requires_approved.sql)).
-2. `group_tools` CHECK allows `dictionary-tool`, `virtual-support`, `video-transcriber` (`012` / `014` / `019`).
+2. `group_tools` CHECK allows `dictionary-tool`, `virtual-support`, `video-transcriber`, `drupal-tool` (`012` / `014` / `019` / `025`).
 3. MBZ tables use authenticated-only RLS ([`020_mbz_authenticated_only.sql`](../../apps/course-builder/supabase/migrations/020_mbz_authenticated_only.sql)) — no anon policies on `course_mbz_*`.
 4. Admin slug is still `admin-all-tools` (`013`).
 
@@ -142,6 +143,7 @@ Use an **approved** user with known group entitlements.
 - [ ] Paste a tool URL while signed in **without** that tool’s entitlement → hub home
 - [ ] Hub-hosted MBZ Explorer `/mbz-explorer` respects entitlement (no access → hub home)
 - [ ] Hub-hosted Dictionary Tool `/dictionary-tool` respects entitlement (no access → hub home)
+- [ ] Hub-hosted Drupal Helper `/drupal-tool` respects entitlement (no access → hub home)
 - [ ] Hub-hosted Video Transcriber `/video-transcriber` respects entitlement (no access → hub home); entitled users see the SharePoint install guide
 
 ### AI & admin

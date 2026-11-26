@@ -71,6 +71,10 @@ export const toolCopy: Record<
     name:        "מתמלל וידאו",
     description: "הורדה והתקנה של תוכנת מתמלל הוידאו משולחן העבודה דרך SharePoint",
   },
+  "drupal-tool": {
+    name:        "כלי עזר לדרופל",
+    description: "בנק רכיבים להעתקה ישירה לדרופל ומחולל תמונות להתאמה לעיצובים של האתר בדרופל",
+  },
 };
 
 export function localizeTool(

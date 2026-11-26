@@ -21,3 +21,4 @@ Tools are registered in the hub catalog (`apps/hub/src/tools.config.ts`). Each e
 | **Virtual Support** | Education | Beta | Organization knowledge base with grounded Q&A over staff documents. |
 | **Dictionary Tool** | Education | Beta | Convert an Excel glossary (term + definition) into Moodle-importable XML. |
 | **MBZ Explorer** | Tech | Beta | Inspect Moodle `.mbz` course backups — structure, activities, and decoded content. |
+| **Drupal Helper** | Tech | Beta | Component bank for direct paste into Drupal, plus an image generator matched to Drupal site designs. |

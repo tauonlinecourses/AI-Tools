@@ -12,7 +12,7 @@
 - Opening a **standalone** tool uses a **handoff code** (hub → tool `/auth/callback`) because those apps are on separate `*.vercel.app` hosts. Redeem is **idempotent within the code TTL** (so React StrictMode / retries do not bounce users back to the hub). Each new code deletes expired rows, which still hold session tokens; `used_at` is an audit field and does not block reuse. Handoff requires approved status.
 - **Ended logins**: sign-out is global, so a tab can hold a login Auth has already ended. The hub then shows its login page with a sign-in-again notice. Standalone tools show a banner from `ToolAuthGate` and wait for a click, so unsaved work is not lost to an automatic redirect; their `authFetch` calls stay pending from that point, so no screen shows an auth error behind the banner.
 - **Direct tool links** (bookmark / pasted URL): each standalone app wraps UI in `ToolAuthGate`. **Not signed in** (no Platform session on the tool origin) → redirect to hub login with `?returnUrl=<tool URL>`. **Signed in without that tool’s group entitlement or not approved** → redirect to hub home (catalog). After hub login (or when already signed in on the hub), `returnUrl` is resolved only against known catalog origins/`hubPath`s using the provider’s already-loaded `allowedToolIds` (no extra RPC); entitled users are handed off (or navigated in-app for hub-hosted tools); others stay on the hub. `assertToolAccess` is a single `user_has_tool_access` RPC (approval is enforced inside that RPC). After a successful hub handoff callback, `ToolAuthGate` skips a second entitlement check (mint already verified access); APIs still enforce via `requireToolAccessFromRequest`.
-- **Hub-hosted** tools (`hubPath`: MBZ Explorer `/mbz-explorer`, Dictionary Tool `/dictionary-tool`, Video Transcriber `/video-transcriber`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route (and approved gate). Unsigned → login; signed-in without entitlement → redirect to hub home.
+- **Hub-hosted** tools (`hubPath`: MBZ Explorer `/mbz-explorer`, Dictionary Tool `/dictionary-tool`, Drupal Helper `/drupal-tool`, Video Transcriber `/video-transcriber`) share the hub origin and Platform session — no handoff; access is checked via `allowedToolIds` on the hub route (and approved gate). Unsigned → login; signed-in without entitlement → redirect to hub home.
 - Every standalone tool `vercel.json` **must** include the SPA rewrite `"/((?!api/).*)" → "/index.html"`. Without it, hub handoff to `/auth/callback` returns Vercel `NOT_FOUND` even when `/` works.
 - **Course-Builder data**: RLS is **authenticated-only** (same JWT as hub login). Migration `016_course_mbz_roundtrip.sql` gave `anon` full access to `course_mbz_sources`, `course_mbz_bindings` and the `course-mbz` bucket; **apply `020_mbz_authenticated_only.sql`** to remove it. "Authenticated" means any logged-in account, not only approved Course Builder users.
 - **Tau-Support data**: anon policies removed; browser never uses service_role. The BFF `/api/tau-data` verifies the Course-Builder JWT + `tau-support` entitlement, then uses Tau `service_role`.
@@ -102,7 +102,7 @@ Hub tool access for a user = union of all groups they belong to via `group_membe
 | `online-courses-developing` | `course-builder`, `dictionary-tool`, `video-transcriber` | |
 | `virtual-tau` | `dictionary-tool`, `video-transcriber`, `virtual-support` | |
 
-`group_tools.tool_id` check constraint (live) allows: `video-curator`, `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `tool-starter`, `dictionary-tool`, `video-transcriber` (matches `PLATFORM_TOOL_IDS`).
+`group_tools.tool_id` check constraint (live) allows: `video-curator`, `course-builder`, `mbz-explorer`, `tau-support`, `virtual-support`, `tool-starter`, `dictionary-tool`, `video-transcriber`, `drupal-tool` (matches `PLATFORM_TOOL_IDS`; apply migration `025_add_drupal_tool`).
 
 ## Ops — onboard a user
 
@@ -151,7 +151,7 @@ Repo SQL lives under each app’s `supabase/migrations/`. Many historical change
 | `007_platform_auth_groups.sql` | `profiles`, `groups`, `group_members`, `group_tools`, `auth_handoff_codes`; RPCs `user_allowed_tools` / `user_has_tool_access` / `handle_new_user` |
 | `010_profile_status.sql` | `profiles.status`, `requested_group_id`, `reviewed_at`, `reviewed_by` |
 | `011_tool_access_requires_approved.sql` | `user_allowed_tools` filters `p.status = 'approved'` (enforced via that helper; `user_has_tool_access` delegates to it) |
-| `012` / `014` / `019` tool allowlist + seeds | `group_tools` CHECK includes `dictionary-tool`, `virtual-support`, `video-transcriber`; those tool ids are seeded on groups (see snapshot above). Admin slug is `admin-all-tools` (`013`) |
+| `012` / `014` / `019` / `025` tool allowlist + seeds | `group_tools` CHECK includes `dictionary-tool`, `virtual-support`, `video-transcriber`, `drupal-tool`; those tool ids are seeded on groups (see snapshot above). Admin slug is `admin-all-tools` (`013`) |
 | `008_ops_seed_shared_staff.sql` / `009_seed_learning_systems_team.sql` | Ops/seed notes — group memberships and tool lists may have been edited since |
 
 **App data (present on live):**
@@ -167,7 +167,7 @@ Repo SQL lives under each app’s `supabase/migrations/`. Many historical change
 | `014_page_number_label.sql` | Drops `pages.number_label` if present (live has no `number_label` — consistent) |
 | `017` / `018` MBZ backends | Supporting MBZ round-trip; see course-builder agents docs |
 
-Full ordered list: `apps/course-builder/supabase/migrations/` (`001`–`024`).
+Full ordered list: `apps/course-builder/supabase/migrations/` (`001`–`025`).
 
 ### Tau-Support — live-verified (2026-11-26)
 
@@ -198,6 +198,7 @@ Expected files (apply in order on project `qzjaymstjgwguagqtdit`): `001_init.sql
 | Hub `/admin` | UI `isAdmin` + API `assertUserIsAdmin`. Group tool edits only assign `PLATFORM_TOOL_IDS`; unknown/WIP tool ids already on a group are preserved. |
 | Hub `/mbz-explorer/*` | `ApprovedOnly` + `allowedToolIds` includes `mbz-explorer` |
 | Hub `/dictionary-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `dictionary-tool` |
+| Hub `/drupal-tool/*` | `ApprovedOnly` + `allowedToolIds` includes `drupal-tool` |
 | Hub `/video-transcriber/*` | `ApprovedOnly` + `allowedToolIds` includes `video-transcriber` (guide page in hub; no separate app package) |
 | Standalone tools (direct URL / bookmark) | `ToolAuthGate`: no session → hub login `?returnUrl=`; no entitlement / not approved → hub home |
 | `returnUrl` after login | Only catalog origins / `hubPath`s; uses provider `allowedToolIds` (mint still enforces on handoff) |

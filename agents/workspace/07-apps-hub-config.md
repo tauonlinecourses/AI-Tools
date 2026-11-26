@@ -89,7 +89,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), vercelApiPlugin({ env, bridge: [...same("PLATFORM_SUPABASE_URL" /* … */)] })],
     resolve: {
       dedupe: ["react", "react-dom"],
-      alias: { "mbz-explorer": "../mbz-explorer/src", "dictionary-tool": "../dictionary-tool/src" },
+      alias: { "mbz-explorer": "../mbz-explorer/src", "dictionary-tool": "../dictionary-tool/src", "drupal-tool": "../drupal-tool/src" },
     },
     server: { port: 5173, strictPort: true, fs: { allow: ["../.."] } },
   };
@@ -142,7 +142,7 @@ Hub depends on `react-router-dom` (`^6`) for `/` (Hebrew, default) and `/en` (En
 
 This is the single file you edit to add or remove tools from the hub. Add a new entry here whenever you create a new tool.
 
-Standalone tools need a production `url` (Vercel) and a `devUrl` (local Vite). Hub-hosted tools (no separate Vercel project) use `hubPath` instead — e.g. MBZ Explorer at `/mbz-explorer`, Dictionary Tool at `/dictionary-tool`, Video Transcriber at `/video-transcriber`. `toolIsOpenable()` / card click: `hubPath` navigates in-app; otherwise hub DEV uses `devUrl` and production uses `url` via auth handoff. `findToolForReturnUrl(returnUrl)` maps a tool deep-link back to a catalog entry (origin match for `url`/`devUrl`, or path match for `hubPath`) so hub `?returnUrl=` handling never open-redirects.
+Standalone tools need a production `url` (Vercel) and a `devUrl` (local Vite). Hub-hosted tools (no separate Vercel project) use `hubPath` instead — e.g. MBZ Explorer at `/mbz-explorer`, Dictionary Tool at `/dictionary-tool`, Drupal Helper at `/drupal-tool`, Video Transcriber at `/video-transcriber`. `toolIsOpenable()` / card click: `hubPath` navigates in-app (except `coming-soon`); otherwise hub DEV uses `devUrl` and production uses `url` via auth handoff. `findToolForReturnUrl(returnUrl)` maps a tool deep-link back to a catalog entry (origin match for `url`/`devUrl`, or path match for `hubPath`) so hub `?returnUrl=` handling never open-redirects.
 
 ```typescript
 export interface Tool {
@@ -224,6 +224,15 @@ export const tools: Tool[] = [
     icon:        "film",
     status:      "live",
     category:    "Video",
+  },
+  {
+    id:          "drupal-tool",
+    name:        "Drupal Helper",
+    description: "Component bank for direct paste into Drupal, plus an image generator matched to Drupal site designs.",
+    hubPath:     "/drupal-tool",
+    icon:        "zip",
+    status:      "beta",
+    category:    "Tech",
   },
 ];
 ```
